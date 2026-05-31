@@ -286,6 +286,9 @@ CLASS lcl_history_popup DEFINITION.
     METHODS display_text
       IMPORTING io_viewer TYPE REF TO cl_gui_html_viewer
                 i_text      TYPE string.
+    METHODS source_text_to_html
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS escape_html
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -417,11 +420,16 @@ CLASS lcl_history_popup IMPLEMENTATION.
             cs_row = ls_row ).
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.
-        IF lv_answer_upper CS 'ERROR:'
-        OR lv_answer_upper CS 'WAS NOT FOUND'
-        OR lv_answer_upper CS 'CANNOT BE READ'
-        OR lv_answer_upper CS 'METHOD COMMAND IS INCOMPLETE'
-        OR lv_answer_upper CS 'NO CODE CONTEXT WAS RESOLVED'.
+        CONDENSE lv_answer_upper.
+        IF lv_answer_upper CP 'ERROR:*'
+        OR lv_answer_upper CP 'SOURCE FOR PROGRAM * WAS NOT FOUND*'
+        OR lv_answer_upper CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
+        OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * WAS NOT FOUND*'
+        OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * CANNOT BE READ*'
+        OR lv_answer_upper CP 'CLASS * WAS NOT FOUND*'
+        OR lv_answer_upper CP 'METHOD * WAS NOT FOUND*'
+        OR lv_answer_upper CP 'METHOD COMMAND IS INCOMPLETE*'
+        OR lv_answer_upper CP 'NO CODE CONTEXT WAS RESOLVED*'.
           ls_row-rowcolor = 'C601'. " red
         ELSEIF ls_row-prompt_tokens IS NOT INITIAL
             OR ls_row-total_tokens IS NOT INITIAL
@@ -543,13 +551,26 @@ CLASS lcl_history_popup IMPLEMENTATION.
 
   METHOD display_text.
     DATA lv_html TYPE string.
+    DATA(lv_text_upper) = i_text.
+    TRANSLATE lv_text_upper TO UPPER CASE.
 
-    lv_html = |<!doctype html><html><head><meta charset="utf-8">|
-           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:13px;margin:8px;\}|
-           && |.log\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.3;\}|
-           && |</style></head><body><div class="log">|
-           && escape_html( i_text )
-           && |</div></body></html>|.
+    IF lv_text_upper CS 'RESOLVED {READ'
+    OR lv_text_upper CS 'SOURCE FOR PROGRAM'
+    OR lv_text_upper CS 'SOURCE FOR CLASS'
+    OR lv_text_upper CS 'SOURCE FOR METHOD'.
+      lv_html = source_text_to_html( i_text ).
+    ELSE.
+      DATA(lv_escaped_text) = escape_html( i_text ).
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_escaped_text WITH '<br>'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_escaped_text WITH '<br>'.
+
+      lv_html = |<!doctype html><html><head><meta charset="utf-8">|
+             && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:13px;margin:8px;\}|
+             && |.log\{font-family:Consolas,"Courier New",monospace;line-height:1.3;\}|
+             && |</style></head><body><div class="log">|
+             && lv_escaped_text
+             && |</div></body></html>|.
+    ENDIF.
 
     DATA lt_html TYPE tt_html.
     DATA ls_html TYPE w3html.
@@ -580,6 +601,37 @@ CLASS lcl_history_popup IMPLEMENTATION.
     io_viewer->show_url(
       EXPORTING url = lv_url
       EXCEPTIONS OTHERS = 1 ).
+  ENDMETHOD.
+
+  METHOD source_text_to_html.
+    DATA lv_source TYPE string.
+    DATA lv_rows TYPE string.
+    DATA lv_lno TYPE i.
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    lv_source = i_text.
+    REPLACE ALL OCCURRENCES OF REGEX 'Resolved \{READ[^\n\r]*\}:\s*' IN lv_source WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX 'Source for program [^:\n\r]*:\s*' IN lv_source WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_source WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_source WITH ''.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_source WITH cl_abap_char_utilities=>newline.
+
+    SPLIT lv_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      lv_lno = lv_lno + 1.
+      lv_rows = lv_rows
+             && |<tr><td class="ln">{ lv_lno }</td>|
+             && |<td class="cd">{ escape_html( lv_line ) }</td></tr>|.
+    ENDLOOP.
+
+    rv_html = |<!doctype html><html><head><meta charset="utf-8">|
+           && |<style>body\{margin:0;background:#fff;color:#1e1e1e;font:12px/1.5 Consolas,monospace\}|
+           && |table\{border-collapse:collapse;width:100%\}tr:hover td\{background:#f0f4fa\}|
+           && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:42px;|
+           && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none\}|
+           && |.cd\{padding:1px 8px;white-space:pre\}</style></head><body>|
+           && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
   ENDMETHOD.
 
   METHOD escape_html.

@@ -141,10 +141,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
           rv_text = rv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline.
         ENDIF.
 
-        rv_text = rv_text
-               && |Resolved { ls_command-raw_command }:|
-               && cl_abap_char_utilities=>newline
-               && lv_resolved.
+        rv_text = rv_text && lv_resolved.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.

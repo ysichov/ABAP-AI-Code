@@ -301,11 +301,16 @@ CLASS zcl_ai_messages IMPLEMENTATION.
 
       DATA(lv_content_upper) = ls_message-content.
       TRANSLATE lv_content_upper TO UPPER CASE.
+      CONDENSE lv_content_upper.
 
-      IF lv_content_upper CS 'WAS NOT FOUND'
-      OR lv_content_upper CS 'CANNOT BE READ'
-      OR lv_content_upper CS 'METHOD COMMAND IS INCOMPLETE'
-      OR lv_content_upper CS 'NO CODE CONTEXT WAS RESOLVED'.
+      IF lv_content_upper CP 'SOURCE FOR PROGRAM * WAS NOT FOUND*'
+      OR lv_content_upper CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
+      OR lv_content_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * WAS NOT FOUND*'
+      OR lv_content_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * CANNOT BE READ*'
+      OR lv_content_upper CP 'CLASS * WAS NOT FOUND*'
+      OR lv_content_upper CP 'METHOD * WAS NOT FOUND*'
+      OR lv_content_upper CP 'METHOD COMMAND IS INCOMPLETE*'
+      OR lv_content_upper CP 'NO CODE CONTEXT WAS RESOLVED*'.
         rv_error = ls_message-content.
         RETURN.
       ENDIF.
