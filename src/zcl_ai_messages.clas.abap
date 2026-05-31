@@ -217,21 +217,31 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_final_request.
-    rv_prompt = |You are a Senior ABAP AI assistant. Answer the user's request using the original prompt, |
-             && |the orchestrator decision, and the agent results below. If source code was resolved, use it as context.|
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |ORIGINAL USER PROMPT: { mv_user_prompt }|.
+    DATA(lv_code_context) = VALUE string( ).
 
     LOOP AT mt_messages INTO DATA(ls_message).
-      rv_prompt = rv_prompt
-               && cl_abap_char_utilities=>newline
-               && cl_abap_char_utilities=>newline
-               && |[{ ls_message-role } { ls_message-agent }]|
-               && | { ls_message-prompt_type }|
-               && cl_abap_char_utilities=>newline
-               && ls_message-content.
+      CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
+      CHECK ls_message-role = 'assistant'.
+
+      IF lv_code_context IS NOT INITIAL.
+        lv_code_context = lv_code_context
+                       && cl_abap_char_utilities=>newline
+                       && cl_abap_char_utilities=>newline.
+      ENDIF.
+
+      lv_code_context = lv_code_context && ls_message-content.
     ENDLOOP.
+
+    rv_prompt = |FOUND CODE:|
+             && cl_abap_char_utilities=>newline
+             && COND string(
+                  WHEN lv_code_context IS NOT INITIAL THEN lv_code_context
+                  ELSE 'No code context was resolved.' )
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |USER PROMPT:|
+             && cl_abap_char_utilities=>newline
+             && mv_user_prompt.
 
     add_message(
       i_role        = 'user'
