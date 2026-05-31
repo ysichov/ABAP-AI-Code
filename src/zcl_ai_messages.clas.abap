@@ -244,7 +244,13 @@ CLASS zcl_ai_messages IMPLEMENTATION.
                        && cl_abap_char_utilities=>newline.
       ENDIF.
 
-      lv_code_context = lv_code_context && ls_message-content.
+      DATA(lv_clean_code) = ls_message-content.
+      REPLACE ALL OCCURRENCES OF REGEX 'Resolved \{READ[^\n\r]*\}:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for program [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+
+      lv_code_context = lv_code_context && lv_clean_code.
     ENDLOOP.
 
     rv_prompt = |You are a Senior ABAP.|.
@@ -262,8 +268,6 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && mv_user_prompt
              && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |FOUND CODE:|
              && cl_abap_char_utilities=>newline
              && COND string(
                   WHEN lv_code_context IS NOT INITIAL THEN lv_code_context
