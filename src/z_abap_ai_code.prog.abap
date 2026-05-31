@@ -405,7 +405,11 @@ CLASS lcl_history_popup IMPLEMENTATION.
       ELSE.
         CLEAR ls_row.
         ls_row-session_id = ls_message-session_id.
-        ls_row-seq = lv_request_message_id.
+        IF lv_request_message_id IS INITIAL.
+          ls_row-seq = ls_message-message_id.
+        ELSE.
+          ls_row-seq = lv_request_message_id.
+        ENDIF.
         ls_row-owner = ls_message-agent.
         ls_row-request_type = lv_request_type.
         ls_row-answer_type = ls_message-prompt_type.
