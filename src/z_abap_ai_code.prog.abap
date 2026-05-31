@@ -243,8 +243,9 @@ CLASS lcl_history_popup DEFINITION.
            BEGIN OF ty_history_row,
              session_id     TYPE i,
              seq            TYPE i,
-             agent          TYPE string,
              request_type   TYPE string,
+             agent          TYPE string,
+             answer_seq     TYPE i,
              answer_type    TYPE string,
              request_preview TYPE string,
              answer_preview TYPE string,
@@ -371,6 +372,7 @@ CLASS lcl_history_popup IMPLEMENTATION.
     DATA lv_request_type TYPE string.
     DATA lv_request_agent TYPE string.
     DATA lv_request_session TYPE i.
+    DATA lv_request_message_id TYPE i.
 
     LOOP AT mt_messages INTO DATA(ls_message).
       IF ls_message-role = 'user'.
@@ -378,13 +380,15 @@ CLASS lcl_history_popup IMPLEMENTATION.
         lv_request_type = ls_message-prompt_type.
         lv_request_agent = ls_message-agent.
         lv_request_session = ls_message-session_id.
+        lv_request_message_id = ls_message-message_id.
       ELSE.
         CLEAR ls_row.
         ls_row-session_id = ls_message-session_id.
-        ls_row-seq = lines( mt_history ) + 1.
+        ls_row-seq = lv_request_message_id.
         ls_row-agent = ls_message-agent.
         ls_row-request_type = lv_request_type.
         ls_row-answer_type = ls_message-prompt_type.
+        ls_row-answer_seq = ls_message-message_id.
         ls_row-request = lv_request.
         ls_row-answer = ls_message-content.
         IF ls_row-agent IS INITIAL.
@@ -406,9 +410,10 @@ CLASS lcl_history_popup IMPLEMENTATION.
 
     TRY.
         lo_columns->get_column( 'SESSION_ID' )->set_short_text( 'Session' ).
-        lo_columns->get_column( 'SEQ' )->set_short_text( 'No' ).
-        lo_columns->get_column( 'AGENT' )->set_short_text( 'Agent' ).
+        lo_columns->get_column( 'SEQ' )->set_short_text( 'Q#' ).
         lo_columns->get_column( 'REQUEST_TYPE' )->set_medium_text( 'Prompt Type' ).
+        lo_columns->get_column( 'AGENT' )->set_short_text( 'Agent' ).
+        lo_columns->get_column( 'ANSWER_SEQ' )->set_short_text( 'A#' ).
         lo_columns->get_column( 'ANSWER_TYPE' )->set_medium_text( 'Answer Type' ).
         lo_columns->get_column( 'REQUEST_PREVIEW' )->set_medium_text( 'Request' ).
         lo_columns->get_column( 'ANSWER_PREVIEW' )->set_medium_text( 'Answer' ).
@@ -798,7 +803,7 @@ CLASS lcl_popup IMPLEMENTATION.
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = 'FINAL'
-        i_prompt_type = 'LLM_RESPONSE'
+        i_prompt_type = 'SHOW_TO_USER'
         i_content     = lv_answer ).
     ENDIF.
 
