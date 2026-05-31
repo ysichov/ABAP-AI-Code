@@ -866,6 +866,8 @@ CLASS lcl_popup IMPLEMENTATION.
         IF lv_resolved_code IS NOT INITIAL.
           DATA(lv_code_block) = cl_abap_char_utilities=>newline
                               && cl_abap_char_utilities=>newline
+                              && |Source code from code_agent|
+                              && cl_abap_char_utilities=>newline
                               && |```abap|
                               && cl_abap_char_utilities=>newline
                               && lv_resolved_code
@@ -914,11 +916,13 @@ CLASS lcl_popup IMPLEMENTATION.
     ELSE.
       DATA(lv_render_text) = render_abap_blocks( normalize_markdown( i_text ) ).
       REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN lv_render_text WITH '<strong>$1</strong>'.
+      REPLACE ALL OCCURRENCES OF REGEX '(Tokens:[^\n\r<]*)' IN lv_render_text WITH '<span class="tokens">$1</span>'.
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
              && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
              && |strong\{font-weight:700\}|
+             && |.tokens\{color:#0066aa;font-weight:700;\}|
              && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
              && |background:#fff;border:1px solid #ddd;margin:8px 0;\}|
              && |.code_tbl tr:hover td\{background:#f0f4fa\}|
