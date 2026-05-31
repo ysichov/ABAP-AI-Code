@@ -420,11 +420,11 @@ CLASS lcl_history_popup IMPLEMENTATION.
         OR lv_answer_upper CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
         OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * WAS NOT FOUND*'
         OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * CANNOT BE READ*'
-        OR lv_answer_upper CP 'CLASS * WAS NOT FOUND*'
+        OR lv_answer_upper CP '* WAS NOT FOUND*'
         OR lv_answer_upper CP 'METHOD * WAS NOT FOUND*'
         OR lv_answer_upper CP 'METHOD COMMAND IS INCOMPLETE*'
         OR lv_answer_upper CP 'NO CODE CONTEXT WAS RESOLVED*'.
-          ls_row-rowcolor = 'C601'. " red
+          ls_row-rowcolor = 'C201'. " red
         ELSEIF ls_row-prompt_tokens IS NOT INITIAL
             OR ls_row-total_tokens IS NOT INITIAL
             OR ls_row-answer_type = 'LLM_RESPONSE'
