@@ -242,6 +242,7 @@ CLASS lcl_history_popup DEFINITION.
   PRIVATE SECTION.
     TYPES: ty_textedit_line(255) TYPE c,
            tt_textedit_lines     TYPE TABLE OF ty_textedit_line,
+           tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY,
            BEGIN OF ty_history_row,
              session_id     TYPE i,
              seq            TYPE i,
@@ -259,8 +260,8 @@ CLASS lcl_history_popup DEFINITION.
     DATA mo_dialog   TYPE REF TO cl_gui_dialogbox_container.
     DATA mo_split    TYPE REF TO cl_gui_splitter_container.
     DATA mo_details  TYPE REF TO cl_gui_splitter_container.
-    DATA mo_request  TYPE REF TO cl_gui_textedit.
-    DATA mo_answer   TYPE REF TO cl_gui_textedit.
+    DATA mo_request  TYPE REF TO cl_gui_html_viewer.
+    DATA mo_answer   TYPE REF TO cl_gui_html_viewer.
     DATA mo_salv     TYPE REF TO cl_salv_table.
     DATA mt_history  TYPE tt_history_rows.
     DATA mt_messages TYPE zcl_ai_messages=>tt_messages.
@@ -275,8 +276,11 @@ CLASS lcl_history_popup DEFINITION.
     METHODS show_row
       IMPORTING i_row TYPE i.
     METHODS display_text
-      IMPORTING io_textedit TYPE REF TO cl_gui_textedit
+      IMPORTING io_viewer TYPE REF TO cl_gui_html_viewer
                 i_text      TYPE string.
+    METHODS escape_html
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
     METHODS preview
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -335,14 +339,10 @@ CLASS lcl_history_popup IMPLEMENTATION.
     CREATE OBJECT mo_request
       EXPORTING parent = lo_request
       EXCEPTIONS OTHERS = 1.
-    mo_request->set_toolbar_mode( 0 ).
-    mo_request->set_readonly_mode( 1 ).
 
     CREATE OBJECT mo_answer
       EXPORTING parent = lo_answer
       EXCEPTIONS OTHERS = 1.
-    mo_answer->set_toolbar_mode( 0 ).
-    mo_answer->set_readonly_mode( 1 ).
 
     cl_salv_table=>factory(
       EXPORTING
@@ -442,43 +442,61 @@ CLASS lcl_history_popup IMPLEMENTATION.
     ENDIF.
 
     display_text(
-      io_textedit = mo_request
-      i_text      = ls_row-request ).
+      io_viewer = mo_request
+      i_text    = ls_row-request ).
 
     display_text(
-      io_textedit = mo_answer
-      i_text      = ls_row-answer ).
+      io_viewer = mo_answer
+      i_text    = ls_row-answer ).
   ENDMETHOD.
 
   METHOD display_text.
-    io_textedit->set_readonly_mode( 0 ).
+    DATA lv_html TYPE string.
 
-    DATA lt_text TYPE tt_textedit_lines.
-    DATA ls_text TYPE ty_textedit_line.
-    DATA lt_raw  TYPE TABLE OF string.
+    lv_html = |<!doctype html><html><head><meta charset="utf-8">|
+           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:13px;margin:8px;\}|
+           && |.log\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.3;\}|
+           && |</style></head><body><div class="log">|
+           && escape_html( i_text )
+           && |</div></body></html>|.
 
-    SPLIT i_text AT cl_abap_char_utilities=>newline INTO TABLE lt_raw.
-    IF lt_raw IS INITIAL.
-      APPEND i_text TO lt_raw.
-    ENDIF.
+    DATA lt_html TYPE tt_html.
+    DATA ls_html TYPE w3html.
+    DATA lv_offset TYPE i.
 
-    LOOP AT lt_raw INTO DATA(lv_raw_line).
-      IF strlen( lv_raw_line ) = 0.
-        CLEAR ls_text.
-        APPEND ls_text TO lt_text.
-      ELSE.
-        WHILE strlen( lv_raw_line ) > 255.
-          ls_text = lv_raw_line(255).
-          APPEND ls_text TO lt_text.
-          lv_raw_line = substring( val = lv_raw_line off = 255 ).
-        ENDWHILE.
-        ls_text = lv_raw_line.
-        APPEND ls_text TO lt_text.
-      ENDIF.
-    ENDLOOP.
+    WHILE lv_offset < strlen( lv_html ).
+      CLEAR ls_html.
+      ls_html-line = substring(
+        val = lv_html
+        off = lv_offset
+        len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
+      APPEND ls_html TO lt_html.
+      lv_offset = lv_offset + 255.
+    ENDWHILE.
 
-    io_textedit->set_text_as_stream( text = lt_text ).
-    io_textedit->set_readonly_mode( 1 ).
+    DATA lv_url TYPE c LENGTH 255.
+    io_viewer->load_data(
+      EXPORTING
+        type         = 'text'
+        subtype      = 'html'
+      IMPORTING
+        assigned_url = lv_url
+      CHANGING
+        data_table   = lt_html
+      EXCEPTIONS
+        OTHERS       = 1 ).
+
+    io_viewer->show_url(
+      EXPORTING url = lv_url
+      EXCEPTIONS OTHERS = 1 ).
+  ENDMETHOD.
+
+  METHOD escape_html.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF '&' IN rv_text WITH '&amp;'.
+    REPLACE ALL OCCURRENCES OF '<' IN rv_text WITH '&lt;'.
+    REPLACE ALL OCCURRENCES OF '>' IN rv_text WITH '&gt;'.
+    REPLACE ALL OCCURRENCES OF '"' IN rv_text WITH '&quot;'.
   ENDMETHOD.
 
   METHOD preview.
@@ -508,7 +526,8 @@ CLASS lcl_popup DEFINITION.
 
   PRIVATE SECTION.
     TYPES: ty_textedit_line(255) TYPE c,
-           tt_textedit_lines     TYPE TABLE OF ty_textedit_line.
+           tt_textedit_lines     TYPE TABLE OF ty_textedit_line,
+           tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
 
     DATA: mv_dest     TYPE text255,
           mv_model    TYPE text255,
@@ -523,7 +542,7 @@ CLASS lcl_popup DEFINITION.
           mo_toolbar  TYPE REF TO cl_gui_toolbar,
           mo_split    TYPE REF TO cl_gui_splitter_container,
           mo_question TYPE REF TO cl_gui_textedit,
-          mo_answer   TYPE REF TO cl_gui_textedit.
+          mo_answer   TYPE REF TO cl_gui_html_viewer.
 
     METHODS on_toolbar_click
       FOR EVENT function_selected OF cl_gui_toolbar
@@ -536,6 +555,9 @@ CLASS lcl_popup DEFINITION.
     METHODS show_history.
     METHODS display_text
       IMPORTING i_text TYPE string.
+    METHODS escape_html
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
 ENDCLASS.
 
 CLASS lcl_popup IMPLEMENTATION.
@@ -633,12 +655,10 @@ CLASS lcl_popup IMPLEMENTATION.
       EXCEPTIONS OTHERS = 1.
     mo_question->set_toolbar_mode( 0 ).  " 0 = toolbar off
 
-    " Answer editor (right, readonly)
+    " Answer viewer (right)
     CREATE OBJECT mo_answer
       EXPORTING parent = lo_right
       EXCEPTIONS OTHERS = 1.
-    mo_answer->set_toolbar_mode( 0 ).
-    mo_answer->set_readonly_mode( 1 ).
 
     CALL METHOD cl_gui_cfw=>flush.
   ENDMETHOD.
@@ -836,34 +856,54 @@ CLASS lcl_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD display_text.
-    mo_answer->set_readonly_mode( 0 ).
+    DATA lv_html TYPE string.
 
-    DATA lt_answer TYPE tt_textedit_lines.
-    DATA ls_answer TYPE ty_textedit_line.
-    DATA lt_raw    TYPE TABLE OF string.
-    SPLIT i_text AT cl_abap_char_utilities=>newline INTO TABLE lt_raw.
-    IF lt_raw IS INITIAL.
-      APPEND i_text TO lt_raw.
-    ENDIF.
-    LOOP AT lt_raw INTO DATA(lv_raw_line).
-      IF strlen( lv_raw_line ) = 0.
-        CLEAR ls_answer.
-        APPEND ls_answer TO lt_answer.
-      ELSE.
-        WHILE strlen( lv_raw_line ) > 255.
-          ls_answer = lv_raw_line(255).
-          APPEND ls_answer TO lt_answer.
-          lv_raw_line = substring( val = lv_raw_line off = 255 ).
-        ENDWHILE.
-        ls_answer = lv_raw_line.
-        APPEND ls_answer TO lt_answer.
-      ENDIF.
-    ENDLOOP.
+    lv_html = |<!doctype html><html><head><meta charset="utf-8">|
+           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
+           && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
+           && |</style></head><body><div class="answer">|
+           && escape_html( i_text )
+           && |</div></body></html>|.
 
-    mo_answer->set_text_as_stream( text = lt_answer ).
-    mo_answer->set_readonly_mode( 1 ).
+    DATA lt_html TYPE tt_html.
+    DATA ls_html TYPE w3html.
+    DATA lv_offset TYPE i.
+
+    WHILE lv_offset < strlen( lv_html ).
+      CLEAR ls_html.
+      ls_html-line = substring(
+        val = lv_html
+        off = lv_offset
+        len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
+      APPEND ls_html TO lt_html.
+      lv_offset = lv_offset + 255.
+    ENDWHILE.
+
+    DATA lv_url TYPE c LENGTH 255.
+    mo_answer->load_data(
+      EXPORTING
+        type         = 'text'
+        subtype      = 'html'
+      IMPORTING
+        assigned_url = lv_url
+      CHANGING
+        data_table   = lt_html
+      EXCEPTIONS
+        OTHERS       = 1 ).
+
+    mo_answer->show_url(
+      EXPORTING url = lv_url
+      EXCEPTIONS OTHERS = 1 ).
 
     CALL METHOD cl_gui_cfw=>flush.
+  ENDMETHOD.
+
+  METHOD escape_html.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF '&' IN rv_text WITH '&amp;'.
+    REPLACE ALL OCCURRENCES OF '<' IN rv_text WITH '&lt;'.
+    REPLACE ALL OCCURRENCES OF '>' IN rv_text WITH '&gt;'.
+    REPLACE ALL OCCURRENCES OF '"' IN rv_text WITH '&quot;'.
   ENDMETHOD.
 
 ENDCLASS.
