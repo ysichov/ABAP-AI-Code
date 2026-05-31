@@ -226,31 +226,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_final_request.
-    DATA(lv_is_code_review) = abap_false.
-    DATA(lv_user_prompt_upper) = mv_user_prompt.
-    TRANSLATE lv_user_prompt_upper TO UPPER CASE.
-
-    IF lv_user_prompt_upper CS 'CODE REVIEW'
-    OR lv_user_prompt_upper CS 'CODE_REVIEW'.
-      lv_is_code_review = abap_true.
-    ENDIF.
-
-    LOOP AT mt_messages INTO DATA(ls_message).
-      DATA(lv_message_upper) = ls_message-content.
-      TRANSLATE lv_message_upper TO UPPER CASE.
-      IF lv_message_upper CS 'CODE REVIEW'
-      OR lv_message_upper CS 'CODE_REVIEW'.
-        lv_is_code_review = abap_true.
-      ENDIF.
-    ENDLOOP.
-
     rv_prompt = |You are a Senior ABAP.|.
-
-    IF lv_is_code_review = abap_true.
-      rv_prompt = rv_prompt
-               && cl_abap_char_utilities=>newline
-               && |Don't make an abstract code review only based on the provided code|.
-    ENDIF.
 
     rv_prompt = rv_prompt
              && cl_abap_char_utilities=>newline

@@ -555,6 +555,10 @@ CLASS lcl_popup DEFINITION.
     METHODS show_history.
     METHODS display_text
       IMPORTING i_text TYPE string.
+    METHODS source_to_html
+      IMPORTING i_source       TYPE string
+                i_title        TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS escape_html
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -818,28 +822,48 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-        EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
+      DATA(lv_only_code_search) = abap_true.
+      LOOP AT lt_agent_requests INTO ls_agent_request.
+        IF ls_agent_request-agent <> zcl_ai_agents_prompts=>c_agent_code_search.
+          lv_only_code_search = abap_false.
+          EXIT.
+        ENDIF.
+        IF ls_agent_request-relevant_prompt IS NOT INITIAL.
+          lv_only_code_search = abap_false.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
 
-      DATA(lv_final_prompt) = mo_messages->build_final_request( ).
-      lv_answer = lcl_ai_api=>ask(
-        i_prompt           = lv_final_prompt
-        i_dest             = mv_dest
-        i_model            = mv_model
-        i_apikey           = mv_apikey
-        i_provider         = mv_provider
-        i_prompt_cache_key = mv_prompt_cache_key ).
+      IF lt_agent_requests IS NOT INITIAL
+      AND lv_only_code_search = abap_true.
+        DATA(lv_code_only) = mo_messages->get_resolved_code( ).
+        lv_answer = source_to_html(
+          i_source = lv_code_only
+          i_title  = 'ABAP Source' ).
+      ELSE.
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+          EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
 
-      DATA(lv_resolved_code) = mo_messages->get_resolved_code( ).
-      IF lv_resolved_code IS NOT INITIAL.
-        lv_answer = lv_answer
-                 && cl_abap_char_utilities=>newline
-                 && cl_abap_char_utilities=>newline
-                 && |```abap|
-                 && cl_abap_char_utilities=>newline
-                 && lv_resolved_code
-                 && cl_abap_char_utilities=>newline
-                 && |```|.
+        DATA(lv_final_prompt) = mo_messages->build_final_request( ).
+        lv_answer = lcl_ai_api=>ask(
+          i_prompt           = lv_final_prompt
+          i_dest             = mv_dest
+          i_model            = mv_model
+          i_apikey           = mv_apikey
+          i_provider         = mv_provider
+          i_prompt_cache_key = mv_prompt_cache_key ).
+
+        DATA(lv_resolved_code) = mo_messages->get_resolved_code( ).
+        IF lv_resolved_code IS NOT INITIAL.
+          lv_answer = lv_answer
+                   && cl_abap_char_utilities=>newline
+                   && cl_abap_char_utilities=>newline
+                   && |```abap|
+                   && cl_abap_char_utilities=>newline
+                   && lv_resolved_code
+                   && cl_abap_char_utilities=>newline
+                   && |```|.
+        ENDIF.
       ENDIF.
 
       mo_messages->add_message(
@@ -869,13 +893,22 @@ CLASS lcl_popup IMPLEMENTATION.
 
   METHOD display_text.
     DATA lv_html TYPE string.
+    DATA lv_text_upper TYPE string.
 
-    lv_html = |<!doctype html><html><head><meta charset="utf-8">|
-           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
-           && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
-           && |</style></head><body><div class="answer">|
-           && escape_html( i_text )
-           && |</div></body></html>|.
+    lv_text_upper = i_text.
+    TRANSLATE lv_text_upper TO UPPER CASE.
+
+    IF lv_text_upper CS '<!DOCTYPE HTML'
+    OR lv_text_upper CS '<HTML'.
+      lv_html = i_text.
+    ELSE.
+      lv_html = |<!doctype html><html><head><meta charset="utf-8">|
+             && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
+             && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
+             && |</style></head><body><div class="answer">|
+             && escape_html( i_text )
+             && |</div></body></html>|.
+    ENDIF.
 
     DATA lt_html TYPE tt_html.
     DATA ls_html TYPE w3html.
@@ -908,6 +941,39 @@ CLASS lcl_popup IMPLEMENTATION.
       EXCEPTIONS OTHERS = 1 ).
 
     CALL METHOD cl_gui_cfw=>flush.
+  ENDMETHOD.
+
+  METHOD source_to_html.
+    DATA lv_rows TYPE string.
+    DATA lv_lno TYPE i.
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      lv_lno = lv_lno + 1.
+      lv_rows = lv_rows
+             && |<tr><td class="ln">{ lv_lno }</td>|
+             && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+    ENDLOOP.
+
+    DATA(lv_title) = escape_html( i_text = i_title ).
+
+    rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+           && |*\{margin:0;padding:0;box-sizing:border-box\}|
+           && |body\{background:#ffffff;color:#1e1e1e;font:12px/1.5 Consolas,monospace\}|
+           && |.hdr\{background:#f3f3f3;padding:5px 12px;border-bottom:1px solid #ddd;|
+           && |color:#444;font-size:11px;display:flex;gap:16px;flex-wrap:wrap\}|
+           && |.ttl\{color:#0066aa;font-weight:bold\}|
+           && |table\{border-collapse:collapse;width:100%\}|
+           && |tr:hover td\{background:#f0f4fa\}|
+           && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;|
+           && |user-select:none;min-width:42px;border-right:1px solid #e0e0e0;|
+           && |white-space:nowrap;background:#fafafa\}|
+           && |.cd\{padding:1px 8px;white-space:pre\}|
+           && |</style></head><body>|
+           && |<div class="hdr"><span class="ttl">{ lv_title }</span></div>|
+           && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
   ENDMETHOD.
 
   METHOD escape_html.
