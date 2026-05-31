@@ -1129,7 +1129,7 @@ CLASS lcl_popup IMPLEMENTATION.
     lv_rest = i_text.
 
     DO.
-      FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN lv_rest
+      FIND FIRST OCCURRENCE OF REGEX '```[^\n\r]*(\r\n|\n|\r)?' IN lv_rest
         MATCH OFFSET lv_start
         MATCH LENGTH lv_fence_len.
       IF sy-subrc <> 0.
