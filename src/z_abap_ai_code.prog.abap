@@ -855,14 +855,15 @@ CLASS lcl_popup IMPLEMENTATION.
 
         DATA(lv_resolved_code) = mo_messages->get_resolved_code( ).
         IF lv_resolved_code IS NOT INITIAL.
-          lv_answer = lv_answer
-                   && cl_abap_char_utilities=>newline
-                   && cl_abap_char_utilities=>newline
-                   && |```abap|
-                   && cl_abap_char_utilities=>newline
-                   && lv_resolved_code
-                   && cl_abap_char_utilities=>newline
-                   && |```|.
+          DATA(lv_code_block) = cl_abap_char_utilities=>newline
+                              && cl_abap_char_utilities=>newline
+                              && |```abap|
+                              && cl_abap_char_utilities=>newline
+                              && lv_resolved_code
+                              && cl_abap_char_utilities=>newline
+                              && |```|.
+
+          lv_answer = lv_answer && lv_code_block.
         ENDIF.
       ENDIF.
 
@@ -902,11 +903,17 @@ CLASS lcl_popup IMPLEMENTATION.
     OR lv_text_upper CS '<HTML'.
       lv_html = i_text.
     ELSE.
+      DATA(lv_render_text) = escape_html( i_text ).
+      REPLACE ALL OCCURRENCES OF REGEX '```abap\s*' IN lv_render_text WITH '<pre class="code">'.
+      REPLACE ALL OCCURRENCES OF '```' IN lv_render_text WITH '</pre>'.
+
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
              && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
+             && |.code\{white-space:pre;font-family:Consolas,"Courier New",monospace;font-size:12px;|
+             && |line-height:1.5;background:#fafafa;border:1px solid #ddd;padding:8px;overflow:auto;\}|
              && |</style></head><body><div class="answer">|
-             && escape_html( i_text )
+             && lv_render_text
              && |</div></body></html>|.
     ENDIF.
 
