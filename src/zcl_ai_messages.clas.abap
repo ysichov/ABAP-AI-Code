@@ -318,8 +318,10 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     DATA(lv_text) = i_orchestrator_answer.
 
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:[^}]*\}' IN lv_text WITH ''.
-    REPLACE ALL OCCURRENCES OF REGEX '---\s*Tokens:.*$' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '---[\s\r\n]*Tokens:.*$' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX 'Tokens:.*$' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '^[\s\r\n-]+$' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '---' IN lv_text WITH ''.
     CONDENSE lv_text.
 
     rv_has_text = xsdbool( lv_text IS NOT INITIAL ).
