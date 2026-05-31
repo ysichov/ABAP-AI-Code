@@ -257,7 +257,7 @@ CLASS lcl_history_popup DEFINITION.
              answer_preview TYPE string,
              request        TYPE string,
              answer         TYPE string,
-             row_color      TYPE lvc_t_scol,
+             rowcolor(4)    TYPE c,
             END OF ty_history_row,
            tt_history_rows TYPE STANDARD TABLE OF ty_history_row WITH NON-UNIQUE DEFAULT KEY.
 
@@ -266,20 +266,21 @@ CLASS lcl_history_popup DEFINITION.
     DATA mo_details  TYPE REF TO cl_gui_splitter_container.
     DATA mo_request  TYPE REF TO cl_gui_html_viewer.
     DATA mo_answer   TYPE REF TO cl_gui_html_viewer.
-    DATA mo_salv     TYPE REF TO cl_salv_table.
+    DATA mo_alv      TYPE REF TO cl_gui_alv_grid.
     DATA mt_history  TYPE tt_history_rows.
     DATA mt_messages TYPE zcl_ai_messages=>tt_messages.
 
     METHODS build_history.
-    METHODS configure_salv.
+    METHODS create_alv
+      IMPORTING io_parent TYPE REF TO cl_gui_container.
     METHODS extract_usage
       IMPORTING i_text TYPE string
       CHANGING  cs_row TYPE ty_history_row.
     METHODS on_dialog_close
       FOR EVENT close OF cl_gui_dialogbox_container.
     METHODS on_double_click
-      FOR EVENT double_click OF cl_salv_events_table
-      IMPORTING row column.
+      FOR EVENT double_click OF cl_gui_alv_grid
+      IMPORTING es_row_no e_column.
     METHODS show_row
       IMPORTING i_row TYPE i.
     METHODS display_text
@@ -351,20 +352,7 @@ CLASS lcl_history_popup IMPLEMENTATION.
       EXPORTING parent = lo_answer
       EXCEPTIONS OTHERS = 1.
 
-    cl_salv_table=>factory(
-      EXPORTING
-        r_container  = lo_top
-      IMPORTING
-        r_salv_table = mo_salv
-      CHANGING
-        t_table      = mt_history ).
-
-    configure_salv( ).
-
-    DATA(lo_events) = mo_salv->get_event( ).
-    SET HANDLER on_double_click FOR lo_events.
-
-    mo_salv->display( ).
+    create_alv( lo_top ).
 
     IF mt_history IS NOT INITIAL.
       show_row( 1 ).
@@ -427,14 +415,19 @@ CLASS lcl_history_popup IMPLEMENTATION.
             i_text = ls_row-answer
           CHANGING
             cs_row = ls_row ).
-        IF ls_row-prompt_tokens IS NOT INITIAL
-        OR ls_row-total_tokens IS NOT INITIAL
-        OR ls_row-answer_type = 'LLM_RESPONSE'
-        OR ls_row-answer_type = 'FINAL_ANSWER'.
-          APPEND VALUE #( fname = ''
-                          color-col = 5
-                          color-int = 1
-                          color-inv = 0 ) TO ls_row-row_color.
+        DATA(lv_answer_upper) = ls_row-answer.
+        TRANSLATE lv_answer_upper TO UPPER CASE.
+        IF lv_answer_upper CS 'ERROR:'
+        OR lv_answer_upper CS 'WAS NOT FOUND'
+        OR lv_answer_upper CS 'CANNOT BE READ'
+        OR lv_answer_upper CS 'METHOD COMMAND IS INCOMPLETE'
+        OR lv_answer_upper CS 'NO CODE CONTEXT WAS RESOLVED'.
+          ls_row-rowcolor = 'C601'. " red
+        ELSEIF ls_row-prompt_tokens IS NOT INITIAL
+            OR ls_row-total_tokens IS NOT INITIAL
+            OR ls_row-answer_type = 'LLM_RESPONSE'
+            OR ls_row-answer_type = 'FINAL_ANSWER'.
+          ls_row-rowcolor = 'C710'. " blue
         ENDIF.
         ls_row-request_preview = preview( ls_row-request ).
         ls_row-answer_preview = preview( ls_row-answer ).
@@ -471,28 +464,56 @@ CLASS lcl_history_popup IMPLEMENTATION.
     FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)' IN i_text SUBMATCHES cs_row-cached_tokens.
   ENDMETHOD.
 
-  METHOD configure_salv.
-    DATA(lo_columns) = mo_salv->get_columns( ).
-    lo_columns->set_optimize( abap_true ).
+  METHOD create_alv.
+    DATA lt_fcat TYPE lvc_t_fcat.
+    DATA ls_fc   TYPE lvc_s_fcat.
+    DATA ls_layo TYPE lvc_s_layo.
 
-    TRY.
-        lo_columns->get_column( 'SESSION_ID' )->set_short_text( 'Session' ).
-        lo_columns->get_column( 'SEQ' )->set_short_text( 'Q#' ).
-        lo_columns->get_column( 'REQUEST_TYPE' )->set_medium_text( 'Prompt Type' ).
-        lo_columns->get_column( 'OWNER' )->set_short_text( 'Owner' ).
-        lo_columns->get_column( 'ANSWER_TYPE' )->set_medium_text( 'Answer Type' ).
-        lo_columns->get_column( 'PROMPT_TOKENS' )->set_short_text( 'Input' ).
-        lo_columns->get_column( 'COMPLETION_TOKENS' )->set_short_text( 'Output' ).
-        lo_columns->get_column( 'TOTAL_TOKENS' )->set_short_text( 'Total' ).
-        lo_columns->get_column( 'CACHED_TOKENS' )->set_short_text( 'Cached' ).
-        lo_columns->get_column( 'REQUEST_PREVIEW' )->set_medium_text( 'Request' ).
-        lo_columns->get_column( 'ANSWER_PREVIEW' )->set_medium_text( 'Answer' ).
-        lo_columns->get_column( 'REQUEST' )->set_visible( abap_false ).
-        lo_columns->get_column( 'ANSWER' )->set_visible( abap_false ).
-        lo_columns->get_column( 'ROW_COLOR' )->set_visible( abap_false ).
-        mo_salv->get_columns( )->set_color_column( 'ROW_COLOR' ).
-      CATCH cx_salv_not_found.
-    ENDTRY.
+    CLEAR ls_fc. ls_fc-fieldname = 'SESSION_ID'. ls_fc-coltext = 'Session'.
+    ls_fc-outputlen = 7. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'SEQ'. ls_fc-coltext = 'Q#'.
+    ls_fc-outputlen = 5. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'REQUEST_TYPE'. ls_fc-coltext = 'Prompt Type'.
+    ls_fc-outputlen = 14. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'OWNER'. ls_fc-coltext = 'Owner'.
+    ls_fc-outputlen = 14. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'ANSWER_TYPE'. ls_fc-coltext = 'Answer Type'.
+    ls_fc-outputlen = 14. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'PROMPT_TOKENS'. ls_fc-coltext = 'Input'.
+    ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'COMPLETION_TOKENS'. ls_fc-coltext = 'Output'.
+    ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'TOTAL_TOKENS'. ls_fc-coltext = 'Total'.
+    ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'CACHED_TOKENS'. ls_fc-coltext = 'Cached'.
+    ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'REQUEST_PREVIEW'. ls_fc-coltext = 'Request'.
+    ls_fc-outputlen = 45. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'ANSWER_PREVIEW'. ls_fc-coltext = 'Answer'.
+    ls_fc-outputlen = 55. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'REQUEST'. ls_fc-no_out = abap_true.
+    APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'ANSWER'. ls_fc-no_out = abap_true.
+    APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'ROWCOLOR'. ls_fc-no_out = abap_true.
+    APPEND ls_fc TO lt_fcat.
+
+    ls_layo-zebra      = abap_true.
+    ls_layo-info_fname = 'ROWCOLOR'.
+    ls_layo-cwidth_opt = abap_true.
+    ls_layo-sel_mode   = 'A'.
+
+    mo_alv = NEW cl_gui_alv_grid( i_parent = io_parent ).
+    SET HANDLER on_double_click FOR mo_alv.
+
+    mo_alv->set_table_for_first_display(
+      EXPORTING
+        is_layout       = ls_layo
+        i_save          = 'A'
+        i_default       = 'X'
+      CHANGING
+        it_fieldcatalog = lt_fcat
+        it_outtab       = mt_history ).
   ENDMETHOD.
 
   METHOD on_dialog_close.
@@ -502,7 +523,7 @@ CLASS lcl_history_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD on_double_click.
-    show_row( row ).
+    show_row( es_row_no-row_id ).
   ENDMETHOD.
 
   METHOD show_row.
@@ -625,6 +646,9 @@ CLASS lcl_popup DEFINITION.
     METHODS show_history.
     METHODS display_text
       IMPORTING i_text TYPE string.
+    METHODS display_answer
+      IMPORTING i_answer TYPE string
+                i_source TYPE string OPTIONAL.
     METHODS source_to_html
       IMPORTING i_source       TYPE string
                 i_title        TYPE string
@@ -635,6 +659,10 @@ CLASS lcl_popup DEFINITION.
     METHODS render_abap_blocks
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
+    METHODS source_block_to_html
+      IMPORTING i_source       TYPE string
+                i_title        TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS render_markdown_text
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_html) TYPE string.
@@ -829,6 +857,7 @@ CLASS lcl_popup IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_answer) = lv_orchestrator_answer.
+    DATA lv_resolved_code TYPE string.
 
     IF lt_agent_requests IS INITIAL
     AND lv_orchestrator_code_context IS INITIAL
@@ -936,7 +965,10 @@ CLASS lcl_popup IMPLEMENTATION.
         lv_only_code_search = abap_false.
       ENDIF.
 
-      IF lt_agent_requests IS NOT INITIAL
+      DATA(lv_agent_error) = mo_messages->get_agent_error( ).
+      IF lv_agent_error IS NOT INITIAL.
+        lv_answer = lv_agent_error.
+      ELSEIF lt_agent_requests IS NOT INITIAL
       AND lv_only_code_search = abap_true.
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer = source_to_html(
@@ -955,20 +987,7 @@ CLASS lcl_popup IMPLEMENTATION.
           i_provider         = mv_provider
           i_prompt_cache_key = mv_prompt_cache_key ).
 
-        DATA(lv_resolved_code) = mo_messages->get_resolved_code( ).
-        IF lv_resolved_code IS NOT INITIAL.
-          DATA(lv_code_block) = cl_abap_char_utilities=>newline
-                              && cl_abap_char_utilities=>newline
-                              && |Source code from code_agent|
-                              && cl_abap_char_utilities=>newline
-                              && |```abap|
-                              && cl_abap_char_utilities=>newline
-                              && lv_resolved_code
-                              && cl_abap_char_utilities=>newline
-                              && |```|.
-
-          lv_answer = lv_answer && lv_code_block.
-        ENDIF.
+        lv_resolved_code = mo_messages->get_resolved_code( ).
       ENDIF.
 
       mo_messages->add_message(
@@ -983,7 +1002,9 @@ CLASS lcl_popup IMPLEMENTATION.
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
 
-    display_text( lv_answer ).
+    display_answer(
+      i_answer = lv_answer
+      i_source = lv_resolved_code ).
   ENDMETHOD.
 
   METHOD show_history.
@@ -997,17 +1018,24 @@ CLASS lcl_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD display_text.
+    display_answer( i_answer = i_text ).
+  ENDMETHOD.
+
+  METHOD display_answer.
     DATA lv_html TYPE string.
     DATA lv_text_upper TYPE string.
 
-    lv_text_upper = i_text.
+    lv_text_upper = i_answer.
     TRANSLATE lv_text_upper TO UPPER CASE.
 
     IF lv_text_upper CS '<!DOCTYPE HTML'
     OR lv_text_upper CS '<HTML'.
-      lv_html = i_text.
+      lv_html = i_answer.
     ELSE.
-      DATA(lv_render_text) = render_abap_blocks( i_text ).
+      DATA(lv_render_text) = render_abap_blocks( i_answer ).
+      DATA(lv_source_html) = source_block_to_html(
+        i_source = i_source
+        i_title  = 'Source code from code_agent' ).
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:0;|
@@ -1025,12 +1053,14 @@ CLASS lcl_popup IMPLEMENTATION.
              && |border:1px solid #b9dcff;padding:3px 7px;margin-top:6px;\}|
              && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
              && |background:#fff;border:1px solid #d7e0ea;margin:10px 0;\}|
+             && |.source_title\{font-weight:700;color:#23476f;margin:14px 0 6px\}|
              && |.code_tbl tr:hover td\{background:#f0f4fa\}|
              && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:42px;|
              && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none;\}|
              && |.cd\{padding:1px 8px;white-space:pre;\}|
              && |</style></head><body><div class="answer">|
              && lv_render_text
+             && lv_source_html
              && |</div></body></html>|.
     ENDIF.
 
@@ -1154,6 +1184,16 @@ CLASS lcl_popup IMPLEMENTATION.
     ENDDO.
 
     rv_text = rv_text && render_markdown_text( lv_rest ).
+  ENDMETHOD.
+
+  METHOD source_block_to_html.
+    IF i_source IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    rv_html = cl_abap_char_utilities=>newline
+           && |<div class="source_title">{ escape_html( i_title ) }</div>|
+           && code_block_to_html( i_source ).
   ENDMETHOD.
 
   METHOD render_markdown_text.

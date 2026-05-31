@@ -61,6 +61,9 @@ CLASS zcl_ai_messages DEFINITION
     METHODS get_resolved_code
       RETURNING VALUE(rv_code) TYPE string.
 
+    METHODS get_agent_error
+      RETURNING VALUE(rv_error) TYPE string.
+
     METHODS needs_code_context
       RETURNING VALUE(rv_needed) TYPE abap_bool.
 
@@ -288,6 +291,24 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       APPEND lv_seen_key TO lt_seen.
 
       rv_code = rv_code && lv_clean_code.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_agent_error.
+    LOOP AT mt_messages INTO DATA(ls_message).
+      CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
+      CHECK ls_message-role = 'assistant'.
+
+      DATA(lv_content_upper) = ls_message-content.
+      TRANSLATE lv_content_upper TO UPPER CASE.
+
+      IF lv_content_upper CS 'WAS NOT FOUND'
+      OR lv_content_upper CS 'CANNOT BE READ'
+      OR lv_content_upper CS 'METHOD COMMAND IS INCOMPLETE'
+      OR lv_content_upper CS 'NO CODE CONTEXT WAS RESOLVED'.
+        rv_error = ls_message-content.
+        RETURN.
+      ENDIF.
     ENDLOOP.
   ENDMETHOD.
 
