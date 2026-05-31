@@ -723,6 +723,29 @@ CLASS lcl_popup IMPLEMENTATION.
           lv_percentage = 20 + ( lv_index * 50 / lv_total ).
         ENDIF.
 
+        DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
+        IF lv_direct_read_command IS NOT INITIAL.
+          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+            EXPORTING percentage = lv_percentage
+                      text       = |Reading code { ls_agent_request-object_name }...|.
+
+          DATA(lv_direct_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_direct_read_command ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'COMMAND'
+            i_content     = lv_direct_read_command ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_direct_code_context ).
+
+          CONTINUE.
+        ENDIF.
+
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
           EXPORTING percentage = lv_percentage
                     text       = |Asking agent { ls_agent_request-agent }...|.

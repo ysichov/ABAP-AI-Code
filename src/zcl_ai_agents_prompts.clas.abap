@@ -50,19 +50,37 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
   METHOD get_code_agent_prompt.
     rv_prompt = |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
              && |it with the commands described below. Replace in prompt only for specific objects described here! |
-             && |For program reports - \{ READ TADIR: REPS object_name\}. |
-             && |If asked to find only a class: \{ READ: CLASS = class_name\}. |
-             && |If asked to find a method: \{ READ METH class_name=>method_name\}. | && cl_abap_char_utilities=>newline
+             && |For program reports - \{READ TADIR: REPS object_name\}. |
+             && |If asked to find only a class: \{READ: CLASS = class_name\}. |
+             && |If asked to find a method: \{READ METH class_name=>method_name\}. |
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
              && |If they ask for a code review, use "Code_review -object name" |
-             && |If you need to show the code, add the object type to the response - \{ SHOW - objname\}. |
+             && cl_abap_char_utilities=>newline
+             && |If you need to show the code, add the object type to the response - \{SHOW - objname\}. |
              && |Don't lose the READ command! |
-             && |Allowed substitutions here only PROG, REPS, CLAS, METH!!!  | && cl_abap_char_utilities=>newline
-             && |There can be multiple commands - don't lose the READ commands! | && cl_abap_char_utilities=>newline
-             && |A class and a method are a composite object - you can connect them using => |
+             && cl_abap_char_utilities=>newline
+             && |Allowed substitutions here only PROG, REPS, CLAS, METH!!! |
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |There can be multiple commands - don't lose the READ commands! |
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |A class and a method are a composite object - you can connect them using =>|
+             && cl_abap_char_utilities=>newline
              && |A method without a class is "Undescribed." Don't invent a class yourself!!! |
              && |No class means "Undescribed." Take the original prompt! |
-             && |Replace the text of the original prompt and replace the recognized parts with commands! | && cl_abap_char_utilities=>newline
-             && |Prompts parts don't translate! Let it be original language!|.
+             && |Replace the text of the original prompt and replace the recognized parts with commands! |
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |Prompts parts don't translate! Let it be original language!|
+             && cl_abap_char_utilities=>newline
+             && |For example, for "Compare programs z_1 z_2 z_test. Rating the programs," return |
+             && |"Compare programs \{READ TADIR: REPS z_1\} \{READ TADIR: REPS z_2\} |
+             && |\{READ TADIR: REPS z_test\}. Rating all programs Code_review - z_1, z_2, z_test".|
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |PROMPT:|.
   ENDMETHOD.
 
   METHOD get_data_agent_prompt.

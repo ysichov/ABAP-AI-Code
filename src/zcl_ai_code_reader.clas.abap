@@ -62,6 +62,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     DATA lv_end  TYPE i.
 
     lv_rest = i_text.
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*READ' IN lv_rest WITH '{READ'.
 
     WHILE lv_rest CS '{READ'.
       FIND FIRST OCCURRENCE OF '{READ' IN lv_rest MATCH OFFSET lv_pos.

@@ -46,6 +46,10 @@ CLASS zcl_ai_messages DEFINITION
       IMPORTING is_request       TYPE ty_agent_request
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS build_read_command
+      IMPORTING is_request       TYPE ty_agent_request
+      RETURNING VALUE(rv_command) TYPE string.
+
     METHODS enrich_agent_answer
       IMPORTING i_agent_answer   TYPE string
       RETURNING VALUE(rv_answer) TYPE string.
@@ -102,6 +106,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     DATA lv_end  TYPE i.
 
     lv_rest = i_orchestrator_answer.
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT:' IN lv_rest WITH '{AGENT:'.
 
     WHILE lv_rest CS '{AGENT:'.
       FIND FIRST OCCURRENCE OF '{AGENT:' IN lv_rest MATCH OFFSET lv_pos.
@@ -184,6 +189,20 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_agent       = is_request-agent
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
+  ENDMETHOD.
+
+  METHOD build_read_command.
+    CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
+    CHECK is_request-object_name IS NOT INITIAL.
+
+    CASE is_request-object_type.
+      WHEN 'REPS' OR 'PROG'.
+        rv_command = |{ '{' }READ TADIR: REPS { is_request-object_name }{ '}' }|.
+      WHEN 'CLAS' OR 'CLASS'.
+        rv_command = |{ '{' }READ: CLASS = { is_request-object_name }{ '}' }|.
+      WHEN 'METH' OR 'METHOD'.
+        rv_command = |{ '{' }READ METH { is_request-object_name }{ '}' }|.
+    ENDCASE.
   ENDMETHOD.
 
   METHOD enrich_agent_answer.
