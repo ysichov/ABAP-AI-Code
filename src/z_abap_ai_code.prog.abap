@@ -1,10 +1,5 @@
-*&---------------------------------------------------------------------*
-*& Report Z_EASY_AI
-*&---------------------------------------------------------------------*
-*& Easy AI API example with GUI popup
-*&---------------------------------------------------------------------*
-REPORT z_abap_ai_code.
 
+REPORT z_abap_ai_code.
 
 
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
@@ -15,7 +10,6 @@ PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api.
 SELECTION-SCREEN END OF BLOCK b_api.
-
 
 *----------------------------------------------------------------------*
 * lcl_ai_api - HTTP communication with Anthropic API
@@ -435,7 +429,7 @@ CLASS lcl_history_popup IMPLEMENTATION.
             OR ls_row-total_tokens IS NOT INITIAL
             OR ls_row-answer_type = 'LLM_RESPONSE'
             OR ls_row-answer_type = 'FINAL_ANSWER'.
-          ls_row-rowcolor = 'C710'. " blue
+          ls_row-rowcolor = 'C110'. " blue
         ENDIF.
         ls_row-request_preview = preview( ls_row-request ).
         ls_row-answer_preview = preview( ls_row-answer ).
