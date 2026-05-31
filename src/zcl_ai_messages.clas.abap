@@ -23,6 +23,7 @@ CLASS zcl_ai_messages DEFINITION
         raw_command      TYPE string,
       END OF ty_agent_request,
       tt_agent_requests TYPE STANDARD TABLE OF ty_agent_request WITH NON-UNIQUE DEFAULT KEY,
+      tt_strings        TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY,
       tt_source         TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
 
     METHODS constructor
@@ -59,6 +60,9 @@ CLASS zcl_ai_messages DEFINITION
 
     METHODS get_resolved_code
       RETURNING VALUE(rv_code) TYPE string.
+
+    METHODS needs_code_context
+      RETURNING VALUE(rv_needed) TYPE abap_bool.
 
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
@@ -138,6 +142,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       TRANSLATE ls_request-agent TO UPPER CASE.
 
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
         IF lines( lt_parts ) >= 2.
           ls_request-object_type = lt_parts[ 2 ].
@@ -195,7 +200,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_read_command.
-    CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
+    CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
     CHECK is_request-object_name IS NOT INITIAL.
 
     CASE is_request-object_type.
@@ -255,8 +261,9 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && COND string(
-                  WHEN get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
-                  ELSE 'No code context was resolved.' ).
+                  WHEN needs_code_context( ) = abap_true AND get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
+                  WHEN needs_code_context( ) = abap_true THEN 'No code context was resolved.'
+                  ELSE '' ).
 
     add_message(
       i_role        = 'user'
@@ -266,6 +273,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_resolved_code.
+    DATA lt_seen TYPE tt_strings.
+
     LOOP AT mt_messages INTO DATA(ls_message).
       CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
       CHECK ls_message-role = 'assistant'.
@@ -282,8 +291,41 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
       REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
 
+      DATA(lv_seen_key) = lv_clean_code.
+      CONDENSE lv_seen_key.
+
+      READ TABLE lt_seen WITH KEY table_line = lv_seen_key TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+      APPEND lv_seen_key TO lt_seen.
+
       rv_code = rv_code && lv_clean_code.
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD needs_code_context.
+    DATA lv_has_code_search TYPE abap_bool.
+    DATA lv_has_code_review TYPE abap_bool.
+
+    LOOP AT mt_messages INTO DATA(ls_message).
+      DATA(lv_content_upper) = ls_message-content.
+      TRANSLATE lv_content_upper TO UPPER CASE.
+
+      IF ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_search
+      OR ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader
+      OR lv_content_upper CS 'CODE_SEARCH'.
+        lv_has_code_search = abap_true.
+      ENDIF.
+
+      IF ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_review
+      OR lv_content_upper CS 'CODE_REVIEW'
+      OR lv_content_upper CS 'CODE REVIEW'.
+        lv_has_code_review = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+    rv_needed = xsdbool( lv_has_code_search = abap_true AND lv_has_code_review = abap_true ).
   ENDMETHOD.
 
   METHOD get_messages.

@@ -7,6 +7,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     CONSTANTS:
       c_agent_orchestrator TYPE string VALUE 'ORCHESTRATOR',
       c_agent_code_search  TYPE string VALUE 'CODE_SEARCH',
+      c_agent_code_review  TYPE string VALUE 'CODE_REVIEW',
       c_agent_data_search  TYPE string VALUE 'DATA_SEARCH',
       c_agent_create_obj   TYPE string VALUE 'CREATE_OBJECT',
       c_agent_code_reader  TYPE string VALUE 'CODE_READER'.
@@ -18,6 +19,9 @@ CLASS zcl_ai_agents_prompts DEFINITION
       RETURNING VALUE(rv_prompt) TYPE string.
 
     CLASS-METHODS get_data_agent_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
+    CLASS-METHODS get_code_review_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
     CLASS-METHODS get_create_object_prompt
@@ -38,6 +42,8 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
   METHOD get_orchestrator_prompt.
     rv_prompt = |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
              && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}.|
+             && cl_abap_char_utilities=>newline
+             && |If requested a code review - \{AGENT:CODE_REVIEW object_type object_name\}.|
              && cl_abap_char_utilities=>newline
              && |If the user asks to show table contents or find some information, |
              && |request the agent:\{AGENT:DATA_SEARCH + the relevant part of the prompt with the request.\}|
@@ -104,6 +110,11 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |Return brief, relevant information without unnecessary details.|.
   ENDMETHOD.
 
+  METHOD get_code_review_prompt.
+    rv_prompt = |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
+             && |Do not make an abstract review. Find concrete issues, risks, and improvement suggestions.|.
+  ENDMETHOD.
+
   METHOD get_create_object_prompt.
     rv_prompt = |You are a Senior ABAP Create Object Agent. Prepare the final instruction for creating or changing |
              && |an ABAP object. Keep the original language of the user request. If code context is needed, keep |
@@ -125,6 +136,8 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
         rv_prompt = get_orchestrator_prompt( ).
       WHEN c_agent_code_search.
         rv_prompt = get_code_agent_prompt( ).
+      WHEN c_agent_code_review.
+        rv_prompt = get_code_review_prompt( ).
       WHEN c_agent_data_search.
         rv_prompt = get_data_agent_prompt( ).
       WHEN c_agent_create_obj.
