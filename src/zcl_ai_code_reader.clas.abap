@@ -178,16 +178,18 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD read_class.
-    DATA lv_class TYPE seoclskey.
+    DATA ls_clskey TYPE seoclskey.
+    DATA lv_class TYPE string.
     DATA lt_methods TYPE seop_methods_w_include.
 
     lv_class = i_class.
     TRANSLATE lv_class TO UPPER CASE.
     CONDENSE lv_class.
+    ls_clskey-clsname = lv_class.
 
     CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
       EXPORTING
-        clskey                       = lv_class
+        clskey                       = ls_clskey
       IMPORTING
         includes                     = lt_methods
       EXCEPTIONS
@@ -235,7 +237,8 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD read_method.
-    DATA lv_class  TYPE seoclskey.
+    DATA ls_clskey TYPE seoclskey.
+    DATA lv_class  TYPE string.
     DATA lv_method TYPE seocpdname.
     DATA lt_methods TYPE seop_methods_w_include.
 
@@ -245,6 +248,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     TRANSLATE lv_method TO UPPER CASE.
     CONDENSE lv_class.
     CONDENSE lv_method.
+    ls_clskey-clsname = lv_class.
 
     IF lv_class IS INITIAL OR lv_method IS INITIAL.
       rv_text = |Method command is incomplete: class={ lv_class } method={ lv_method }.|.
@@ -253,7 +257,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
 
     CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
       EXPORTING
-        clskey                       = lv_class
+        clskey                       = ls_clskey
       IMPORTING
         includes                     = lt_methods
       EXCEPTIONS
