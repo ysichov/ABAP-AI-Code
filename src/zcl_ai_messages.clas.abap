@@ -106,7 +106,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     DATA lv_end  TYPE i.
 
     lv_rest = i_orchestrator_answer.
-    REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT:' IN lv_rest WITH '{AGENT:'.
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:' IN lv_rest WITH '{AGENT:'.
 
     WHILE lv_rest CS '{AGENT:'.
       FIND FIRST OCCURRENCE OF '{AGENT:' IN lv_rest MATCH OFFSET lv_pos.
@@ -232,7 +232,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       lv_code_context = lv_code_context && ls_message-content.
     ENDLOOP.
 
-    rv_prompt = |You are a Senior ABAP CODE AGENT.|
+    rv_prompt = |You are a Senior ABAP Consultant.|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |USER PROMPT:|

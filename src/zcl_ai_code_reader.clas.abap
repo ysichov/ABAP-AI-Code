@@ -63,6 +63,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
 
     lv_rest = i_text.
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*READ' IN lv_rest WITH '{READ'.
+    REPLACE ALL OCCURRENCES OF REGEX 'TADIR\s*:' IN lv_rest WITH 'TADIR:'.
 
     WHILE lv_rest CS '{READ'.
       FIND FIRST OCCURRENCE OF '{READ' IN lv_rest MATCH OFFSET lv_pos.

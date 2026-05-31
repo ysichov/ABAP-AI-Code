@@ -701,6 +701,8 @@ CLASS lcl_popup IMPLEMENTATION.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
     DATA(lv_orchestrator_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_orchestrator_answer ).
+    DATA(lv_orchestrator_upper) = lv_orchestrator_answer.
+    TRANSLATE lv_orchestrator_upper TO UPPER CASE.
     IF lv_orchestrator_code_context IS NOT INITIAL.
       DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
 
@@ -718,6 +720,12 @@ CLASS lcl_popup IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_answer) = lv_orchestrator_answer.
+
+    IF lt_agent_requests IS INITIAL
+    AND lv_orchestrator_code_context IS INITIAL
+    AND lv_orchestrator_upper CS 'AGENT'.
+      lv_answer = |Error: Orchestrator returned an agent command that could not be parsed. Check History for the raw response.|.
+    ENDIF.
 
     IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_code_context IS NOT INITIAL.
       DATA(lv_index) = 0.
