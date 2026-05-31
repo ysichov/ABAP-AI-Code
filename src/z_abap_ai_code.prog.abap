@@ -314,10 +314,17 @@ CLASS lcl_popup IMPLEMENTATION.
 
           DATA(lv_direct_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_direct_read_command ).
 
+          DATA(lv_direct_ctx_upper) = lv_direct_code_context.
+          TRANSLATE lv_direct_ctx_upper TO UPPER CASE.
+          DATA(lv_direct_is_error) = xsdbool(
+            lv_direct_ctx_upper CS 'WAS NOT FOUND OR CANNOT BE READ' OR
+            lv_direct_ctx_upper CS 'WAS NOT FOUND' OR
+            lv_direct_ctx_upper CS 'CANNOT BE READ' ).
+
           mo_messages->add_message(
             i_role        = 'user'
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'COMMAND'
+            i_prompt_type = COND string( WHEN lv_direct_is_error = abap_true THEN 'COMMAND_ERROR' ELSE 'COMMAND' )
             i_content     = lv_direct_read_command ).
 
           mo_messages->add_message(
@@ -414,7 +421,8 @@ CLASS lcl_popup IMPLEMENTATION.
         i_content     = lv_answer ).
     ENDIF.
 
-    APPEND LINES OF mo_messages->get_messages( ) TO mt_message_history.
+    DATA(lt_dbg_msgs) = mo_messages->get_messages( ).
+    APPEND LINES OF lt_dbg_msgs TO mt_message_history.
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
@@ -475,6 +483,7 @@ CLASS lcl_popup IMPLEMENTATION.
              && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:42px;|
              && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none;\}|
              && |.cd\{padding:1px 8px;white-space:pre;\}|
+             && |.cd-error\{padding:1px 8px;white-space:pre;color:red;font-weight:bold;\}|
              && |</style></head><body><div class="answer">|
              && lv_render_text
              && lv_source_html
@@ -689,9 +698,13 @@ CLASS lcl_popup IMPLEMENTATION.
 
     LOOP AT lt_lines INTO DATA(lv_line).
       lv_lno = lv_lno + 1.
+      DATA(lv_class) = COND string(
+        WHEN lv_line CS 'was not found or cannot be read'
+          THEN 'cd-error'
+          ELSE 'cd' ).
       rv_html = rv_html
              && |<tr><td class="ln">{ lv_lno }</td>|
-             && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+             && |<td class="{ lv_class }">{ escape_html( i_text = lv_line ) }</td></tr>|.
     ENDLOOP.
 
     rv_html = rv_html && |</tbody></table>|.

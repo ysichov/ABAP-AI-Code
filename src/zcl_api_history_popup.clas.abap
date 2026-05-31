@@ -113,6 +113,9 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           ls_row-request_type = lv_request_type.
           ls_row-request = lv_request.
           ls_row-request_preview = preview( ls_row-request ).
+          IF lv_request_type = 'COMMAND_ERROR'.
+          ls_row-rowcolor = 'C601'. " red text
+          ENDIF.
           APPEND ls_row TO mt_history.
         ENDIF.
 
@@ -148,17 +151,14 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
             cs_row = ls_row ).
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.
-        CONDENSE lv_answer_upper.
-        IF lv_answer_upper CP 'ERROR:*'
-        OR lv_answer_upper CP 'SOURCE FOR PROGRAM * WAS NOT FOUND*'
-        OR lv_answer_upper CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
-        OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * WAS NOT FOUND*'
-        OR lv_answer_upper CP 'RESOLVED {READ*: SOURCE FOR PROGRAM * CANNOT BE READ*'
-        OR lv_answer_upper CP '* WAS NOT FOUND*'
-        OR lv_answer_upper CP 'METHOD * WAS NOT FOUND*'
-        OR lv_answer_upper CP 'METHOD COMMAND IS INCOMPLETE*'
-        OR lv_answer_upper CP 'NO CODE CONTEXT WAS RESOLVED*'.
-          ls_row-rowcolor = 'C201'. " red
+        IF ls_row-request_type = 'COMMAND_ERROR'
+        OR lv_answer_upper CS 'WAS NOT FOUND OR CANNOT BE READ'
+        OR lv_answer_upper CS 'WAS NOT FOUND'
+        OR lv_answer_upper CS 'CANNOT BE READ'
+        OR lv_answer_upper CS 'METHOD COMMAND IS INCOMPLETE'
+        OR lv_answer_upper CS 'NO CODE CONTEXT WAS RESOLVED'
+        OR lv_answer_upper CS 'ERROR:'.
+          ls_row-rowcolor = 'C601'. " red text
         ELSEIF ls_row-prompt_tokens IS NOT INITIAL
             OR ls_row-total_tokens IS NOT INITIAL
             OR ls_row-answer_type = 'LLM_RESPONSE'
