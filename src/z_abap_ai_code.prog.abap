@@ -635,6 +635,12 @@ CLASS lcl_popup DEFINITION.
     METHODS render_abap_blocks
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
+    METHODS render_markdown_text
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
+    METHODS render_inline_markdown
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS code_block_to_html
       IMPORTING i_code          TYPE string
       RETURNING VALUE(rv_html) TYPE string.
@@ -1002,8 +1008,6 @@ CLASS lcl_popup IMPLEMENTATION.
       lv_html = i_text.
     ELSE.
       DATA(lv_render_text) = render_abap_blocks( i_text ).
-      REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN lv_render_text WITH '<strong>$1</strong>'.
-      REPLACE ALL OCCURRENCES OF REGEX '(Tokens:[^\n\r<]*)' IN lv_render_text WITH '<span class="tokens">$1</span>'.
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:0;|
@@ -1012,6 +1016,10 @@ CLASS lcl_popup IMPLEMENTATION.
              && |.answer\{white-space:pre-wrap;font-family:"Segoe UI",Arial,sans-serif;line-height:1.45;|
              && |margin:14px;padding:16px 18px;background:rgba(255,255,255,.88);border:1px solid #dce8f6;|
              && |box-shadow:0 2px 10px rgba(56,96,140,.10);\}|
+             && |.md_h\{display:block;font-size:17px;font-weight:700;color:#23476f;margin:4px 0 8px\}|
+             && |.md_li\{display:block;margin:2px 0 2px 18px;text-indent:-18px\}|
+             && |code\{font-family:Consolas,monospace;background:#eef3f8;border:1px solid #d7e0ea;|
+             && |padding:0 4px;color:#18324a\}|
              && |strong\{font-weight:700\}|
              && |.tokens\{display:inline-block;color:#005ea8;font-weight:700;background:#e8f3ff;|
              && |border:1px solid #b9dcff;padding:3px 7px;margin-top:6px;\}|
@@ -1139,12 +1147,79 @@ CLASS lcl_popup IMPLEMENTATION.
       lv_code = substring( val = lv_after len = lv_end ).
       SHIFT lv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
       rv_text = rv_text
-             && escape_html( i_text = normalize_markdown( lv_before ) )
+             && render_markdown_text( lv_before )
              && code_block_to_html( lv_code ).
       lv_rest = substring( val = lv_after off = lv_end + 3 ).
     ENDDO.
 
-    rv_text = rv_text && escape_html( i_text = normalize_markdown( lv_rest ) ).
+    rv_text = rv_text && render_markdown_text( lv_rest ).
+  ENDMETHOD.
+
+  METHOD render_markdown_text.
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_text TYPE string.
+    DATA lv_hashes TYPE string.
+    DATA lv_content TYPE string.
+    DATA lv_marker TYPE string.
+    DATA lv_item TYPE string.
+
+    lv_text = normalize_markdown( i_text ).
+    SPLIT lv_text AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      DATA(lv_trimmed) = lv_line.
+      SHIFT lv_trimmed LEFT DELETING LEADING space.
+
+      IF lv_trimmed IS INITIAL.
+        rv_html = rv_html && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX '^(#{1,6})\s+(.+)$' IN lv_trimmed
+        SUBMATCHES lv_hashes lv_content.
+      IF sy-subrc = 0.
+        rv_html = rv_html
+               && |<div class="md_h">{ render_inline_markdown( lv_content ) }</div>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX '^([0-9]+\.)\s+(.+)$' IN lv_trimmed
+        SUBMATCHES lv_marker lv_item.
+      IF sy-subrc = 0.
+        rv_html = rv_html
+               && |<div class="md_li">{ escape_html( lv_marker ) } { render_inline_markdown( lv_item ) }</div>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX '^-\s+(.+)$' IN lv_trimmed
+        SUBMATCHES lv_item.
+      IF sy-subrc = 0.
+        rv_html = rv_html
+               && |<div class="md_li">- { render_inline_markdown( lv_item ) }</div>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX '^Tokens:' IN lv_trimmed.
+      IF sy-subrc = 0.
+        rv_html = rv_html
+               && |<span class="tokens">{ render_inline_markdown( lv_trimmed ) }</span>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      rv_html = rv_html
+             && render_inline_markdown( lv_line )
+             && cl_abap_char_utilities=>newline.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD render_inline_markdown.
+    rv_html = escape_html( i_text ).
+    REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN rv_html WITH '<strong>$1</strong>'.
+    REPLACE ALL OCCURRENCES OF REGEX '`([^`]+)`' IN rv_html WITH '<code>$1</code>'.
   ENDMETHOD.
 
   METHOD code_block_to_html.
