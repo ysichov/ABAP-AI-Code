@@ -300,8 +300,8 @@ CLASS lcl_history_popup IMPLEMENTATION.
         caption = 'Easy AI Message History'
         top     = 60
         left    = 80
-        width   = 1300
-        height  = 760
+        width   = 1000
+        height  = 700
         metric  = cl_gui_dialogbox_container=>metric_pixel
       EXCEPTIONS
         OTHERS  = 1.
@@ -590,8 +590,8 @@ CLASS lcl_popup IMPLEMENTATION.
         caption  = 'Easy AI'
         top      = 20
         left     = 20
-        width    = 1200
-        height   = 620
+        width    = 1000
+        height   = 700
         metric   = cl_gui_dialogbox_container=>metric_pixel
       EXCEPTIONS
         OTHERS   = 1.
