@@ -306,8 +306,8 @@ CLASS lcl_history_popup IMPLEMENTATION.
         caption = 'Easy AI Message History'
         top     = 60
         left    = 80
-        width   = 1000
-        height  = 700
+        width   = 1400
+        height  = 800
         metric  = cl_gui_dialogbox_container=>metric_pixel
       EXCEPTIONS
         OTHERS  = 1.
@@ -644,8 +644,8 @@ CLASS lcl_popup IMPLEMENTATION.
         caption  = 'Easy AI'
         top      = 20
         left     = 20
-        width    = 1000
-        height   = 700
+        width    = 1400
+        height   = 800
         metric   = cl_gui_dialogbox_container=>metric_pixel
       EXCEPTIONS
         OTHERS   = 1.
@@ -708,8 +708,8 @@ CLASS lcl_popup IMPLEMENTATION.
       EXCEPTIONS
         OTHERS  = 1.
 
-    mo_split->set_column_width( id = 1 width = 50 ).
-    mo_split->set_column_width( id = 2 width = 50 ).
+    mo_split->set_column_width( id = 1 width = 40 ).
+    mo_split->set_column_width( id = 2 width = 60 ).
 
     DATA lo_left  TYPE REF TO cl_gui_container.
     DATA lo_right TYPE REF TO cl_gui_container.
@@ -896,6 +896,10 @@ CLASS lcl_popup IMPLEMENTATION.
           EXIT.
         ENDIF.
       ENDLOOP.
+
+      IF mo_messages->has_text_after_agent_commands( lv_orchestrator_answer ) = abap_true.
+        lv_only_code_search = abap_false.
+      ENDIF.
 
       IF lt_agent_requests IS NOT INITIAL
       AND lv_only_code_search = abap_true.

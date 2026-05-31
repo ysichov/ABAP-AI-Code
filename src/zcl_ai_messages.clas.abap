@@ -64,6 +64,10 @@ CLASS zcl_ai_messages DEFINITION
     METHODS needs_code_context
       RETURNING VALUE(rv_needed) TYPE abap_bool.
 
+    METHODS has_text_after_agent_commands
+      IMPORTING i_orchestrator_answer TYPE string
+      RETURNING VALUE(rv_has_text)    TYPE abap_bool.
+
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
 
@@ -308,6 +312,17 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDLOOP.
 
     rv_needed = xsdbool( lv_has_code_search = abap_true AND lv_has_code_review = abap_true ).
+  ENDMETHOD.
+
+  METHOD has_text_after_agent_commands.
+    DATA(lv_text) = i_orchestrator_answer.
+
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:[^}]*\}' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '---\s*Tokens:.*$' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX 'Tokens:.*$' IN lv_text WITH ''.
+    CONDENSE lv_text.
+
+    rv_has_text = xsdbool( lv_text IS NOT INITIAL ).
   ENDMETHOD.
 
   METHOD get_messages.
