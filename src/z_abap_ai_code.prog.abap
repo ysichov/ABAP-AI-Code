@@ -247,9 +247,12 @@ CLASS lcl_history_popup DEFINITION.
              session_id     TYPE i,
              seq            TYPE i,
              request_type   TYPE string,
-             agent          TYPE string,
-             answer_seq     TYPE i,
+             owner          TYPE string,
              answer_type    TYPE string,
+             prompt_tokens  TYPE string,
+             completion_tokens TYPE string,
+             total_tokens   TYPE string,
+             cached_tokens  TYPE string,
              request_preview TYPE string,
              answer_preview TYPE string,
              request        TYPE string,
@@ -268,6 +271,9 @@ CLASS lcl_history_popup DEFINITION.
 
     METHODS build_history.
     METHODS configure_salv.
+    METHODS extract_usage
+      IMPORTING i_text TYPE string
+      CHANGING  cs_row TYPE ty_history_row.
     METHODS on_dialog_close
       FOR EVENT close OF cl_gui_dialogbox_container.
     METHODS on_double_click
@@ -375,35 +381,80 @@ CLASS lcl_history_popup IMPLEMENTATION.
     DATA lv_request_agent TYPE string.
     DATA lv_request_session TYPE i.
     DATA lv_request_message_id TYPE i.
+    DATA lv_has_request TYPE abap_bool.
 
     LOOP AT mt_messages INTO DATA(ls_message).
       IF ls_message-role = 'user'.
+        IF lv_has_request = abap_true.
+          CLEAR ls_row.
+          ls_row-session_id = lv_request_session.
+          ls_row-seq = lv_request_message_id.
+          ls_row-owner = lv_request_agent.
+          ls_row-request_type = lv_request_type.
+          ls_row-request = lv_request.
+          ls_row-request_preview = preview( ls_row-request ).
+          APPEND ls_row TO mt_history.
+        ENDIF.
+
         lv_request = ls_message-content.
         lv_request_type = ls_message-prompt_type.
         lv_request_agent = ls_message-agent.
         lv_request_session = ls_message-session_id.
         lv_request_message_id = ls_message-message_id.
+        lv_has_request = abap_true.
       ELSE.
         CLEAR ls_row.
         ls_row-session_id = ls_message-session_id.
         ls_row-seq = lv_request_message_id.
-        ls_row-agent = ls_message-agent.
+        ls_row-owner = ls_message-agent.
         ls_row-request_type = lv_request_type.
         ls_row-answer_type = ls_message-prompt_type.
-        ls_row-answer_seq = ls_message-message_id.
         ls_row-request = lv_request.
         ls_row-answer = ls_message-content.
-        IF ls_row-agent IS INITIAL.
-          ls_row-agent = lv_request_agent.
+        IF ls_row-owner IS INITIAL.
+          ls_row-owner = lv_request_agent.
         ENDIF.
         IF ls_row-session_id IS INITIAL.
           ls_row-session_id = lv_request_session.
         ENDIF.
+        extract_usage(
+          EXPORTING
+            i_text = ls_row-answer
+          CHANGING
+            cs_row = ls_row ).
         ls_row-request_preview = preview( ls_row-request ).
         ls_row-answer_preview = preview( ls_row-answer ).
         APPEND ls_row TO mt_history.
+        CLEAR: lv_request, lv_request_type, lv_request_agent, lv_request_session, lv_request_message_id.
+        lv_has_request = abap_false.
       ENDIF.
     ENDLOOP.
+
+    IF lv_has_request = abap_true.
+      CLEAR ls_row.
+      ls_row-session_id = lv_request_session.
+      ls_row-seq = lv_request_message_id.
+      ls_row-owner = lv_request_agent.
+      ls_row-request_type = lv_request_type.
+      ls_row-request = lv_request.
+      ls_row-request_preview = preview( ls_row-request ).
+      APPEND ls_row TO mt_history.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD extract_usage.
+    FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)' IN i_text SUBMATCHES cs_row-prompt_tokens.
+    IF cs_row-prompt_tokens IS INITIAL.
+      FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)' IN i_text SUBMATCHES cs_row-prompt_tokens.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)' IN i_text SUBMATCHES cs_row-completion_tokens.
+    IF cs_row-completion_tokens IS INITIAL.
+      FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)' IN i_text SUBMATCHES cs_row-completion_tokens.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX 'total=([0-9]+)' IN i_text SUBMATCHES cs_row-total_tokens.
+    FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)' IN i_text SUBMATCHES cs_row-cached_tokens.
   ENDMETHOD.
 
   METHOD configure_salv.
@@ -414,9 +465,12 @@ CLASS lcl_history_popup IMPLEMENTATION.
         lo_columns->get_column( 'SESSION_ID' )->set_short_text( 'Session' ).
         lo_columns->get_column( 'SEQ' )->set_short_text( 'Q#' ).
         lo_columns->get_column( 'REQUEST_TYPE' )->set_medium_text( 'Prompt Type' ).
-        lo_columns->get_column( 'AGENT' )->set_short_text( 'Agent' ).
-        lo_columns->get_column( 'ANSWER_SEQ' )->set_short_text( 'A#' ).
+        lo_columns->get_column( 'OWNER' )->set_short_text( 'Owner' ).
         lo_columns->get_column( 'ANSWER_TYPE' )->set_medium_text( 'Answer Type' ).
+        lo_columns->get_column( 'PROMPT_TOKENS' )->set_short_text( 'Input' ).
+        lo_columns->get_column( 'COMPLETION_TOKENS' )->set_short_text( 'Output' ).
+        lo_columns->get_column( 'TOTAL_TOKENS' )->set_short_text( 'Total' ).
+        lo_columns->get_column( 'CACHED_TOKENS' )->set_short_text( 'Cached' ).
         lo_columns->get_column( 'REQUEST_PREVIEW' )->set_medium_text( 'Request' ).
         lo_columns->get_column( 'ANSWER_PREVIEW' )->set_medium_text( 'Answer' ).
         lo_columns->get_column( 'REQUEST' )->set_visible( abap_false ).
@@ -881,7 +935,7 @@ CLASS lcl_popup IMPLEMENTATION.
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = 'FINAL'
-        i_prompt_type = 'SHOW_TO_USER'
+        i_prompt_type = 'FINAL_ANSWER'
         i_content     = lv_answer ).
     ENDIF.
 

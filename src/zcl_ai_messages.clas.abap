@@ -82,6 +82,12 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     IF mv_session_id IS INITIAL.
       mv_session_id = 1.
     ENDIF.
+
+    add_message(
+      i_role        = 'user'
+      i_agent       = 'USER'
+      i_prompt_type = 'USER_PROMPT'
+      i_content     = mv_user_prompt ).
   ENDMETHOD.
 
   METHOD build_orchestrator_request.
@@ -93,7 +99,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     add_message(
       i_role        = 'user'
       i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
-      i_prompt_type = 'USER_PROMPT'
+      i_prompt_type = 'SYSTEM_PROMPT'
       i_content     = rv_prompt ).
   ENDMETHOD.
 
