@@ -1107,13 +1107,8 @@ CLASS lcl_popup IMPLEMENTATION.
 
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN rv_text WITH lv_nl.
     REPLACE ALL OCCURRENCES OF REGEX '\s+(#{1,6})\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }$1 |.
-    REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+)\.\s+' IN rv_text WITH |{ lv_nl }$1. |.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+)\.\s+(\*\*)' IN rv_text WITH |{ lv_nl }$1. $2|.
     REPLACE ALL OCCURRENCES OF REGEX '\s+-\s+' IN rv_text WITH |{ lv_nl }- |.
-
-    DO 20 TIMES.
-      DATA(lv_num) = sy-index.
-      REPLACE ALL OCCURRENCES OF | { lv_num }. | IN rv_text WITH |{ lv_nl }{ lv_num }. |.
-    ENDDO.
   ENDMETHOD.
 
   METHOD render_abap_blocks.
@@ -1129,7 +1124,7 @@ CLASS lcl_popup IMPLEMENTATION.
     lv_rest = i_text.
 
     DO.
-      FIND FIRST OCCURRENCE OF REGEX '```[^\n\r]*(\r\n|\n|\r)?' IN lv_rest
+      FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN lv_rest
         MATCH OFFSET lv_start
         MATCH LENGTH lv_fence_len.
       IF sy-subrc <> 0.
