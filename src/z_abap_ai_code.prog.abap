@@ -257,7 +257,8 @@ CLASS lcl_history_popup DEFINITION.
              answer_preview TYPE string,
              request        TYPE string,
              answer         TYPE string,
-           END OF ty_history_row,
+             row_color      TYPE lvc_t_scol,
+            END OF ty_history_row,
            tt_history_rows TYPE STANDARD TABLE OF ty_history_row WITH NON-UNIQUE DEFAULT KEY.
 
     DATA mo_dialog   TYPE REF TO cl_gui_dialogbox_container.
@@ -426,6 +427,15 @@ CLASS lcl_history_popup IMPLEMENTATION.
             i_text = ls_row-answer
           CHANGING
             cs_row = ls_row ).
+        IF ls_row-prompt_tokens IS NOT INITIAL
+        OR ls_row-total_tokens IS NOT INITIAL
+        OR ls_row-answer_type = 'LLM_RESPONSE'
+        OR ls_row-answer_type = 'FINAL_ANSWER'.
+          APPEND VALUE #( fname = ''
+                          color-col = 5
+                          color-int = 1
+                          color-inv = 0 ) TO ls_row-row_color.
+        ENDIF.
         ls_row-request_preview = preview( ls_row-request ).
         ls_row-answer_preview = preview( ls_row-answer ).
         APPEND ls_row TO mt_history.
@@ -479,6 +489,8 @@ CLASS lcl_history_popup IMPLEMENTATION.
         lo_columns->get_column( 'ANSWER_PREVIEW' )->set_medium_text( 'Answer' ).
         lo_columns->get_column( 'REQUEST' )->set_visible( abap_false ).
         lo_columns->get_column( 'ANSWER' )->set_visible( abap_false ).
+        lo_columns->get_column( 'ROW_COLOR' )->set_visible( abap_false ).
+        mo_salv->get_columns( )->set_color_column( 'ROW_COLOR' ).
       CATCH cx_salv_not_found.
     ENDTRY.
   ENDMETHOD.
@@ -821,6 +833,11 @@ CLASS lcl_popup IMPLEMENTATION.
     IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_code_context IS NOT INITIAL.
       DATA(lv_index) = 0.
       DATA(lv_total) = lines( lt_agent_requests ).
+      DATA lt_done_read_commands TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+      IF lv_orchestrator_code_context IS NOT INITIAL.
+        APPEND lv_orchestrator_read_commands TO lt_done_read_commands.
+      ENDIF.
 
       LOOP AT lt_agent_requests INTO DATA(ls_agent_request).
         lv_index = lv_index + 1.
@@ -831,6 +848,14 @@ CLASS lcl_popup IMPLEMENTATION.
 
         DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
         IF lv_direct_read_command IS NOT INITIAL.
+          READ TABLE lt_done_read_commands
+            WITH KEY table_line = lv_direct_read_command
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+          APPEND lv_direct_read_command TO lt_done_read_commands.
+
           CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
             EXPORTING percentage = lv_percentage
                       text       = |Reading code { ls_agent_request-object_name }...|.
@@ -981,12 +1006,17 @@ CLASS lcl_popup IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF REGEX '(Tokens:[^\n\r<]*)' IN lv_render_text WITH '<span class="tokens">$1</span>'.
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
-             && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
-             && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
+             && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:0;|
+             && |min-height:100vh;background:linear-gradient(135deg,#f8fbff 0%,#eef6ff 45%,#f7fff9 100%);|
+             && |color:#1f2933;\}|
+             && |.answer\{white-space:pre-wrap;font-family:"Segoe UI",Arial,sans-serif;line-height:1.45;|
+             && |margin:14px;padding:16px 18px;background:rgba(255,255,255,.88);border:1px solid #dce8f6;|
+             && |box-shadow:0 2px 10px rgba(56,96,140,.10);\}|
              && |strong\{font-weight:700\}|
-             && |.tokens\{color:#0066aa;font-weight:700;\}|
+             && |.tokens\{display:inline-block;color:#005ea8;font-weight:700;background:#e8f3ff;|
+             && |border:1px solid #b9dcff;padding:3px 7px;margin-top:6px;\}|
              && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
-             && |background:#fff;border:1px solid #ddd;margin:8px 0;\}|
+             && |background:#fff;border:1px solid #d7e0ea;margin:10px 0;\}|
              && |.code_tbl tr:hover td\{background:#f0f4fa\}|
              && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:42px;|
              && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none;\}|
