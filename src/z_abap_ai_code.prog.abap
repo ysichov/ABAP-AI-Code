@@ -559,6 +559,15 @@ CLASS lcl_popup DEFINITION.
       IMPORTING i_source       TYPE string
                 i_title        TYPE string
       RETURNING VALUE(rv_html) TYPE string.
+    METHODS normalize_markdown
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+    METHODS render_abap_blocks
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+    METHODS code_block_to_html
+      IMPORTING i_code          TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS escape_html
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -903,15 +912,19 @@ CLASS lcl_popup IMPLEMENTATION.
     OR lv_text_upper CS '<HTML'.
       lv_html = i_text.
     ELSE.
-      DATA(lv_render_text) = escape_html( i_text ).
-      REPLACE ALL OCCURRENCES OF REGEX '```abap\s*' IN lv_render_text WITH '<pre class="code">'.
-      REPLACE ALL OCCURRENCES OF '```' IN lv_render_text WITH '</pre>'.
+      DATA(lv_render_text) = render_abap_blocks( normalize_markdown( i_text ) ).
+      REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN lv_render_text WITH '<strong>$1</strong>'.
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:10px;\}|
              && |.answer\{white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;line-height:1.35;\}|
-             && |.code\{white-space:pre;font-family:Consolas,"Courier New",monospace;font-size:12px;|
-             && |line-height:1.5;background:#fafafa;border:1px solid #ddd;padding:8px;overflow:auto;\}|
+             && |strong\{font-weight:700\}|
+             && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
+             && |background:#fff;border:1px solid #ddd;margin:8px 0;\}|
+             && |.code_tbl tr:hover td\{background:#f0f4fa\}|
+             && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:42px;|
+             && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none;\}|
+             && |.cd\{padding:1px 8px;white-space:pre;\}|
              && |</style></head><body><div class="answer">|
              && lv_render_text
              && |</div></body></html>|.
@@ -981,6 +994,72 @@ CLASS lcl_popup IMPLEMENTATION.
            && |</style></head><body>|
            && |<div class="hdr"><span class="ttl">{ lv_title }</span></div>|
            && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
+  ENDMETHOD.
+
+  METHOD normalize_markdown.
+    rv_text = i_text.
+
+    DATA(lv_nl) = cl_abap_char_utilities=>newline.
+
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN rv_text WITH lv_nl.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+##\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }## |.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+#\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }# |.
+
+    DO 20 TIMES.
+      DATA(lv_num) = sy-index.
+      REPLACE ALL OCCURRENCES OF | { lv_num }. | IN rv_text WITH |{ lv_nl }{ lv_num }. |.
+    ENDDO.
+
+    REPLACE ALL OCCURRENCES OF ` - ` IN rv_text WITH |{ lv_nl }- |.
+  ENDMETHOD.
+
+  METHOD render_abap_blocks.
+    DATA lv_rest TYPE string.
+    DATA lv_before TYPE string.
+    DATA lv_code TYPE string.
+    DATA lv_after TYPE string.
+    DATA lv_start TYPE i.
+    DATA lv_end TYPE i.
+    DATA lv_code_start TYPE i.
+
+    lv_rest = i_text.
+
+    WHILE lv_rest CS '```abap'.
+      FIND FIRST OCCURRENCE OF '```abap' IN lv_rest MATCH OFFSET lv_start.
+      lv_before = substring( val = lv_rest len = lv_start ).
+      lv_code_start = lv_start + 7.
+      lv_after = substring( val = lv_rest off = lv_code_start ).
+      FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
+      lv_code = substring( val = lv_after len = lv_end ).
+      SHIFT lv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
+      rv_text = rv_text
+             && escape_html( i_text = lv_before )
+             && code_block_to_html( lv_code ).
+      lv_rest = substring( val = lv_after off = lv_end + 3 ).
+    ENDWHILE.
+
+    rv_text = rv_text && escape_html( i_text = lv_rest ).
+  ENDMETHOD.
+
+  METHOD code_block_to_html.
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_lno TYPE i.
+
+    SPLIT i_code AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+    rv_html = |<table class="code_tbl"><tbody>|.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      lv_lno = lv_lno + 1.
+      rv_html = rv_html
+             && |<tr><td class="ln">{ lv_lno }</td>|
+             && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+    ENDLOOP.
+
+    rv_html = rv_html && |</tbody></table>|.
   ENDMETHOD.
 
   METHOD escape_html.
