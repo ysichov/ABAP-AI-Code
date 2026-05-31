@@ -236,7 +236,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_final_request.
-    rv_prompt = |You are a Senior ABAP.|.
+    rv_prompt = |You are a Senior ABAP. Return readable Markdown with real line breaks: |
+             && |put every heading, list item, paragraph, and fenced code block on separate lines. |.
 
     rv_prompt = rv_prompt
              && cl_abap_char_utilities=>newline

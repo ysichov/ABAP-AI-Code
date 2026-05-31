@@ -114,7 +114,9 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
   METHOD get_code_review_prompt.
     rv_prompt = |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
-             && |Do not make an abstract review. Find concrete issues, risks, and improvement suggestions.|.
+             && |Do not make an abstract review. Find concrete issues, risks, and improvement suggestions. |
+             && |Return readable Markdown with real line breaks: put every heading, list item, paragraph, |
+             && |and fenced code block on separate lines.|.
   ENDMETHOD.
 
   METHOD get_create_object_prompt.
