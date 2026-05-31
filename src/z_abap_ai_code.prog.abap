@@ -1001,7 +1001,7 @@ CLASS lcl_popup IMPLEMENTATION.
     OR lv_text_upper CS '<HTML'.
       lv_html = i_text.
     ELSE.
-      DATA(lv_render_text) = render_abap_blocks( normalize_markdown( i_text ) ).
+      DATA(lv_render_text) = render_abap_blocks( i_text ).
       REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN lv_render_text WITH '<strong>$1</strong>'.
       REPLACE ALL OCCURRENCES OF REGEX '(Tokens:[^\n\r<]*)' IN lv_render_text WITH '<span class="tokens">$1</span>'.
 
@@ -1098,15 +1098,14 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA(lv_nl) = cl_abap_char_utilities=>newline.
 
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN rv_text WITH lv_nl.
-    REPLACE ALL OCCURRENCES OF REGEX '\s+##\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }## |.
-    REPLACE ALL OCCURRENCES OF REGEX '\s+#\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }# |.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+(#{1,6})\s+' IN rv_text WITH |{ lv_nl }{ lv_nl }$1 |.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+)\.\s+' IN rv_text WITH |{ lv_nl }$1. |.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+-\s+' IN rv_text WITH |{ lv_nl }- |.
 
     DO 20 TIMES.
       DATA(lv_num) = sy-index.
       REPLACE ALL OCCURRENCES OF | { lv_num }. | IN rv_text WITH |{ lv_nl }{ lv_num }. |.
     ENDDO.
-
-    REPLACE ALL OCCURRENCES OF ` - ` IN rv_text WITH |{ lv_nl }- |.
   ENDMETHOD.
 
   METHOD render_abap_blocks.
@@ -1117,13 +1116,20 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA lv_start TYPE i.
     DATA lv_end TYPE i.
     DATA lv_code_start TYPE i.
+    DATA lv_fence_len TYPE i.
 
     lv_rest = i_text.
 
-    WHILE lv_rest CS '```abap'.
-      FIND FIRST OCCURRENCE OF '```abap' IN lv_rest MATCH OFFSET lv_start.
+    DO.
+      FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN lv_rest
+        MATCH OFFSET lv_start
+        MATCH LENGTH lv_fence_len.
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
       lv_before = substring( val = lv_rest len = lv_start ).
-      lv_code_start = lv_start + 7.
+      lv_code_start = lv_start + lv_fence_len.
       lv_after = substring( val = lv_rest off = lv_code_start ).
       FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
       IF sy-subrc <> 0.
@@ -1133,12 +1139,12 @@ CLASS lcl_popup IMPLEMENTATION.
       lv_code = substring( val = lv_after len = lv_end ).
       SHIFT lv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
       rv_text = rv_text
-             && escape_html( i_text = lv_before )
+             && escape_html( i_text = normalize_markdown( lv_before ) )
              && code_block_to_html( lv_code ).
       lv_rest = substring( val = lv_after off = lv_end + 3 ).
-    ENDWHILE.
+    ENDDO.
 
-    rv_text = rv_text && escape_html( i_text = lv_rest ).
+    rv_text = rv_text && escape_html( i_text = normalize_markdown( lv_rest ) ).
   ENDMETHOD.
 
   METHOD code_block_to_html.
