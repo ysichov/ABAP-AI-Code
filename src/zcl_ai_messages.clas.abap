@@ -232,16 +232,16 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       lv_code_context = lv_code_context && ls_message-content.
     ENDLOOP.
 
-    rv_prompt = |FOUND CODE:|
+    rv_prompt = |USER PROMPT:|
+             && cl_abap_char_utilities=>newline
+             && mv_user_prompt
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |FOUND CODE:|
              && cl_abap_char_utilities=>newline
              && COND string(
                   WHEN lv_code_context IS NOT INITIAL THEN lv_code_context
-                  ELSE 'No code context was resolved.' )
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |USER PROMPT:|
-             && cl_abap_char_utilities=>newline
-             && mv_user_prompt.
+                  ELSE 'No code context was resolved.' ).
 
     add_message(
       i_role        = 'user'
