@@ -57,6 +57,9 @@ CLASS zcl_ai_messages DEFINITION
     METHODS build_final_request
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_resolved_code
+      RETURNING VALUE(rv_code) TYPE string.
+
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
 
@@ -217,7 +220,6 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_final_request.
-    DATA(lv_code_context) = VALUE string( ).
     DATA(lv_is_code_review) = abap_false.
     DATA(lv_user_prompt_upper) = mv_user_prompt.
     TRANSLATE lv_user_prompt_upper TO UPPER CASE.
@@ -234,23 +236,6 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       OR lv_message_upper CS 'CODE_REVIEW'.
         lv_is_code_review = abap_true.
       ENDIF.
-
-      CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
-      CHECK ls_message-role = 'assistant'.
-
-      IF lv_code_context IS NOT INITIAL.
-        lv_code_context = lv_code_context
-                       && cl_abap_char_utilities=>newline
-                       && cl_abap_char_utilities=>newline.
-      ENDIF.
-
-      DATA(lv_clean_code) = ls_message-content.
-      REPLACE ALL OCCURRENCES OF REGEX 'Resolved \{READ[^\n\r]*\}:\s*' IN lv_clean_code WITH ''.
-      REPLACE ALL OCCURRENCES OF REGEX 'Source for program [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
-      REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
-      REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
-
-      lv_code_context = lv_code_context && lv_clean_code.
     ENDLOOP.
 
     rv_prompt = |You are a Senior ABAP.|.
@@ -270,7 +255,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && COND string(
-                  WHEN lv_code_context IS NOT INITIAL THEN lv_code_context
+                  WHEN get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
                   ELSE 'No code context was resolved.' ).
 
     add_message(
@@ -278,6 +263,27 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_agent       = 'FINAL'
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
+  ENDMETHOD.
+
+  METHOD get_resolved_code.
+    LOOP AT mt_messages INTO DATA(ls_message).
+      CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
+      CHECK ls_message-role = 'assistant'.
+
+      IF rv_code IS NOT INITIAL.
+        rv_code = rv_code
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline.
+      ENDIF.
+
+      DATA(lv_clean_code) = ls_message-content.
+      REPLACE ALL OCCURRENCES OF REGEX 'Resolved \{READ[^\n\r]*\}:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for program [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
+
+      rv_code = rv_code && lv_clean_code.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD get_messages.

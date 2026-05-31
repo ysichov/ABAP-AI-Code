@@ -830,6 +830,18 @@ CLASS lcl_popup IMPLEMENTATION.
         i_provider         = mv_provider
         i_prompt_cache_key = mv_prompt_cache_key ).
 
+      DATA(lv_resolved_code) = mo_messages->get_resolved_code( ).
+      IF lv_resolved_code IS NOT INITIAL.
+        lv_answer = lv_answer
+                 && cl_abap_char_utilities=>newline
+                 && cl_abap_char_utilities=>newline
+                 && |```abap|
+                 && cl_abap_char_utilities=>newline
+                 && lv_resolved_code
+                 && cl_abap_char_utilities=>newline
+                 && |```|.
+      ENDIF.
+
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = 'FINAL'
