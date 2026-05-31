@@ -232,7 +232,10 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       lv_code_context = lv_code_context && ls_message-content.
     ENDLOOP.
 
-    rv_prompt = |USER PROMPT:|
+    rv_prompt = |You are a Senior ABAP CODE AGENT.|
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |USER PROMPT:|
              && cl_abap_char_utilities=>newline
              && mv_user_prompt
              && cl_abap_char_utilities=>newline
