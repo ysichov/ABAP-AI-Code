@@ -5,6 +5,8 @@
 *&---------------------------------------------------------------------*
 REPORT z_abap_ai_code.
 
+
+
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_anth RADIOBUTTON GROUP api DEFAULT 'X',
             p_oai  RADIOBUTTON GROUP api.
@@ -226,6 +228,265 @@ CLASS lcl_ai_api IMPLEMENTATION.
 ENDCLASS.
 
 *----------------------------------------------------------------------*
+* lcl_history_popup - message history popup
+*----------------------------------------------------------------------*
+CLASS lcl_history_popup DEFINITION.
+  PUBLIC SECTION.
+    METHODS constructor
+      IMPORTING it_messages TYPE zcl_ai_messages=>tt_messages.
+
+    METHODS show.
+
+  PRIVATE SECTION.
+    TYPES: ty_textedit_line(255) TYPE c,
+           tt_textedit_lines     TYPE TABLE OF ty_textedit_line,
+           BEGIN OF ty_history_row,
+             session_id     TYPE i,
+             seq            TYPE i,
+             agent          TYPE string,
+             request_type   TYPE string,
+             answer_type    TYPE string,
+             request_preview TYPE string,
+             answer_preview TYPE string,
+             request        TYPE string,
+             answer         TYPE string,
+           END OF ty_history_row,
+           tt_history_rows TYPE STANDARD TABLE OF ty_history_row WITH NON-UNIQUE DEFAULT KEY.
+
+    DATA mo_dialog   TYPE REF TO cl_gui_dialogbox_container.
+    DATA mo_split    TYPE REF TO cl_gui_splitter_container.
+    DATA mo_details  TYPE REF TO cl_gui_splitter_container.
+    DATA mo_request  TYPE REF TO cl_gui_textedit.
+    DATA mo_answer   TYPE REF TO cl_gui_textedit.
+    DATA mo_salv     TYPE REF TO cl_salv_table.
+    DATA mt_history  TYPE tt_history_rows.
+    DATA mt_messages TYPE zcl_ai_messages=>tt_messages.
+
+    METHODS build_history.
+    METHODS configure_salv.
+    METHODS on_dialog_close
+      FOR EVENT close OF cl_gui_dialogbox_container.
+    METHODS on_double_click
+      FOR EVENT double_click OF cl_salv_events_table
+      IMPORTING row column.
+    METHODS show_row
+      IMPORTING i_row TYPE i.
+    METHODS display_text
+      IMPORTING io_textedit TYPE REF TO cl_gui_textedit
+                i_text      TYPE string.
+    METHODS preview
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+ENDCLASS.
+
+CLASS lcl_history_popup IMPLEMENTATION.
+
+  METHOD constructor.
+    mt_messages = it_messages.
+  ENDMETHOD.
+
+  METHOD show.
+    build_history( ).
+
+    CREATE OBJECT mo_dialog
+      EXPORTING
+        caption = 'Easy AI Message History'
+        top     = 60
+        left    = 80
+        width   = 1300
+        height  = 760
+        metric  = cl_gui_dialogbox_container=>metric_pixel
+      EXCEPTIONS
+        OTHERS  = 1.
+
+    SET HANDLER on_dialog_close FOR mo_dialog.
+
+    CREATE OBJECT mo_split
+      EXPORTING
+        parent  = mo_dialog
+        rows    = 2
+        columns = 1
+      EXCEPTIONS
+        OTHERS  = 1.
+
+    mo_split->set_row_height( id = 1 height = 35 ).
+    mo_split->set_row_height( id = 2 height = 65 ).
+
+    DATA(lo_top) = mo_split->get_container( row = 1 column = 1 ).
+    DATA(lo_bottom) = mo_split->get_container( row = 2 column = 1 ).
+
+    CREATE OBJECT mo_details
+      EXPORTING
+        parent  = lo_bottom
+        rows    = 1
+        columns = 2
+      EXCEPTIONS
+        OTHERS  = 1.
+
+    mo_details->set_column_width( id = 1 width = 50 ).
+    mo_details->set_column_width( id = 2 width = 50 ).
+
+    DATA(lo_request) = mo_details->get_container( row = 1 column = 1 ).
+    DATA(lo_answer) = mo_details->get_container( row = 1 column = 2 ).
+
+    CREATE OBJECT mo_request
+      EXPORTING parent = lo_request
+      EXCEPTIONS OTHERS = 1.
+    mo_request->set_toolbar_mode( 0 ).
+    mo_request->set_readonly_mode( 1 ).
+
+    CREATE OBJECT mo_answer
+      EXPORTING parent = lo_answer
+      EXCEPTIONS OTHERS = 1.
+    mo_answer->set_toolbar_mode( 0 ).
+    mo_answer->set_readonly_mode( 1 ).
+
+    cl_salv_table=>factory(
+      EXPORTING
+        r_container  = lo_top
+      IMPORTING
+        r_salv_table = mo_salv
+      CHANGING
+        t_table      = mt_history ).
+
+    configure_salv( ).
+
+    DATA(lo_events) = mo_salv->get_event( ).
+    SET HANDLER on_double_click FOR lo_events.
+
+    mo_salv->display( ).
+
+    IF mt_history IS NOT INITIAL.
+      show_row( 1 ).
+    ENDIF.
+
+    CALL METHOD cl_gui_cfw=>flush.
+  ENDMETHOD.
+
+  METHOD build_history.
+    CLEAR mt_history.
+
+    DATA ls_row TYPE ty_history_row.
+    DATA lv_request TYPE string.
+    DATA lv_request_type TYPE string.
+    DATA lv_request_agent TYPE string.
+    DATA lv_request_session TYPE i.
+
+    LOOP AT mt_messages INTO DATA(ls_message).
+      IF ls_message-role = 'user'.
+        lv_request = ls_message-content.
+        lv_request_type = ls_message-prompt_type.
+        lv_request_agent = ls_message-agent.
+        lv_request_session = ls_message-session_id.
+      ELSE.
+        CLEAR ls_row.
+        ls_row-session_id = ls_message-session_id.
+        ls_row-seq = lines( mt_history ) + 1.
+        ls_row-agent = ls_message-agent.
+        ls_row-request_type = lv_request_type.
+        ls_row-answer_type = ls_message-prompt_type.
+        ls_row-request = lv_request.
+        ls_row-answer = ls_message-content.
+        IF ls_row-agent IS INITIAL.
+          ls_row-agent = lv_request_agent.
+        ENDIF.
+        IF ls_row-session_id IS INITIAL.
+          ls_row-session_id = lv_request_session.
+        ENDIF.
+        ls_row-request_preview = preview( ls_row-request ).
+        ls_row-answer_preview = preview( ls_row-answer ).
+        APPEND ls_row TO mt_history.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD configure_salv.
+    DATA(lo_columns) = mo_salv->get_columns( ).
+    lo_columns->set_optimize( abap_true ).
+
+    TRY.
+        lo_columns->get_column( 'SESSION_ID' )->set_short_text( 'Session' ).
+        lo_columns->get_column( 'SEQ' )->set_short_text( 'No' ).
+        lo_columns->get_column( 'AGENT' )->set_short_text( 'Agent' ).
+        lo_columns->get_column( 'REQUEST_TYPE' )->set_medium_text( 'Prompt Type' ).
+        lo_columns->get_column( 'ANSWER_TYPE' )->set_medium_text( 'Answer Type' ).
+        lo_columns->get_column( 'REQUEST_PREVIEW' )->set_medium_text( 'Request' ).
+        lo_columns->get_column( 'ANSWER_PREVIEW' )->set_medium_text( 'Answer' ).
+        lo_columns->get_column( 'REQUEST' )->set_visible( abap_false ).
+        lo_columns->get_column( 'ANSWER' )->set_visible( abap_false ).
+      CATCH cx_salv_not_found.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD on_dialog_close.
+    mo_dialog->free( ).
+    CLEAR mo_dialog.
+    CALL METHOD cl_gui_cfw=>flush.
+  ENDMETHOD.
+
+  METHOD on_double_click.
+    show_row( row ).
+  ENDMETHOD.
+
+  METHOD show_row.
+    READ TABLE mt_history INTO DATA(ls_row) INDEX i_row.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    display_text(
+      io_textedit = mo_request
+      i_text      = ls_row-request ).
+
+    display_text(
+      io_textedit = mo_answer
+      i_text      = ls_row-answer ).
+  ENDMETHOD.
+
+  METHOD display_text.
+    io_textedit->set_readonly_mode( 0 ).
+
+    DATA lt_text TYPE tt_textedit_lines.
+    DATA ls_text TYPE ty_textedit_line.
+    DATA lt_raw  TYPE TABLE OF string.
+
+    SPLIT i_text AT cl_abap_char_utilities=>newline INTO TABLE lt_raw.
+    IF lt_raw IS INITIAL.
+      APPEND i_text TO lt_raw.
+    ENDIF.
+
+    LOOP AT lt_raw INTO DATA(lv_raw_line).
+      IF strlen( lv_raw_line ) = 0.
+        CLEAR ls_text.
+        APPEND ls_text TO lt_text.
+      ELSE.
+        WHILE strlen( lv_raw_line ) > 255.
+          ls_text = lv_raw_line(255).
+          APPEND ls_text TO lt_text.
+          lv_raw_line = substring( val = lv_raw_line off = 255 ).
+        ENDWHILE.
+        ls_text = lv_raw_line.
+        APPEND ls_text TO lt_text.
+      ENDIF.
+    ENDLOOP.
+
+    io_textedit->set_text_as_stream( text = lt_text ).
+    io_textedit->set_readonly_mode( 1 ).
+  ENDMETHOD.
+
+  METHOD preview.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN rv_text WITH space.
+    CONDENSE rv_text.
+
+    IF strlen( rv_text ) > 120.
+      rv_text = rv_text(120).
+    ENDIF.
+  ENDMETHOD.
+
+ENDCLASS.
+
+*----------------------------------------------------------------------*
 * lcl_popup - GUI popup with splitter: left=question, right=answer
 *----------------------------------------------------------------------*
 CLASS lcl_popup DEFINITION.
@@ -239,11 +500,18 @@ CLASS lcl_popup DEFINITION.
     METHODS show.
 
   PRIVATE SECTION.
+    TYPES: ty_textedit_line(255) TYPE c,
+           tt_textedit_lines     TYPE TABLE OF ty_textedit_line.
+
     DATA: mv_dest     TYPE text255,
           mv_model    TYPE text255,
           mv_apikey   TYPE string,
           mv_provider TYPE string,
           mv_prompt_cache_key TYPE string,
+          mv_session_counter TYPE i,
+          mo_messages TYPE REF TO zcl_ai_messages,
+          mt_message_history TYPE zcl_ai_messages=>tt_messages,
+          mo_history  TYPE REF TO lcl_history_popup,
           mo_dialog   TYPE REF TO cl_gui_dialogbox_container,
           mo_toolbar  TYPE REF TO cl_gui_toolbar,
           mo_split    TYPE REF TO cl_gui_splitter_container,
@@ -258,6 +526,9 @@ CLASS lcl_popup DEFINITION.
       FOR EVENT close OF cl_gui_dialogbox_container.
 
     METHODS ask_ai.
+    METHODS show_history.
+    METHODS display_text
+      IMPORTING i_text TYPE string.
 ENDCLASS.
 
 CLASS lcl_popup IMPLEMENTATION.
@@ -323,6 +594,11 @@ CLASS lcl_popup IMPLEMENTATION.
                     butn_type = cntb_btype_button
                     text      = 'Ask AI'
                     quickinfo = 'Send question to AI' ) TO lt_buttons.
+    APPEND VALUE #( function  = 'HISTORY'
+                    icon      = CONV #( icon_protocol )
+                    butn_type = cntb_btype_button
+                    text      = 'History'
+                    quickinfo = 'Show message history' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
 
     SET HANDLER on_toolbar_click FOR mo_toolbar.
@@ -367,16 +643,16 @@ CLASS lcl_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD on_toolbar_click.
-    CHECK fcode = 'ASK'.
-    ask_ai( ).
+    CASE fcode.
+      WHEN 'ASK'.
+        ask_ai( ).
+      WHEN 'HISTORY'.
+        show_history( ).
+    ENDCASE.
   ENDMETHOD.
 
   METHOD ask_ai.
-    " cl_gui_textedit works with flat charlike tables
-    TYPES: ty_line(255) TYPE c,
-           ty_lines     TYPE TABLE OF ty_line.
-
-    DATA lt_lines TYPE ty_lines.
+    DATA lt_lines TYPE tt_textedit_lines.
     mo_question->get_text_as_stream( IMPORTING text = lt_lines ).
 
     DATA lv_prompt TYPE string.
@@ -393,29 +669,143 @@ CLASS lcl_popup IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-      EXPORTING percentage = 50 text = 'Asking AI...'.
+    mv_session_counter = mv_session_counter + 1.
+    mo_messages = NEW zcl_ai_messages(
+      i_user_prompt = lv_prompt
+      i_session_id  = mv_session_counter ).
 
-    DATA(lv_answer) = lcl_ai_api=>ask(
-      i_prompt  = lv_prompt
-      i_dest    = mv_dest
-      i_model   = mv_model
-      i_apikey  = mv_apikey
-      i_provider = mv_provider
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 20 text = 'Asking orchestrator...'.
+
+    DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
+    DATA(lv_orchestrator_answer) = lcl_ai_api=>ask(
+      i_prompt           = lv_orchestrator_prompt
+      i_dest             = mv_dest
+      i_model            = mv_model
+      i_apikey           = mv_apikey
+      i_provider         = mv_provider
       i_prompt_cache_key = mv_prompt_cache_key ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
+      i_prompt_type = 'LLM_RESPONSE'
+      i_content     = lv_orchestrator_answer ).
+
+    DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
+    DATA(lv_orchestrator_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_orchestrator_answer ).
+    IF lv_orchestrator_code_context IS NOT INITIAL.
+      DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
+
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+        i_prompt_type = 'COMMAND'
+        i_content     = lv_orchestrator_read_commands ).
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = lv_orchestrator_code_context ).
+    ENDIF.
+
+    DATA(lv_answer) = lv_orchestrator_answer.
+
+    IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_code_context IS NOT INITIAL.
+      DATA(lv_index) = 0.
+      DATA(lv_total) = lines( lt_agent_requests ).
+
+      LOOP AT lt_agent_requests INTO DATA(ls_agent_request).
+        lv_index = lv_index + 1.
+        DATA(lv_percentage) = 50.
+        IF lv_total > 0.
+          lv_percentage = 20 + ( lv_index * 50 / lv_total ).
+        ENDIF.
+
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+          EXPORTING percentage = lv_percentage
+                    text       = |Asking agent { ls_agent_request-agent }...|.
+
+        DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
+        DATA(lv_agent_answer) = lcl_ai_api=>ask(
+          i_prompt           = lv_agent_prompt
+          i_dest             = mv_dest
+          i_model            = mv_model
+          i_apikey           = mv_apikey
+          i_provider         = mv_provider
+          i_prompt_cache_key = mv_prompt_cache_key ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = ls_agent_request-agent
+          i_prompt_type = 'LLM_RESPONSE'
+          i_content     = lv_agent_answer ).
+
+        DATA(lv_agent_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_agent_answer ).
+        IF lv_agent_code_context IS NOT INITIAL.
+          DATA(lv_agent_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_agent_answer ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'COMMAND'
+            i_content     = lv_agent_read_commands ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_agent_code_context ).
+        ENDIF.
+      ENDLOOP.
+
+      CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+        EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
+
+      DATA(lv_final_prompt) = mo_messages->build_final_request( ).
+      lv_answer = lcl_ai_api=>ask(
+        i_prompt           = lv_final_prompt
+        i_dest             = mv_dest
+        i_model            = mv_model
+        i_apikey           = mv_apikey
+        i_provider         = mv_provider
+        i_prompt_cache_key = mv_prompt_cache_key ).
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'FINAL'
+        i_prompt_type = 'LLM_RESPONSE'
+        i_content     = lv_answer ).
+    ENDIF.
+
+    APPEND LINES OF mo_messages->get_messages( ) TO mt_message_history.
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
 
-    " Display answer
+    display_text( lv_answer ).
+  ENDMETHOD.
+
+  METHOD show_history.
+    IF mt_message_history IS INITIAL.
+      MESSAGE 'No message history yet' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    mo_history = NEW lcl_history_popup( mt_message_history ).
+    mo_history->show( ).
+  ENDMETHOD.
+
+  METHOD display_text.
     mo_answer->set_readonly_mode( 0 ).
 
-    DATA lt_answer TYPE ty_lines.
-    DATA ls_answer TYPE ty_line.
+    DATA lt_answer TYPE tt_textedit_lines.
+    DATA ls_answer TYPE ty_textedit_line.
     DATA lt_raw    TYPE TABLE OF string.
-    SPLIT lv_answer AT cl_abap_char_utilities=>newline INTO TABLE lt_raw.
+    SPLIT i_text AT cl_abap_char_utilities=>newline INTO TABLE lt_raw.
     IF lt_raw IS INITIAL.
-      APPEND lv_answer TO lt_raw.
+      APPEND i_text TO lt_raw.
     ENDIF.
     LOOP AT lt_raw INTO DATA(lv_raw_line).
       IF strlen( lv_raw_line ) = 0.

@@ -1,0 +1,319 @@
+CLASS zcl_ai_code_reader DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    TYPES:
+      BEGIN OF ty_read_command,
+        object_type TYPE string,
+        object_name TYPE string,
+        method_name TYPE string,
+        raw_command TYPE string,
+      END OF ty_read_command,
+      tt_read_commands TYPE STANDARD TABLE OF ty_read_command WITH NON-UNIQUE DEFAULT KEY,
+      tt_source        TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    CLASS-METHODS parse_read_commands
+      IMPORTING i_text            TYPE string
+      RETURNING VALUE(rt_commands) TYPE tt_read_commands.
+
+    CLASS-METHODS resolve_read_commands
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
+    CLASS-METHODS extract_read_command_text
+      IMPORTING i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
+    CLASS-METHODS read_program
+      IMPORTING i_program      TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
+    CLASS-METHODS read_class
+      IMPORTING i_class        TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
+    CLASS-METHODS read_method
+      IMPORTING i_class        TYPE string
+                i_method       TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
+  PRIVATE SECTION.
+    CLASS-METHODS class_include_prefix
+      IMPORTING i_class         TYPE string
+      RETURNING VALUE(rv_prefix) TYPE string.
+
+    CLASS-METHODS append_include_source
+      IMPORTING i_include       TYPE progname
+                i_title         TYPE string
+      CHANGING  cv_text         TYPE string.
+
+    CLASS-METHODS format_source
+      IMPORTING it_source      TYPE tt_source
+      RETURNING VALUE(rv_text) TYPE string.
+ENDCLASS.
+
+CLASS zcl_ai_code_reader IMPLEMENTATION.
+
+  METHOD parse_read_commands.
+    DATA lv_rest TYPE string.
+    DATA lv_pos  TYPE i.
+    DATA lv_end  TYPE i.
+
+    lv_rest = i_text.
+
+    WHILE lv_rest CS '{READ'.
+      FIND FIRST OCCURRENCE OF '{READ' IN lv_rest MATCH OFFSET lv_pos.
+      lv_rest = substring( val = lv_rest off = lv_pos + 1 ).
+
+      FIND FIRST OCCURRENCE OF '}' IN lv_rest MATCH OFFSET lv_end.
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
+      DATA(lv_command) = substring( val = lv_rest len = lv_end ).
+      lv_rest = substring( val = lv_rest off = lv_end + 1 ).
+
+      DATA(lv_command_upper) = lv_command.
+      TRANSLATE lv_command_upper TO UPPER CASE.
+
+      DATA(ls_command) = VALUE ty_read_command(
+        raw_command = |{ '{' }{ lv_command }{ '}' }| ).
+
+      IF lv_command_upper CS 'READ TADIR:'.
+        DATA(lv_tail) = lv_command.
+        SHIFT lv_tail UP TO ':'.
+        SHIFT lv_tail LEFT DELETING LEADING ':'.
+        CONDENSE lv_tail.
+
+        DATA lt_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+        SPLIT lv_tail AT space INTO TABLE lt_parts.
+        DELETE lt_parts WHERE table_line IS INITIAL.
+
+        IF lines( lt_parts ) >= 2.
+          ls_command-object_type = lt_parts[ 1 ].
+          ls_command-object_name = lt_parts[ 2 ].
+        ENDIF.
+      ELSEIF lv_command_upper CS 'READ: CLASS'.
+        DATA(lv_class) = lv_command.
+        SHIFT lv_class UP TO '='.
+        SHIFT lv_class LEFT DELETING LEADING '='.
+        CONDENSE lv_class.
+        ls_command-object_type = 'CLASS'.
+        ls_command-object_name = lv_class.
+      ELSEIF lv_command_upper CS 'READ METH'.
+        DATA(lv_method_ref) = lv_command.
+        REPLACE FIRST OCCURRENCE OF REGEX '^READ METH' IN lv_method_ref WITH ''.
+        CONDENSE lv_method_ref.
+        SPLIT lv_method_ref AT '=>' INTO ls_command-object_name ls_command-method_name.
+        ls_command-object_type = 'METH'.
+      ENDIF.
+
+      TRANSLATE ls_command-object_type TO UPPER CASE.
+      IF ls_command-object_name IS NOT INITIAL.
+        APPEND ls_command TO rt_commands.
+      ENDIF.
+    ENDWHILE.
+  ENDMETHOD.
+
+  METHOD resolve_read_commands.
+    DATA(lt_commands) = parse_read_commands( i_text ).
+
+    LOOP AT lt_commands INTO DATA(ls_command).
+      DATA(lv_resolved) = VALUE string( ).
+
+      CASE ls_command-object_type.
+        WHEN 'REPS' OR 'PROG'.
+          lv_resolved = read_program( ls_command-object_name ).
+        WHEN 'CLAS' OR 'CLASS'.
+          lv_resolved = read_class( ls_command-object_name ).
+        WHEN 'METH' OR 'METHOD'.
+          lv_resolved = read_method(
+            i_class  = ls_command-object_name
+            i_method = ls_command-method_name ).
+      ENDCASE.
+
+      IF lv_resolved IS NOT INITIAL.
+        IF rv_text IS NOT INITIAL.
+          rv_text = rv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline.
+        ENDIF.
+
+        rv_text = rv_text
+               && |Resolved { ls_command-raw_command }:|
+               && cl_abap_char_utilities=>newline
+               && lv_resolved.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD extract_read_command_text.
+    DATA(lt_commands) = parse_read_commands( i_text ).
+
+    LOOP AT lt_commands INTO DATA(ls_command).
+      IF rv_text IS NOT INITIAL.
+        rv_text = rv_text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_text = rv_text && ls_command-raw_command.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD read_program.
+    DATA lt_source TYPE tt_source.
+    DATA lv_program TYPE progname.
+
+    lv_program = i_program.
+    TRANSLATE lv_program TO UPPER CASE.
+    CONDENSE lv_program.
+
+    READ REPORT lv_program INTO lt_source.
+    IF sy-subrc <> 0.
+      rv_text = |Source for program { lv_program } was not found or cannot be read.|.
+      RETURN.
+    ENDIF.
+
+    rv_text = |Source for program { lv_program }:|
+           && cl_abap_char_utilities=>newline
+           && format_source( lt_source ).
+  ENDMETHOD.
+
+  METHOD read_class.
+    DATA lv_class TYPE seoclskey.
+    DATA lt_methods TYPE seop_methods_w_include.
+
+    lv_class = i_class.
+    TRANSLATE lv_class TO UPPER CASE.
+    CONDENSE lv_class.
+
+    CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+      EXPORTING
+        clskey                       = lv_class
+      IMPORTING
+        includes                     = lt_methods
+      EXCEPTIONS
+        _internal_class_not_existing = 1
+        OTHERS                       = 2.
+
+    IF sy-subrc <> 0.
+      rv_text = |Class { lv_class } was not found.|.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_prefix) = class_include_prefix( lv_class ).
+
+    rv_text = |Source for class { lv_class }:|.
+
+    append_include_source(
+      EXPORTING
+        i_include = CONV progname( lv_prefix && 'CU' )
+        i_title   = 'Public section'
+      CHANGING
+        cv_text   = rv_text ).
+
+    append_include_source(
+      EXPORTING
+        i_include = CONV progname( lv_prefix && 'CI' )
+        i_title   = 'Private section'
+      CHANGING
+        cv_text   = rv_text ).
+
+    append_include_source(
+      EXPORTING
+        i_include = CONV progname( lv_prefix && 'CO' )
+        i_title   = 'Protected section'
+      CHANGING
+        cv_text   = rv_text ).
+
+    LOOP AT lt_methods INTO DATA(ls_method).
+      append_include_source(
+        EXPORTING
+          i_include = ls_method-incname
+          i_title   = |Method { ls_method-cpdkey-cpdname }|
+        CHANGING
+          cv_text   = rv_text ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD read_method.
+    DATA lv_class  TYPE seoclskey.
+    DATA lv_method TYPE seocpdname.
+    DATA lt_methods TYPE seop_methods_w_include.
+
+    lv_class = i_class.
+    lv_method = i_method.
+    TRANSLATE lv_class TO UPPER CASE.
+    TRANSLATE lv_method TO UPPER CASE.
+    CONDENSE lv_class.
+    CONDENSE lv_method.
+
+    IF lv_class IS INITIAL OR lv_method IS INITIAL.
+      rv_text = |Method command is incomplete: class={ lv_class } method={ lv_method }.|.
+      RETURN.
+    ENDIF.
+
+    CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+      EXPORTING
+        clskey                       = lv_class
+      IMPORTING
+        includes                     = lt_methods
+      EXCEPTIONS
+        _internal_class_not_existing = 1
+        OTHERS                       = 2.
+
+    IF sy-subrc <> 0.
+      rv_text = |Class { lv_class } was not found.|.
+      RETURN.
+    ENDIF.
+
+    READ TABLE lt_methods INTO DATA(ls_method)
+      WITH KEY cpdkey-cpdname = lv_method.
+    IF sy-subrc <> 0.
+      rv_text = |Method { lv_class }=>{ lv_method } was not found.|.
+      RETURN.
+    ENDIF.
+
+    rv_text = |Source for method { lv_class }=>{ lv_method }:|.
+    append_include_source(
+      EXPORTING
+        i_include = ls_method-incname
+        i_title   = |Method { lv_method }|
+      CHANGING
+        cv_text   = rv_text ).
+  ENDMETHOD.
+
+  METHOD class_include_prefix.
+    rv_prefix = i_class.
+    TRANSLATE rv_prefix TO UPPER CASE.
+    CONDENSE rv_prefix.
+
+    WHILE strlen( rv_prefix ) < 30.
+      rv_prefix = rv_prefix && '='.
+    ENDWHILE.
+  ENDMETHOD.
+
+  METHOD append_include_source.
+    DATA lt_source TYPE tt_source.
+
+    READ REPORT i_include INTO lt_source.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    cv_text = cv_text
+           && cl_abap_char_utilities=>newline
+           && cl_abap_char_utilities=>newline
+           && |--- { i_title } ({ i_include }) ---|
+           && cl_abap_char_utilities=>newline
+           && format_source( lt_source ).
+  ENDMETHOD.
+
+  METHOD format_source.
+    LOOP AT it_source INTO DATA(lv_line).
+      IF rv_text IS NOT INITIAL.
+        rv_text = rv_text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_text = rv_text && lv_line.
+    ENDLOOP.
+  ENDMETHOD.
+
+ENDCLASS.

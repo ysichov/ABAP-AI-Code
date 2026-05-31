@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_CLAS" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <VSEOCLASS>
+    <CLSNAME>ZCL_AI_MESSAGES</CLSNAME>
+    <LANGU>E</LANGU>
+    <DESCRIPT>AI Message Memory and Agent Orchestration</DESCRIPT>
+    <CATEGORY>1</CATEGORY>
+    <STATE>1</STATE>
+    <CLSCCINCL>X</CLSCCINCL>
+    <SFINALIZE></SFINALIZE>
+    <STDLIBRARY></STDLIBRARY>
+    <FIXPT>X</FIXPT>
+    <UNICODE>X</UNICODE>
+    <COMP_REUSE></COMP_REUSE>
+   </VSEOCLASS>
+  </asx:values>
+ </asx:abap>
+</abapGit>
