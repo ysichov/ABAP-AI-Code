@@ -1235,6 +1235,22 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA lv_end TYPE i.
     DATA lv_after TYPE string.
 
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN i_text
+      MATCH OFFSET lv_start
+      MATCH LENGTH lv_fence_len.
+    IF sy-subrc = 0.
+      lv_code_start = lv_start + lv_fence_len.
+      lv_after = substring( val = i_text off = lv_code_start ).
+      FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
+      IF sy-subrc <> 0.
+        rv_code = lv_after.
+      ELSE.
+        rv_code = substring( val = lv_after len = lv_end ).
+      ENDIF.
+      SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
+      RETURN.
+    ENDIF.
+
     FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN i_text
       MATCH OFFSET lv_start
       MATCH LENGTH lv_fence_len.
