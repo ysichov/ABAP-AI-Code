@@ -1141,18 +1141,6 @@ CLASS lcl_popup IMPLEMENTATION.
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = lv_create_extracted_code ).
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = 'USER_REVIEW'
-            i_prompt_type = 'COMMAND'
-            i_content     = |Manual user review required for new object: { ls_create_object_command-object_type } { ls_create_object_command-object_name }| ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = 'USER_REVIEW'
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = |Proposed new object source extracted. Show it to the user and ask for save/create approval.| ).
         ELSE.
           mo_messages->add_message(
             i_role        = 'user'
@@ -1166,11 +1154,6 @@ CLASS lcl_popup IMPLEMENTATION.
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = |No new object code extracted. LLM returned CHANGES:NO.| ).
 
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = 'USER_REVIEW'
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = |Manual user review skipped. No proposed new object code was extracted.| ).
         ENDIF.
 
         IF lv_create_object_exists = abap_true.
@@ -1210,7 +1193,7 @@ CLASS lcl_popup IMPLEMENTATION.
               i_role        = 'assistant'
               i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
               i_prompt_type = 'AGENT_RESPONSE'
-              i_content     = |CREATE_OBJECT command stub. Object was not found. Review new object diff before save/create: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+              i_content     = |CREATE_OBJECT command stub. Object was not found. Opening new object diff before save/create: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
 
             mo_messages->add_message(
               i_role        = 'user'
