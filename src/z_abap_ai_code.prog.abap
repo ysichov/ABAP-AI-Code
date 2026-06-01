@@ -765,49 +765,6 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_extracted_code ).
 
-        IF lv_extracted_code IS NOT INITIAL.
-          DATA(lv_auto_review_prompt) = zcl_ai_agents_prompts=>get_code_review_prompt( )
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |ORIGINAL USER PROMPT:|
-             && cl_abap_char_utilities=>newline
-             && lv_effective_prompt
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |ORIGINAL CODE:|
-             && cl_abap_char_utilities=>newline
-             && mo_messages->get_resolved_code( )
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |CHANGED CODE:|
-             && cl_abap_char_utilities=>newline
-             && lv_extracted_code.
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
-            i_prompt_type = 'AGENT_PROMPT'
-            i_content     = lv_auto_review_prompt ).
-
-          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-            EXPORTING percentage = 90
-                      text       = 'Asking code review agent...'.
-
-          DATA(lv_auto_review_answer) = zcl_code_ai_api=>ask(
-            i_prompt           = lv_auto_review_prompt
-            i_dest             = mv_dest
-            i_model            = mv_model
-            i_apikey           = mv_apikey
-            i_provider         = mv_provider
-            i_prompt_cache_key = mv_prompt_cache_key ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
-            i_prompt_type = 'LLM_RESPONSE'
-            i_content     = lv_auto_review_answer ).
-        ENDIF.
-
         mo_messages->add_message(
           i_role        = 'user'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
