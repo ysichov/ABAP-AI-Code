@@ -246,6 +246,22 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
+      IF ls_request-relevant_prompt IS NOT INITIAL.
+        IF ls_request-object_type IS NOT INITIAL
+        AND ls_request-object_name IS NOT INITIAL.
+          DATA(lv_raw_relevant_prompt) = ls_request-raw_command.
+          REPLACE FIRST OCCURRENCE OF REGEX '^\{\s*AGENT\s*:\s*\S+\s+\S+\s+\S+\s*'
+            IN lv_raw_relevant_prompt WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '\}\s*$'
+            IN lv_raw_relevant_prompt WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '^\s+' IN lv_raw_relevant_prompt WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '\s+$' IN lv_raw_relevant_prompt WITH ''.
+          IF lv_raw_relevant_prompt IS NOT INITIAL.
+            ls_request-relevant_prompt = lv_raw_relevant_prompt.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
       APPEND ls_request TO rt_requests.
     ENDWHILE.
   ENDMETHOD.
