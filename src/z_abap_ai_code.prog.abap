@@ -286,6 +286,7 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA lt_create_object_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_save_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lv_ignored_context TYPE string.
+      DATA lv_has_agent_followup_text TYPE abap_bool.
 
       IF lv_orchestrator_read_commands IS NOT INITIAL.
         lv_orchestrator_code_context = resolve_and_log_read_commands(
@@ -356,6 +357,10 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'LLM_RESPONSE'
           i_content     = lv_agent_answer ).
 
+        IF mo_messages->has_text_after_agent_commands( lv_agent_answer ) = abap_true.
+          lv_has_agent_followup_text = abap_true.
+        ENDIF.
+
         lv_ignored_context = resolve_and_log_read_commands(
           EXPORTING
             i_text           = lv_agent_answer
@@ -382,6 +387,10 @@ CLASS lcl_popup IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
           i_prompt_type = 'LLM_RESPONSE'
           i_content     = lv_batched_agent_answer ).
+
+        IF mo_messages->has_text_after_agent_commands( lv_batched_agent_answer ) = abap_true.
+          lv_has_agent_followup_text = abap_true.
+        ENDIF.
 
         lv_ignored_context = resolve_and_log_read_commands(
           EXPORTING
@@ -441,6 +450,10 @@ CLASS lcl_popup IMPLEMENTATION.
       ENDLOOP.
 
       IF mo_messages->has_text_after_agent_commands( lv_orchestrator_answer ) = abap_true.
+        lv_only_code_search = abap_false.
+      ENDIF.
+
+      IF lv_has_agent_followup_text = abap_true.
         lv_only_code_search = abap_false.
       ENDIF.
 
