@@ -461,9 +461,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
         lv_has_code_search = abap_true.
       ENDIF.
 
-      IF ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_review
-      OR lv_content_upper CS 'CODE_REVIEW'
-      OR lv_content_upper CS 'CODE REVIEW'.
+      IF ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_review.
         lv_has_code_review = abap_true.
       ENDIF.
     ENDLOOP.

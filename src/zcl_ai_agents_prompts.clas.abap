@@ -88,6 +88,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
              && cl_abap_char_utilities=>newline
              && |If requested a code review - \{AGENT:CODE_REVIEW object_type object_name\}.|
+             && |Do not add CODE_REVIEW for CREATE_OBJECT. CREATE_OBJECT uses CODE_DIFF for manual user review before save/create.|
              && cl_abap_char_utilities=>newline
              && |If the user asks to show table contents or find some information, |
              && |request the agent:\{AGENT:DATA_SEARCH + the relevant part of the prompt with the request.\}|

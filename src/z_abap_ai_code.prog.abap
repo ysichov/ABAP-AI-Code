@@ -661,6 +661,13 @@ CLASS lcl_popup IMPLEMENTATION.
 
     DATA(lv_prompt_check) = lv_prompt.
     CONDENSE lv_prompt_check.
+    DATA(lv_user_prompt_upper) = lv_prompt.
+    TRANSLATE lv_user_prompt_upper TO UPPER CASE.
+    DATA(lv_user_requested_review) = xsdbool(
+      lv_user_prompt_upper CS 'CODE_REVIEW'
+      OR lv_user_prompt_upper CS 'CODE REVIEW'
+      OR lv_user_prompt_upper CS 'REVIEW'
+      OR lv_user_prompt_upper CS 'РЕВЬЮ' ).
 
     IF lv_prompt_check IS INITIAL.
       MESSAGE 'Please enter a question' TYPE 'I'.
@@ -848,7 +855,15 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
-          APPEND ls_agent_request TO lt_batched_code_review.
+          IF lv_user_requested_review = abap_true.
+            APPEND ls_agent_request TO lt_batched_code_review.
+          ELSE.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CODE_REVIEW ignored. User did not explicitly request review.| ).
+          ENDIF.
           CONTINUE.
         ENDIF.
 
@@ -934,7 +949,9 @@ CLASS lcl_popup IMPLEMENTATION.
             ct_done_commands = lt_done_read_commands ).
       ENDLOOP.
 
-      IF lt_batched_code_review IS NOT INITIAL AND lv_has_code_change = abap_false.
+      IF lt_batched_code_review IS NOT INITIAL
+      AND lv_has_code_change = abap_false
+      AND lv_has_create_object = abap_false.
         LOOP AT lt_batched_code_review INTO DATA(ls_review_request).
           DATA(lv_review_read_command) = mo_messages->build_read_command( ls_review_request ).
           IF lv_review_read_command IS INITIAL.
@@ -991,7 +1008,9 @@ CLASS lcl_popup IMPLEMENTATION.
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
         lv_answer_log = lv_answer.
-      ELSEIF lt_batched_code_review IS NOT INITIAL AND lv_has_code_change = abap_false.
+      ELSEIF lt_batched_code_review IS NOT INITIAL
+        AND lv_has_code_change = abap_false
+        AND lv_has_create_object = abap_false.
         lv_answer = lv_review_answer.
         lv_answer_log = lv_answer.
         lv_resolved_code = mo_messages->get_resolved_code( ).
