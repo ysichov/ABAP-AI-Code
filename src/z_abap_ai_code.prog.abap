@@ -301,6 +301,11 @@ CLASS lcl_popup IMPLEMENTATION.
           lv_percentage = 20 + ( lv_index * 50 / lv_total ).
         ENDIF.
 
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
+          APPEND ls_agent_request TO lt_batched_code_search.
+          CONTINUE.
+        ENDIF.
+
         DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
         IF lv_direct_read_command IS NOT INITIAL.
           READ TABLE lt_done_read_commands
@@ -336,11 +341,6 @@ CLASS lcl_popup IMPLEMENTATION.
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = lv_direct_code_context ).
 
-          CONTINUE.
-        ENDIF.
-
-        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
-          APPEND ls_agent_request TO lt_batched_code_search.
           CONTINUE.
         ENDIF.
 
