@@ -28,6 +28,7 @@ private section.
              completion_tokens TYPE string,
              total_tokens   TYPE string,
              cached_tokens  TYPE string,
+             duration_seconds TYPE string,
              request_preview TYPE string,
              answer_preview TYPE string,
              request        TYPE string,
@@ -133,6 +134,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         ls_row-owner = ls_message-agent.
         ls_row-request_type = lv_request_type.
         ls_row-answer_type = ls_message-prompt_type.
+        ls_row-duration_seconds = ls_message-duration_seconds.
         ls_row-request = lv_request.
         ls_row-answer = ls_message-content.
         IF ls_row-owner IS INITIAL.
@@ -141,11 +143,14 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         IF ls_row-session_id IS INITIAL.
           ls_row-session_id = lv_request_session.
         ENDIF.
-        extract_usage(
-          EXPORTING
-            i_text = ls_row-answer
-          CHANGING
-            cs_row = ls_row ).
+        IF ls_row-answer_type = 'LLM_RESPONSE'
+        OR ls_row-duration_seconds IS NOT INITIAL.
+          extract_usage(
+            EXPORTING
+              i_text = ls_row-answer
+            CHANGING
+              cs_row = ls_row ).
+        ENDIF.
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.
         DATA(lv_answer_key) = lv_answer_upper.
@@ -232,6 +237,8 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
     CLEAR ls_fc. ls_fc-fieldname = 'TOTAL_TOKENS'. ls_fc-coltext = 'Total'.
     ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
     CLEAR ls_fc. ls_fc-fieldname = 'CACHED_TOKENS'. ls_fc-coltext = 'Cached'.
+    ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
+    CLEAR ls_fc. ls_fc-fieldname = 'DURATION_SECONDS'. ls_fc-coltext = 'Sec'.
     ls_fc-outputlen = 8. ls_fc-just = 'R'. APPEND ls_fc TO lt_fcat.
     CLEAR ls_fc. ls_fc-fieldname = 'REQUEST_PREVIEW'. ls_fc-coltext = 'Request'.
     ls_fc-outputlen = 45. APPEND ls_fc TO lt_fcat.

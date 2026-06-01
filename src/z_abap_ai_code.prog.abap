@@ -53,6 +53,7 @@ CLASS lcl_popup DEFINITION.
           mo_question TYPE REF TO cl_gui_textedit,
           mo_answer   TYPE REF TO cl_gui_html_viewer.
     DATA: mv_diff_base_html TYPE string,
+          mv_last_llm_seconds TYPE string,
           mv_diff_key TYPE string,
           mv_diff_save_stub_logged TYPE abap_bool,
           mt_diff_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info,
@@ -75,6 +76,9 @@ CLASS lcl_popup DEFINITION.
       IMPORTING action getdata postdata.
 
     METHODS ask_ai.
+    METHODS ask_llm
+      IMPORTING i_prompt        TYPE string
+      RETURNING VALUE(rv_answer) TYPE string.
     METHODS should_use_task_orchestrator
       IMPORTING i_prompt TYPE string
       RETURNING VALUE(rv_use) TYPE abap_bool.
@@ -407,18 +411,13 @@ CLASS lcl_popup IMPLEMENTATION.
 
     IF lt_tasks IS INITIAL.
       DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
-      lv_orchestrator_answer = zcl_code_ai_api=>ask(
-        i_prompt           = lv_orchestrator_prompt
-        i_dest             = mv_dest
-        i_model            = mv_model
-        i_apikey           = mv_apikey
-        i_provider         = mv_provider
-        i_prompt_cache_key = mv_prompt_cache_key ).
+      lv_orchestrator_answer = ask_llm( lv_orchestrator_prompt ).
 
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
         i_prompt_type = 'LLM_RESPONSE'
+        i_duration_seconds = mv_last_llm_seconds
         i_content     = lv_orchestrator_answer ).
     ELSE.
       DATA(lv_task_count) = lines( lt_tasks ).
@@ -439,18 +438,13 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'SYSTEM_PROMPT'
           i_content     = lv_task_orchestrator_prompt ).
 
-        DATA(lv_task_orchestrator_answer) = zcl_code_ai_api=>ask(
-          i_prompt           = lv_task_orchestrator_prompt
-          i_dest             = mv_dest
-          i_model            = mv_model
-          i_apikey           = mv_apikey
-          i_provider         = mv_provider
-          i_prompt_cache_key = mv_prompt_cache_key ).
+        DATA(lv_task_orchestrator_answer) = ask_llm( lv_task_orchestrator_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
           i_prompt_type = 'LLM_RESPONSE'
+          i_duration_seconds = mv_last_llm_seconds
           i_content     = lv_task_orchestrator_answer ).
 
         IF lv_orchestrator_answer IS NOT INITIAL.
@@ -469,6 +463,7 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA(lv_answer) = lv_orchestrator_answer.
     DATA(lv_answer_log) = lv_answer.
     DATA lv_resolved_code TYPE string.
+    DATA lv_final_duration_seconds TYPE string.
 
     IF lt_agent_requests IS INITIAL
     AND lv_orchestrator_read_commands IS INITIAL
@@ -612,18 +607,13 @@ CLASS lcl_popup IMPLEMENTATION.
                     text       = |Asking agent { ls_agent_request-agent }...|.
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
-        DATA(lv_agent_answer) = zcl_code_ai_api=>ask(
-          i_prompt           = lv_agent_prompt
-          i_dest             = mv_dest
-          i_model            = mv_model
-          i_apikey           = mv_apikey
-          i_provider         = mv_provider
-          i_prompt_cache_key = mv_prompt_cache_key ).
+        DATA(lv_agent_answer) = ask_llm( lv_agent_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = ls_agent_request-agent
           i_prompt_type = 'LLM_RESPONSE'
+          i_duration_seconds = mv_last_llm_seconds
           i_content     = lv_agent_answer ).
 
         IF mo_messages->has_text_after_agent_commands( lv_agent_answer ) = abap_true.
@@ -666,18 +656,13 @@ CLASS lcl_popup IMPLEMENTATION.
                     text       = 'Asking code review agent...'.
 
         DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
-        DATA(lv_review_answer) = zcl_code_ai_api=>ask(
-          i_prompt           = lv_review_prompt
-          i_dest             = mv_dest
-          i_model            = mv_model
-          i_apikey           = mv_apikey
-          i_provider         = mv_provider
-          i_prompt_cache_key = mv_prompt_cache_key ).
+        DATA(lv_review_answer) = ask_llm( lv_review_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
           i_prompt_type = 'LLM_RESPONSE'
+          i_duration_seconds = mv_last_llm_seconds
           i_content     = lv_review_answer ).
       ENDIF.
 
@@ -732,13 +717,8 @@ CLASS lcl_popup IMPLEMENTATION.
 
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_effective_prompt ).
-        lv_answer = zcl_code_ai_api=>ask(
-          i_prompt           = lv_final_prompt
-          i_dest             = mv_dest
-          i_model            = mv_model
-          i_apikey           = mv_apikey
-          i_provider         = mv_provider
-          i_prompt_cache_key = mv_prompt_cache_key ).
+        lv_answer = ask_llm( lv_final_prompt ).
+        lv_final_duration_seconds = mv_last_llm_seconds.
         lv_answer_log = lv_answer.
 
         lv_resolved_code = mo_messages->get_resolved_code( ).
@@ -748,6 +728,7 @@ CLASS lcl_popup IMPLEMENTATION.
         i_role        = 'assistant'
         i_agent       = 'FINAL'
         i_prompt_type = 'FINAL_ANSWER'
+        i_duration_seconds = lv_final_duration_seconds
         i_content     = lv_answer_log ).
 
       IF lv_has_code_change = abap_true AND lv_agent_error IS INITIAL.
@@ -936,6 +917,28 @@ CLASS lcl_popup IMPLEMENTATION.
       i_source = lv_resolved_code ).
   ENDMETHOD.
 
+  METHOD ask_llm.
+    DATA lv_start TYPE i.
+    DATA lv_end TYPE i.
+    DATA lv_elapsed TYPE p LENGTH 16 DECIMALS 2.
+
+    CLEAR mv_last_llm_seconds.
+    GET RUN TIME FIELD lv_start.
+
+    rv_answer = zcl_code_ai_api=>ask(
+      i_prompt           = i_prompt
+      i_dest             = mv_dest
+      i_model            = mv_model
+      i_apikey           = mv_apikey
+      i_provider         = mv_provider
+      i_prompt_cache_key = mv_prompt_cache_key ).
+
+    GET RUN TIME FIELD lv_end.
+    lv_elapsed = ( lv_end - lv_start ) / 1000000.
+    mv_last_llm_seconds = |{ lv_elapsed }|.
+    CONDENSE mv_last_llm_seconds.
+  ENDMETHOD.
+
   METHOD should_use_task_orchestrator.
     DATA(lv_prompt_upper) = i_prompt.
     TRANSLATE lv_prompt_upper TO UPPER CASE.
@@ -972,18 +975,13 @@ CLASS lcl_popup IMPLEMENTATION.
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = lv_task_prompt ).
 
-    DATA(lv_task_answer) = zcl_code_ai_api=>ask(
-      i_prompt           = lv_task_prompt
-      i_dest             = mv_dest
-      i_model            = mv_model
-      i_apikey           = mv_apikey
-      i_provider         = mv_provider
-      i_prompt_cache_key = mv_prompt_cache_key ).
+    DATA(lv_task_answer) = ask_llm( lv_task_prompt ).
 
     mo_messages->add_message(
       i_role        = 'assistant'
       i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
       i_prompt_type = 'LLM_RESPONSE'
+      i_duration_seconds = mv_last_llm_seconds
       i_content     = lv_task_answer ).
 
     rt_tasks = split_task_list( lv_task_answer ).

@@ -11,6 +11,7 @@ CLASS zcl_ai_messages DEFINITION
         role        TYPE string,
         agent       TYPE string,
         prompt_type TYPE string,
+        duration_seconds TYPE string,
         content     TYPE string,
       END OF ty_message,
       tt_messages TYPE STANDARD TABLE OF ty_message WITH NON-UNIQUE DEFAULT KEY,
@@ -37,6 +38,7 @@ CLASS zcl_ai_messages DEFINITION
       IMPORTING i_role    TYPE string
                 i_agent   TYPE string OPTIONAL
                 i_prompt_type TYPE string OPTIONAL
+                i_duration_seconds TYPE string OPTIONAL
                 i_content TYPE string.
 
     METHODS parse_agent_requests
@@ -122,6 +124,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       role        = i_role
       agent       = i_agent
       prompt_type = i_prompt_type
+      duration_seconds = i_duration_seconds
       content     = i_content ) TO mt_messages.
   ENDMETHOD.
 
