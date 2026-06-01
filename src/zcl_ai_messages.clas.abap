@@ -258,6 +258,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
           REPLACE FIRST OCCURRENCE OF REGEX '\}\s*$'
             IN lv_raw_relevant_prompt WITH ''.
           REPLACE FIRST OCCURRENCE OF REGEX '^\s+' IN lv_raw_relevant_prompt WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '^\+\s*' IN lv_raw_relevant_prompt WITH ''.
           REPLACE FIRST OCCURRENCE OF REGEX '\s+$' IN lv_raw_relevant_prompt WITH ''.
           IF lv_raw_relevant_prompt IS NOT INITIAL.
             ls_request-relevant_prompt = lv_raw_relevant_prompt.
@@ -367,7 +368,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
     CHECK is_request-object_name IS NOT INITIAL.
 
     CASE is_request-object_type.
-      WHEN 'REPS' OR 'PROG'.
+      WHEN 'REPS' OR 'PROG' OR 'PROGRAM' OR 'REPORT'.
         rv_command = |{ '{' }READ TADIR: REPS { is_request-object_name }{ '}' }|.
       WHEN 'CLAS' OR 'CLASS'.
         rv_command = |{ '{' }READ: CLASS = { is_request-object_name }{ '}' }|.

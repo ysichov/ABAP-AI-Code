@@ -8,9 +8,10 @@ Never lose the user's extra prompt or task text. Add it after the AGENT command.
 Skip the prompt text only when the user asks only to show code. In all other cases, keep the user prompt.
 If the user asks to describe, explain, analyze, or summarize code, do not omit that request.
 
-If the user asks for code, use:
+If the user asks for show the code, use:
 {AGENT:CODE_SEARCH object_type object_name relevant_prompt_part}
 
+IF user didn't write type of object - think that it is a program. If object name starts with ZCL - this is a Class.
 CODE_SEARCH is a runtime command, not an LLM agent.
 
 Never modify real source text by inserting AGENT strings. Analyze only the user's free text.
