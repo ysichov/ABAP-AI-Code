@@ -257,6 +257,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       DATA lt_save_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
+      DATA(lv_has_task_prompt_context) = xsdbool( lt_tasks IS NOT INITIAL ).
       DATA lv_has_code_change TYPE abap_bool.
       DATA lv_has_create_object TYPE abap_bool.
       DATA lv_has_code_diff TYPE abap_bool.
@@ -299,14 +300,17 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
 
-            IF ls_agent_request-relevant_prompt IS INITIAL.
+            IF ls_agent_request-relevant_prompt IS INITIAL
+            AND lv_has_task_prompt_context = abap_false.
               lv_has_show_command = abap_true.
             ELSE.
               lv_has_agent_followup_text = abap_true.
-              IF lv_final_prompt_tasks IS NOT INITIAL.
-                lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+              IF ls_agent_request-relevant_prompt IS NOT INITIAL.
+                IF lv_final_prompt_tasks IS NOT INITIAL.
+                  lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+                ENDIF.
+                lv_final_prompt_tasks = lv_final_prompt_tasks && ls_agent_request-relevant_prompt.
               ENDIF.
-              lv_final_prompt_tasks = lv_final_prompt_tasks && ls_agent_request-relevant_prompt.
             ENDIF.
           ENDIF.
 
