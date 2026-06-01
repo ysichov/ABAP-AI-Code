@@ -75,6 +75,18 @@ CLASS lcl_popup DEFINITION.
       IMPORTING action getdata postdata.
 
     METHODS ask_ai.
+    METHODS should_use_task_orchestrator
+      IMPORTING i_prompt TYPE string
+      RETURNING VALUE(rv_use) TYPE abap_bool.
+    METHODS prepare_task_list
+      IMPORTING i_prompt TYPE string
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
+    METHODS split_task_list
+      IMPORTING i_text TYPE string
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
+    METHODS enrich_tasks_with_answers
+      IMPORTING it_tasks TYPE tt_strings
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
     METHODS show_history.
     METHODS resolve_and_log_read_commands
       IMPORTING i_text            TYPE string
@@ -367,23 +379,69 @@ CLASS lcl_popup IMPLEMENTATION.
       i_user_prompt = lv_prompt
       i_session_id  = mv_session_counter ).
 
+    DATA(lt_tasks) = prepare_task_list( lv_prompt ).
+
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 20 text = 'Asking orchestrator...'.
 
-    DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
-    DATA(lv_orchestrator_answer) = zcl_code_ai_api=>ask(
-      i_prompt           = lv_orchestrator_prompt
-      i_dest             = mv_dest
-      i_model            = mv_model
-      i_apikey           = mv_apikey
-      i_provider         = mv_provider
-      i_prompt_cache_key = mv_prompt_cache_key ).
+    DATA lv_orchestrator_answer TYPE string.
 
-    mo_messages->add_message(
-      i_role        = 'assistant'
-      i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
-      i_prompt_type = 'LLM_RESPONSE'
-      i_content     = lv_orchestrator_answer ).
+    IF lt_tasks IS INITIAL.
+      DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
+      lv_orchestrator_answer = zcl_code_ai_api=>ask(
+        i_prompt           = lv_orchestrator_prompt
+        i_dest             = mv_dest
+        i_model            = mv_model
+        i_apikey           = mv_apikey
+        i_provider         = mv_provider
+        i_prompt_cache_key = mv_prompt_cache_key ).
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
+        i_prompt_type = 'LLM_RESPONSE'
+        i_content     = lv_orchestrator_answer ).
+    ELSE.
+      DATA(lv_task_count) = lines( lt_tasks ).
+      LOOP AT lt_tasks INTO DATA(lv_task).
+        DATA(lv_task_idx) = sy-tabix.
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+          EXPORTING percentage = 10 + ( lv_task_idx * 20 / lv_task_count )
+                    text       = |Asking orchestrator for task { lv_task_idx }...|.
+
+        DATA(lv_task_orchestrator_prompt) = zcl_ai_agents_prompts=>get_orchestrator_prompt( )
+          && cl_abap_char_utilities=>newline
+          && cl_abap_char_utilities=>newline
+          && |ORIGINAL USER PROMPT: { lv_prompt }|
+          && cl_abap_char_utilities=>newline
+          && |PROMPT: { lv_task }|.
+
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
+          i_prompt_type = 'SYSTEM_PROMPT'
+          i_content     = lv_task_orchestrator_prompt ).
+
+        DATA(lv_task_orchestrator_answer) = zcl_code_ai_api=>ask(
+          i_prompt           = lv_task_orchestrator_prompt
+          i_dest             = mv_dest
+          i_model            = mv_model
+          i_apikey           = mv_apikey
+          i_provider         = mv_provider
+          i_prompt_cache_key = mv_prompt_cache_key ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
+          i_prompt_type = 'LLM_RESPONSE'
+          i_content     = lv_task_orchestrator_answer ).
+
+        IF lv_orchestrator_answer IS NOT INITIAL.
+          lv_orchestrator_answer = lv_orchestrator_answer && cl_abap_char_utilities=>newline.
+        ENDIF.
+        lv_orchestrator_answer = lv_orchestrator_answer && lv_task_orchestrator_answer.
+      ENDLOOP.
+    ENDIF.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
     DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
@@ -815,6 +873,170 @@ CLASS lcl_popup IMPLEMENTATION.
       i_source = lv_resolved_code ).
   ENDMETHOD.
 
+  METHOD should_use_task_orchestrator.
+    DATA(lv_prompt_upper) = i_prompt.
+    TRANSLATE lv_prompt_upper TO UPPER CASE.
+
+    rv_use = xsdbool(
+      lv_prompt_upper CS 'ИЗМЕН'
+      OR lv_prompt_upper CS 'ДОБАВ'
+      OR lv_prompt_upper CS 'КОММЕНТ'
+      OR lv_prompt_upper CS 'ПЕРЕПИШ'
+      OR lv_prompt_upper CS 'ОБНОВ'
+      OR lv_prompt_upper CS 'СОХРАН'
+      OR lv_prompt_upper CS 'CREATE'
+      OR lv_prompt_upper CS 'CHANGE'
+      OR lv_prompt_upper CS 'COMMENT'
+      OR lv_prompt_upper CS 'MODIFY'
+      OR lv_prompt_upper CS 'UPDATE'
+      OR lv_prompt_upper CS 'REWRITE'
+      OR lv_prompt_upper CS 'REFACTOR'
+      OR lv_prompt_upper CS 'SAVE' ).
+  ENDMETHOD.
+
+  METHOD prepare_task_list.
+    CHECK should_use_task_orchestrator( i_prompt ) = abap_true.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
+
+    DATA(lv_task_prompt) = zcl_ai_agents_prompts=>get_task_orchestrator_prompt( )
+                          && cl_abap_char_utilities=>newline
+                          && i_prompt.
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+      i_prompt_type = 'AGENT_PROMPT'
+      i_content     = lv_task_prompt ).
+
+    DATA(lv_task_answer) = zcl_code_ai_api=>ask(
+      i_prompt           = lv_task_prompt
+      i_dest             = mv_dest
+      i_model            = mv_model
+      i_apikey           = mv_apikey
+      i_provider         = mv_provider
+      i_prompt_cache_key = mv_prompt_cache_key ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+      i_prompt_type = 'LLM_RESPONSE'
+      i_content     = lv_task_answer ).
+
+    rt_tasks = split_task_list( lv_task_answer ).
+    rt_tasks = enrich_tasks_with_answers( rt_tasks ).
+  ENDMETHOD.
+
+  METHOD split_task_list.
+    DATA(lv_text) = i_text.
+    DATA(lv_nl) = cl_abap_char_utilities=>newline.
+
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_text WITH lv_nl.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+(TASK\s*[0-9]+(\.[0-9]+)?(\s*-\s*ASK\s*[0-9]+|-ASK[0-9]+)?:)'
+      IN lv_text WITH |{ lv_nl }$1|.
+
+    DATA lt_lines TYPE tt_strings.
+    SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      CONDENSE lv_line.
+      DATA(lv_line_upper) = lv_line.
+      TRANSLATE lv_line_upper TO UPPER CASE.
+      CHECK lv_line_upper CP 'TASK*'.
+      APPEND lv_line TO rt_tasks.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD enrich_tasks_with_answers.
+    rt_tasks = it_tasks.
+
+    LOOP AT it_tasks INTO DATA(lv_task_line).
+      DATA(lv_task_upper) = lv_task_line.
+      TRANSLATE lv_task_upper TO UPPER CASE.
+      CHECK lv_task_upper CS '-ASK'.
+
+      DATA(lv_colon_off) = 0.
+      FIND FIRST OCCURRENCE OF ':' IN lv_task_line MATCH OFFSET lv_colon_off.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_ask_key) = substring( val = lv_task_line len = lv_colon_off ).
+      DATA(lv_question_start) = lv_colon_off + 1.
+      DATA(lv_question) = substring( val = lv_task_line off = lv_question_start ).
+      CONDENSE lv_ask_key.
+      CONDENSE lv_question.
+
+      DATA(lv_base_key) = lv_ask_key.
+      REPLACE FIRST OCCURRENCE OF REGEX '\s*-\s*ASK\s*[0-9]+$' IN lv_base_key WITH ''.
+      REPLACE FIRST OCCURRENCE OF REGEX '-ASK[0-9]+$' IN lv_base_key WITH ''.
+      CONDENSE lv_base_key.
+
+      DATA lt_fields TYPE TABLE OF sval.
+      APPEND VALUE #(
+        tabname   = 'TLINE'
+        fieldname = 'TDLINE'
+        value     = '' ) TO lt_fields.
+
+      CALL FUNCTION 'POPUP_GET_VALUES'
+        EXPORTING
+          popup_title = CONV text80( |{ lv_ask_key }: { lv_question }| )
+        TABLES
+          fields      = lt_fields
+        EXCEPTIONS
+          error_in_fields = 1
+          OTHERS          = 2.
+
+      DATA(lv_answer) = VALUE string( ).
+      IF sy-subrc = 0.
+        READ TABLE lt_fields INTO DATA(ls_field) INDEX 1.
+        IF sy-subrc = 0.
+          lv_answer = ls_field-value.
+          CONDENSE lv_answer.
+        ENDIF.
+      ENDIF.
+
+      IF lv_answer IS INITIAL.
+        MESSAGE |Task clarification skipped: { lv_ask_key }| TYPE 'S'.
+        CONTINUE.
+      ENDIF.
+
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+        i_prompt_type = 'TASK_ANSWER'
+        i_content     = |{ lv_ask_key }: { lv_question } -> { lv_answer }| ).
+
+      LOOP AT rt_tasks ASSIGNING FIELD-SYMBOL(<task_to_enrich>).
+        DATA(lv_enrich_upper) = <task_to_enrich>.
+        TRANSLATE lv_enrich_upper TO UPPER CASE.
+        CHECK NOT lv_enrich_upper CS '-ASK'.
+
+        DATA(lv_current_key) = <task_to_enrich>.
+        FIND FIRST OCCURRENCE OF ':' IN lv_current_key MATCH OFFSET DATA(lv_current_colon).
+        IF sy-subrc = 0.
+          lv_current_key = substring( val = lv_current_key len = lv_current_colon ).
+        ENDIF.
+        CONDENSE lv_current_key.
+
+        IF lv_current_key = lv_base_key.
+          <task_to_enrich> = <task_to_enrich>
+                          && | Clarification for { lv_ask_key }: { lv_question } Answer: { lv_answer }|.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    DATA lt_filtered_tasks TYPE tt_strings.
+    LOOP AT rt_tasks INTO DATA(lv_filtered_task).
+      DATA(lv_filtered_upper) = lv_filtered_task.
+      TRANSLATE lv_filtered_upper TO UPPER CASE.
+      CHECK NOT lv_filtered_upper CS '-ASK'.
+      APPEND lv_filtered_task TO lt_filtered_tasks.
+    ENDLOOP.
+    rt_tasks = lt_filtered_tasks.
+  ENDMETHOD.
+
   METHOD show_history.
     IF mt_message_history IS INITIAL.
       MESSAGE 'No message history yet' TYPE 'I'.
@@ -865,14 +1087,17 @@ CLASS lcl_popup IMPLEMENTATION.
 
     LOOP AT lt_commands INTO DATA(ls_command).
       DATA(lv_read_command) = ls_command-raw_command.
+      DATA(lv_read_command_key) = lv_read_command.
+      TRANSLATE lv_read_command_key TO UPPER CASE.
+      CONDENSE lv_read_command_key.
 
       READ TABLE ct_done_commands
-        WITH KEY table_line = lv_read_command
+        WITH KEY table_line = lv_read_command_key
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.
-      APPEND lv_read_command TO ct_done_commands.
+      APPEND lv_read_command_key TO ct_done_commands.
 
       DATA(lv_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_read_command ).
 

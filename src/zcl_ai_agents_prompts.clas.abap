@@ -6,6 +6,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
   PUBLIC SECTION.
     CONSTANTS:
       c_agent_orchestrator TYPE string VALUE 'ORCHESTRATOR',
+      c_agent_task_orchestrator TYPE string VALUE 'TASK_ORCHESTRATOR',
       c_agent_code_search  TYPE string VALUE 'CODE_SEARCH',
       c_agent_code_change  TYPE string VALUE 'CODE_CHANGE',
       c_agent_code_review  TYPE string VALUE 'CODE_REVIEW',
@@ -17,6 +18,12 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_code_reader  TYPE string VALUE 'CODE_READER'.
 
     CLASS-METHODS get_orchestrator_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
+    CLASS-METHODS get_system_prompt_prefix
+      RETURNING VALUE(rv_prompt) TYPE string.
+
+    CLASS-METHODS get_task_orchestrator_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
     CLASS-METHODS get_code_agent_prompt
@@ -47,8 +54,17 @@ ENDCLASS.
 CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
 
+  METHOD get_system_prompt_prefix.
+    rv_prompt = |We are in an SAP system. The programming language is ABAP. |
+             && |Work only with SAP/ABAP objects, source code, packages, transports, and runtime context.|
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline.
+  ENDMETHOD.
+
+
   METHOD get_orchestrator_prompt.
-    rv_prompt = |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
+    rv_prompt = get_system_prompt_prefix( )
+    && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
     && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
     && |CODE_SEARCH is a runtime command, not an LLM agent. |
              && cl_abap_char_utilities=>newline
@@ -98,9 +114,53 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Example: delete something - deletion is not supported|.
   ENDMETHOD.
 
+  METHOD get_task_orchestrator_prompt.
+    rv_prompt = get_system_prompt_prefix( )
+             && |Ты оркестратор задач. Проанализируй внимательно ПРОМПТ и разбей его на задачи и подзадачи. |
+             && |Например TASK1, TASK2.5. |
+             && cl_abap_char_utilities=>newline
+             && |Если какая-то задача непонятна, задай к ней уточняющие вопросы. Формат: TASK1-ASK1. |
+             && cl_abap_char_utilities=>newline
+             && |Своих задач не придумывай кроме обязательных технических задач типа: прочитать код программы имя_программы, |
+             && |после изменений провести get_diff изменений, сохранить изменения. |
+             && cl_abap_char_utilities=>newline
+             && |get_diff всегда до сохранения. Сохранение только после аппрува в агенте CODE_REVIEW. |
+             && cl_abap_char_utilities=>newline
+             && |Никаких более вопросов, размышлений, описаний в начале и спецсимволов. Не делай излишнюю детализацию. |
+             && |Агент начнет выполнять твои задачи и задавать вопросы. |
+             && cl_abap_char_utilities=>newline
+             && |Если имя объекта в задаче по какой-то причине указано или распознано, переделай задачу с явным упоминанием типа и имени объекта. |
+             && |Например: программа Z_TEST, класс ZCL_TEST, метод ZCL_TEST=>GET_DATA. |
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |Example USER PROMPT: В программе z_test измени заголовок и функцию расчета прибыли|
+             && cl_abap_char_utilities=>newline
+             && |TASK1: Прочитать код программы Z_TEST.|
+             && cl_abap_char_utilities=>newline
+             && |TASK2: Найти и идентифицировать заголовочную часть программы Z_TEST.|
+             && cl_abap_char_utilities=>newline
+             && |TASK2-ASK1: Какой именно заголовок нужно изменить и на какой текст?|
+             && cl_abap_char_utilities=>newline
+             && |TASK3: Найти и идентифицировать функцию расчета прибыли в Z_TEST.|
+             && cl_abap_char_utilities=>newline
+             && |TASK3-ASK1: Какая точная формула расчета прибыли должна быть использована?|
+             && cl_abap_char_utilities=>newline
+             && |TASK4: Внести изменения в код программы Z_TEST с учетом ответов на уточняющие вопросы.|
+             && cl_abap_char_utilities=>newline
+             && |TASK5: Провести get_diff изменений в Z_TEST.|
+             && cl_abap_char_utilities=>newline
+             && |TASK6: Провести CODE_REVIEW изменений и получить approval.|
+             && cl_abap_char_utilities=>newline
+             && |TASK7: Сохранить изменения в программе Z_TEST только после approval.|
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |USER PROMPT|.
+  ENDMETHOD.
+
 
   METHOD get_code_agent_prompt.
-   rv_prompt = |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
+   rv_prompt = get_system_prompt_prefix( )
+             && |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
              && |it with the commands described below. Replace in prompt only for specific objects described here! |
              && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
@@ -143,14 +203,16 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
 
   METHOD get_data_agent_prompt.
-    rv_prompt = |You are a Senior ABAP Data Search Agent. Search for data in SAP tables and objects. |
+    rv_prompt = get_system_prompt_prefix( )
+             && |You are a Senior ABAP Data Search Agent. Search for data in SAP tables and objects. |
              && |Use table commands to query data from TADIR, TFDIR, and other system tables. |
              && |Return brief, relevant information without unnecessary details.|.
   ENDMETHOD.
 
 
   METHOD get_code_review_prompt.
-    rv_prompt = |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
+    rv_prompt = get_system_prompt_prefix( )
+             && |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
              && |Do not make an abstract review. Find concrete issues and risks. |
              && |DON'T offer improvements and suggestions. Only in case if user request it!!! |
              && |Return readable Markdown with real line breaks: put every heading, list item, paragraph, |
@@ -159,7 +221,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
 
   METHOD get_create_object_prompt.
-    rv_prompt = |You are a Senior ABAP Create Object Agent. Prepare the final instruction for creating or changing |
+    rv_prompt = get_system_prompt_prefix( )
+             && |You are a Senior ABAP Create Object Agent. Prepare the final instruction for creating or changing |
              && |an ABAP object. Keep the original language of the user request. If code context is needed, keep |
              && |the AGENT:CODE_SEARCH dependency visible so it can be resolved before the final answer. |
              && |Do not delete objects and do not perform destructive actions.|.
@@ -167,7 +230,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
 
   METHOD get_code_reader_prompt.
-    rv_prompt = |You are a Senior ABAP Code Reader Agent. Find all READ commands in the input text and resolve them. |
+    rv_prompt = get_system_prompt_prefix( )
+             && |You are a Senior ABAP Code Reader Agent. Find all READ commands in the input text and resolve them. |
              && |For \{ READ TADIR: REPS object_name \} or PROG, read the ABAP report source. |
              && |For \{ READ: CLASS = class_name \}, read class sections and method includes. |
              && |For \{ READ METH class_name=>method_name \}, read only the requested method include. |
@@ -179,6 +243,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     CASE i_agent.
       WHEN c_agent_orchestrator.
         rv_prompt = get_orchestrator_prompt( ).
+      WHEN c_agent_task_orchestrator OR 'TASK_ORCHESTRSTOR'.
+        rv_prompt = get_task_orchestrator_prompt( ).
       WHEN c_agent_code_search.
         rv_prompt = |CODE_SEARCH is a command, not an LLM agent.|.
       WHEN c_agent_code_change.
