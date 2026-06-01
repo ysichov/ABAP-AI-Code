@@ -52,6 +52,16 @@ CLASS lcl_popup DEFINITION.
           mo_split    TYPE REF TO cl_gui_splitter_container,
           mo_question TYPE REF TO cl_gui_textedit,
           mo_answer   TYPE REF TO cl_gui_html_viewer.
+    DATA: mv_diff_base_html TYPE string,
+          mv_diff_key TYPE string,
+          mv_diff_save_stub_logged TYPE abap_bool,
+          mt_diff_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info,
+          mt_diff_approved TYPE zif_ave_acr_types=>ty_approved,
+          mt_diff_declined TYPE zif_ave_acr_types=>ty_approved,
+          mt_diff_decline_notes TYPE zif_ave_acr_types=>ty_t_decline_notes,
+          mt_diff_hunk_actions TYPE zif_ave_acr_types=>ty_t_hunk_actions,
+          mt_diff_hunk_threads TYPE zif_ave_acr_types=>ty_t_hunk_threads,
+          mt_diff_acr_stats TYPE zif_ave_acr_types=>ty_t_obj_stats.
 
     METHODS on_toolbar_click
       FOR EVENT function_selected OF cl_gui_toolbar
@@ -59,6 +69,10 @@ CLASS lcl_popup DEFINITION.
 
     METHODS on_dialog_close
       FOR EVENT close OF cl_gui_dialogbox_container.
+
+    METHODS on_answer_sapevent
+      FOR EVENT sapevent OF cl_gui_html_viewer
+      IMPORTING action getdata postdata.
 
     METHODS ask_ai.
     METHODS show_history.
@@ -81,7 +95,12 @@ CLASS lcl_popup DEFINITION.
     METHODS diff_to_html
       IMPORTING i_old_code     TYPE string
                 i_new_code     TYPE string
+                i_object_type   TYPE string OPTIONAL
+                i_object_name   TYPE string OPTIONAL
       RETURNING VALUE(rv_html) TYPE string.
+    METHODS refresh_diff_html.
+    METHODS is_diff_fully_approved
+      RETURNING VALUE(rv_approved) TYPE abap_bool.
     METHODS normalize_markdown
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -206,6 +225,11 @@ CLASS lcl_popup IMPLEMENTATION.
       EXPORTING parent = lo_right
       EXCEPTIONS OTHERS = 1.
 
+    DATA lt_html_events TYPE cntl_simple_events.
+    APPEND VALUE #( eventid = cl_gui_html_viewer=>m_id_sapevent ) TO lt_html_events.
+    mo_answer->set_registered_events( lt_html_events ).
+    SET HANDLER on_answer_sapevent FOR mo_answer.
+
     CALL METHOD cl_gui_cfw=>flush.
   ENDMETHOD.
 
@@ -222,6 +246,91 @@ CLASS lcl_popup IMPLEMENTATION.
       WHEN 'HISTORY'.
         show_history( ).
     ENDCASE.
+  ENDMETHOD.
+
+  METHOD on_answer_sapevent.
+    DATA lv_cmd TYPE string.
+    DATA lv_rest TYPE string.
+    DATA lv_sep_off TYPE i.
+
+    FIND FIRST OCCURRENCE OF '~' IN action MATCH OFFSET lv_sep_off.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    lv_cmd = action(lv_sep_off).
+    DATA(lv_rest_start) = lv_sep_off + 1.
+    lv_rest = action+lv_rest_start.
+
+    CASE lv_cmd.
+      WHEN 'approve'.
+        INSERT lv_rest INTO TABLE mt_diff_approved.
+        DELETE TABLE mt_diff_declined FROM lv_rest.
+        zcl_ave_acr_state=>set_hunk_action(
+          EXPORTING
+            iv_hunk_key     = lv_rest
+            iv_action       = 'A'
+          CHANGING
+            ct_hunk_actions = mt_diff_hunk_actions ).
+
+      WHEN 'decline'.
+        INSERT lv_rest INTO TABLE mt_diff_declined.
+        DELETE TABLE mt_diff_approved FROM lv_rest.
+        zcl_ave_acr_state=>set_hunk_action(
+          EXPORTING
+            iv_hunk_key     = lv_rest
+            iv_action       = 'D'
+          CHANGING
+            ct_hunk_actions = mt_diff_hunk_actions ).
+
+      WHEN 'approveall'.
+        LOOP AT mt_diff_hunk_info INTO DATA(ls_hunk).
+          INSERT ls_hunk-hunk_key INTO TABLE mt_diff_approved.
+          DELETE TABLE mt_diff_declined FROM ls_hunk-hunk_key.
+          zcl_ave_acr_state=>set_hunk_action(
+            EXPORTING
+              iv_hunk_key     = ls_hunk-hunk_key
+              iv_action       = 'A'
+            CHANGING
+              ct_hunk_actions = mt_diff_hunk_actions ).
+        ENDLOOP.
+
+      WHEN 'undo'.
+        DELETE TABLE mt_diff_approved FROM lv_rest.
+        DELETE TABLE mt_diff_declined FROM lv_rest.
+        DELETE TABLE mt_diff_decline_notes WITH TABLE KEY hunk_key = lv_rest.
+        zcl_ave_acr_state=>clear_hunk_action(
+          EXPORTING
+            iv_hunk_key     = lv_rest
+          CHANGING
+            ct_hunk_actions = mt_diff_hunk_actions ).
+
+      WHEN 'addcomment' OR 'editreview'.
+        MESSAGE 'ADD COMMENT stub for AI code diff' TYPE 'S'.
+
+      WHEN 'askai'.
+        MESSAGE 'ASK AI stub for AI code diff' TYPE 'S'.
+
+      WHEN OTHERS.
+        RETURN.
+    ENDCASE.
+
+    IF is_diff_fully_approved( ) = abap_true
+       AND mv_diff_save_stub_logged = abap_false.
+      mv_diff_save_stub_logged = abap_true.
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = 'SAVE_OBJECT'
+        i_prompt_type = 'COMMAND'
+        i_content     = |SAVE_OBJECT command stub after all AI diff approvals: { mv_diff_key }| ).
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SAVE_OBJECT'
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = |SAVE_OBJECT command stub. All hunks approved for { mv_diff_key }.| ).
+    ENDIF.
+
+    refresh_diff_html( ).
   ENDMETHOD.
 
   METHOD ask_ai.
@@ -295,6 +404,8 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
       DATA lv_has_code_change TYPE abap_bool.
+      DATA lv_code_change_type TYPE string.
+      DATA lv_code_change_name TYPE string.
 
       IF lv_orchestrator_read_commands IS NOT INITIAL.
         lv_orchestrator_code_context = resolve_and_log_read_commands(
@@ -318,6 +429,10 @@ CLASS lcl_popup IMPLEMENTATION.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_change.
           lv_has_code_change = abap_true.
+          IF lv_code_change_name IS INITIAL.
+            lv_code_change_type = ls_agent_request-object_type.
+            lv_code_change_name = ls_agent_request-object_name.
+          ENDIF.
           DATA(lv_change_read_command) = mo_messages->build_read_command( ls_agent_request ).
           IF lv_change_read_command IS NOT INITIAL.
             CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
@@ -549,8 +664,10 @@ CLASS lcl_popup IMPLEMENTATION.
           i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
 
         lv_answer = diff_to_html(
-          i_old_code = mo_messages->get_resolved_code( )
-          i_new_code = lv_extracted_code ).
+          i_old_code   = mo_messages->get_resolved_code( )
+          i_new_code   = lv_extracted_code
+          i_object_type = lv_code_change_type
+          i_object_name = lv_code_change_name ).
       ENDIF.
 
       LOOP AT lt_create_object_commands INTO DATA(ls_create_object_command).
@@ -877,80 +994,112 @@ CLASS lcl_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD diff_to_html.
-    DATA lt_old TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    DATA lt_new TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    DATA lv_rows TYPE string.
-    DATA lv_idx TYPE i.
-    DATA lv_max TYPE i.
-    DATA lv_change_id TYPE i.
+    DATA lt_old TYPE abaptxt255_tab.
+    DATA lt_new TYPE abaptxt255_tab.
+    DATA lt_hunk_html TYPE string_table.
+    DATA lt_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info.
+    DATA lt_approved TYPE zif_ave_acr_types=>ty_approved.
+    DATA lt_declined TYPE zif_ave_acr_types=>ty_approved.
+    DATA lt_decline_notes TYPE zif_ave_acr_types=>ty_t_decline_notes.
+    DATA lt_hunk_actions TYPE zif_ave_acr_types=>ty_t_hunk_actions.
+    DATA lt_hunk_threads TYPE zif_ave_acr_types=>ty_t_hunk_threads.
+    DATA lt_acr_stats TYPE zif_ave_acr_types=>ty_t_obj_stats.
+    DATA lt_blame TYPE zif_ave_popup_types=>ty_blame_map.
+    DATA lv_hunk_count TYPE i.
+    DATA lv_hunk_ins TYPE i.
+    DATA lv_hunk_mod TYPE i.
+    DATA lv_hunk_del TYPE i.
+    DATA lv_author TYPE versuser.
+    DATA ls_part TYPE zif_ave_popup_types=>ty_part_row.
 
     SPLIT i_old_code AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
     SPLIT i_new_code AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
-    lv_max = nmax( val1 = lines( lt_old ) val2 = lines( lt_new ) ).
 
-    DO lv_max TIMES.
-      lv_idx = sy-index.
-      DATA(lv_old) = VALUE string( ).
-      DATA(lv_new) = VALUE string( ).
+    DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff(
+      it_old = lt_old
+      it_new = lt_new
+      i_title = 'Computing AI code diff' ).
 
-      READ TABLE lt_old INDEX lv_idx INTO lv_old.
-      READ TABLE lt_new INDEX lv_idx INTO lv_new.
+    lt_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( lt_diff ).
 
-      IF lv_old = lv_new.
-        lv_rows = lv_rows
-               && |<tr class="same"><td class="ln">{ lv_idx }</td><td class="code">|
-               && escape_html( lv_old )
-               && |</td><td class="ln">{ lv_idx }</td><td class="code">|
-               && escape_html( lv_new )
-               && |</td><td></td></tr>|.
-      ELSE.
-        lv_change_id = lv_change_id + 1.
-        lv_rows = lv_rows
-               && |<tr class="chg" id="chg{ lv_change_id }"><td class="ln oldln">{ lv_idx }</td><td class="code old">|
-               && escape_html( lv_old )
-               && |</td><td class="ln newln">{ lv_idx }</td><td class="code new">|
-               && escape_html( lv_new )
-               && |</td><td class="act"><button onclick="approve('chg{ lv_change_id }')">Approve</button></td></tr>|.
-      ENDIF.
-    ENDDO.
+    rv_html = zcl_ave_popup_html=>diff_to_html(
+      it_diff       = lt_diff
+      i_title       = 'AI Code Change'
+      i_meta        = 'LLM proposal vs current SAP source'
+      i_two_pane    = abap_false
+      i_compact     = abap_false
+      i_plain       = abap_false
+      i_code_review = abap_true ).
 
-    rv_html = |<!doctype html><html><head><meta charset="utf-8">|
-           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;margin:0;background:#fff;color:#1f2933\}|
-           && |.bar\{position:sticky;top:0;background:#f7fafc;border-bottom:1px solid #d7e0ea;|
-           && |padding:8px 10px;display:flex;gap:8px;align-items:center\}|
-           && |button\{border:1px solid #9db7d2;background:#edf6ff;color:#18324a;padding:4px 10px;cursor:pointer\}|
-           && |button:disabled\{background:#e8f5e9;color:#2f6f3e;border-color:#9ccc9c\}|
-           && |.status\{font-size:12px;color:#52606d\}|
-           && |table\{border-collapse:collapse;width:100%;font:12px/1.4 Consolas,monospace\}|
-           && |td\{vertical-align:top;border-bottom:1px solid #eef2f6\}|
-           && |.ln\{width:44px;text-align:right;color:#98a2ad;background:#f8fafc;|
-           && |padding:2px 8px;border-right:1px solid #e2e8f0\}|
-           && |.code\{white-space:pre;padding:2px 8px\}.old\{background:#fff1f1\}|
-           && |.new\{background:#effaf0\}.same .code\{background:#fff\}|
-           && |.act\{width:90px;padding:2px 6px;background:#fafafa\}|
-           && |.approved .old,.approved .new\{background:#e8f5e9\}|
-           && |.approved button\{background:#e8f5e9;color:#2f6f3e;border-color:#9ccc9c\}|
-           && |</style><script>|
-           && |function approve(id)\{|
-           && |var r=document.getElementById(id);|
-           && |if(r)\{r.className='chg approved';|
-           && |var b=r.getElementsByTagName('button')[0];|
-           && |if(b)\{b.disabled=true;b.innerHTML='Approved';\}\}update();\}|
-           && |function approveAll()\{|
-           && |var rows=document.getElementsByTagName('tr');|
-           && |for(var i=0;i<rows.length;i++)\{|
-           && |if(rows[i].className=='chg') approve(rows[i].id);\}update();\}|
-           && |function update()\{|
-           && |var left=0;var rows=document.getElementsByTagName('tr');|
-           && |for(var i=0;i<rows.length;i++)\{|
-           && |if(rows[i].className=='chg') left++;\}|
-           && |var s=document.getElementById('status');|
-           && |if(s)\{s.innerHTML=left==0?'All approved. SAVE_OBJECT stub ready.':|
-           && |left+' diff(s) pending approval.';\}\}|
-           && |</script></head><body onload="update()"><div class="bar">|
-           && |<button onclick="approveAll()">Approve all</button>|
-           && |<span id="status" class="status"></span></div>|
-           && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
+    DATA(lv_hunk_full_html) = zcl_ave_popup_html=>diff_to_html(
+      it_diff       = lt_diff
+      i_title       = 'AI Code Change'
+      i_meta        = 'LLM proposal vs current SAP source'
+      i_two_pane    = abap_true
+      i_compact     = abap_false
+      i_plain       = abap_false
+      i_code_review = abap_true ).
+
+    lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+      it_diff        = lt_diff
+      iv_full_html   = lv_hunk_full_html
+      iv_title       = 'AI Code Change'
+      iv_meta        = 'LLM proposal vs current SAP source'
+      iv_two_pane    = abap_true
+      iv_plain       = abap_false
+      iv_ignore_case = abap_false
+      iv_is_created  = abap_false ).
+
+    lv_author = sy-uname.
+    ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'PROG' ).
+    ls_part-object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' ).
+    ls_part-name = ls_part-object_name.
+    ls_part-display_name = |{ ls_part-type } { ls_part-object_name }|.
+
+    zcl_ave_acr_hunk_info=>collect(
+      EXPORTING
+        is_part            = ls_part
+        it_diff            = lt_diff
+        it_hunk_html       = lt_hunk_html
+        it_blame           = lt_blame
+        iv_author          = lv_author
+        iv_display_name    = ls_part-display_name
+        iv_versno_new      = '00000'
+        iv_versno_old      = '00000'
+        iv_versno_new_text = 'LLM proposal'
+        iv_versno_old_text = 'Current source'
+        iv_is_created      = abap_false
+      IMPORTING
+        et_hunk_info       = lt_hunk_info
+        ev_hunk_count      = lv_hunk_count
+        ev_hunk_ins        = lv_hunk_ins
+        ev_hunk_mod        = lv_hunk_mod
+        ev_hunk_del        = lv_hunk_del ).
+
+    APPEND VALUE zif_ave_acr_types=>ty_obj_stats(
+      objtype      = ls_part-type
+      obj_name     = ls_part-object_name
+      author       = lv_author
+      author_name  = zcl_ave_popup_data=>get_user_name( lv_author )
+      hunk_count   = lv_hunk_count
+      hunk_ins     = lv_hunk_ins
+      hunk_mod     = lv_hunk_mod
+      hunk_del     = lv_hunk_del
+      display_name = ls_part-display_name ) TO lt_acr_stats.
+
+    zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+      EXPORTING
+        iv_key           = |{ ls_part-type }~{ ls_part-object_name }|
+        it_hunk_info     = lt_hunk_info
+        it_approved      = lt_approved
+        it_declined      = lt_declined
+        it_decline_notes = lt_decline_notes
+        it_hunk_actions  = lt_hunk_actions
+        it_hunk_threads  = lt_hunk_threads
+        iv_ai_enabled    = abap_true
+      CHANGING
+        cv_html          = rv_html
+        ct_acr_stats     = lt_acr_stats ).
   ENDMETHOD.
 
   METHOD normalize_markdown.
