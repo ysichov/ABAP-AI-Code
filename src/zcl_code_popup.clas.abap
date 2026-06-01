@@ -307,9 +307,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
 
-            IF ls_agent_request-relevant_prompt IS INITIAL.
-              lv_has_show_command = abap_true.
-            ELSE.
+            IF ls_agent_request-relevant_prompt IS NOT INITIAL.
               lv_has_agent_followup_text = abap_true.
             ENDIF.
           ENDIF.
@@ -508,8 +506,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       ELSEIF lv_has_code_change = abap_false
         AND lv_has_agent_followup_text = abap_false
         AND lv_only_code_search = abap_true
-        AND ( lt_agent_requests IS NOT INITIAL
-           OR lv_orchestrator_read_commands IS NOT INITIAL
+        AND ( lv_orchestrator_read_commands IS NOT INITIAL
            OR lv_has_show_command = abap_true ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
@@ -961,10 +958,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     DATA lv_text_upper TYPE string.
 
     lv_text_upper = i_answer.
+    SHIFT lv_text_upper LEFT DELETING LEADING space.
     TRANSLATE lv_text_upper TO UPPER CASE.
 
-    IF lv_text_upper CS '<!DOCTYPE HTML'
-    OR lv_text_upper CS '<HTML'.
+    IF lv_text_upper CP '<!DOCTYPE HTML*'
+    OR lv_text_upper CP '<!DOCTYPE*'
+    OR lv_text_upper CP '<HTML*'.
       lv_html = i_answer.
     ELSE.
       DATA(lv_render_text) = render_abap_blocks( i_answer ).
