@@ -119,6 +119,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Example: delete something - deletion is not supported|.
   ENDMETHOD.
 
+
   METHOD get_task_orchestrator_prompt.
     rv_prompt = get_system_prompt_prefix( )
              && |Ты оркестратор задач. Проанализируй внимательно ПРОМПТ и разбей его на задачи и подзадачи. |
@@ -219,7 +220,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
              && |Do not make an abstract review. Find concrete issues and risks. |
              && |DON'T offer improvements and suggestions. Only in case if user request it!!! |
-             && |Return readable Markdown with real line breaks: put every heading, list item, paragraph, |
+             && |Return readable simple Markdown with real line breaks - without # ## ** starters and any other special symbols|
              && |and fenced code block on separate lines.|.
   ENDMETHOD.
 

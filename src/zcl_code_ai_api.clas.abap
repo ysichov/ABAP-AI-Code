@@ -125,12 +125,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>form_feed IN lv_prompt WITH '\f'.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_prompt WITH '\t'.
 
-    rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 2000{ '}' }|.
+    rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_prompt_cache_key WITH '\"'.
-      rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 2000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ '}' }|.
+      rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ '}' }|.
     ENDIF.
 
   endmethod.
