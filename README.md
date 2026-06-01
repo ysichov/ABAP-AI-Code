@@ -13,5 +13,6 @@ Just config API calls via SM59, get API key and go running )
 
 SM59 config described here - https://community.sap.com/t5/abap-blog-posts/abap-code-reviewer/ba-p/14406080
 
-<img width="851" height="260" alt="image" src="https://github.com/user-attachments/assets/92f9f6c7-9487-465f-a8d2-56d241de0a10" />
+<img width="830" height="275" alt="image" src="https://github.com/user-attachments/assets/6ca7cc24-a0f3-4f1d-908a-c7543e8dea0a" />
+
 
