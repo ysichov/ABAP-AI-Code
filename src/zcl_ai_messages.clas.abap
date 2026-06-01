@@ -363,7 +363,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && COND string(
-                  WHEN needs_code_context( ) = abap_true AND get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
+                  WHEN get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
                   WHEN needs_code_context( ) = abap_true THEN 'No code context was resolved.'
                   ELSE '' ).
 
@@ -457,6 +457,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     DATA(lv_text) = i_orchestrator_answer.
 
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:[^}]*\}' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*READ[^}]*\}' IN lv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '\{\s*SHOW[^}]*\}' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '---[\s\r\n]*Tokens:.*$' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX 'Tokens:.*$' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '^[\s\r\n-]+$' IN lv_text WITH ''.
