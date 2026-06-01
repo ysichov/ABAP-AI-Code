@@ -75,7 +75,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the user asks for method code, use exactly \{AGENT:CODE_SEARCH class_name=>method_name + relevant_prompt_part\}; |
              "&& |do not output class_name=>... method_name=>... as separate fields.|
              && cl_abap_char_utilities=>newline
-             && |If the user asks any code changes or saving, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}; |
+             && |If the user asks any code changes or saving, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}. |
+             && |It is the most common task - DON'T SKIP IT - search carefully! |
              && cl_abap_char_utilities=>newline
              && |So main target Don't miss user instruction to change code in some object! Check instruction carefully! and answer AGENT:CODE_CHANGE!! don't miss it!!! |
              && cl_abap_char_utilities=>newline
