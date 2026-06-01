@@ -483,17 +483,65 @@ CLASS lcl_popup IMPLEMENTATION.
         i_content     = lv_answer_log ).
 
       LOOP AT lt_create_object_commands INTO DATA(ls_create_object_command).
-        mo_messages->add_message(
-          i_role        = 'user'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
-          i_prompt_type = 'COMMAND'
-          i_content     = ls_create_object_command-raw_command ).
+        DATA(lv_create_read_command) = mo_messages->build_read_command( ls_create_object_command ).
+        DATA(lv_create_context) = VALUE string( ).
 
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
-          i_prompt_type = 'AGENT_RESPONSE'
-          i_content     = |CREATE_OBJECT command stub. Execution is not implemented yet: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+        IF lv_create_read_command IS NOT INITIAL.
+          lv_create_context = resolve_and_log_read_commands(
+            EXPORTING
+              i_text           = lv_create_read_command
+            CHANGING
+              ct_done_commands = lt_done_read_commands ).
+        ENDIF.
+
+        DATA(lv_create_context_upper) = lv_create_context.
+        TRANSLATE lv_create_context_upper TO UPPER CASE.
+        DATA(lv_create_object_exists) = xsdbool(
+          lv_create_read_command IS NOT INITIAL AND
+          lv_create_context IS NOT INITIAL AND
+          NOT ( lv_create_context_upper CS 'WAS NOT FOUND OR CANNOT BE READ' OR
+                lv_create_context_upper CS 'WAS NOT FOUND' OR
+                lv_create_context_upper CS 'CANNOT BE READ' OR
+                lv_create_context_upper CS 'METHOD COMMAND IS INCOMPLETE' ) ).
+
+        IF lv_create_object_exists = abap_true.
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+            i_prompt_type = 'COMMAND'
+            i_content     = ls_create_object_command-raw_command ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |Object already exists. Confirm overwrite before create/replace: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+            i_prompt_type = 'COMMAND'
+            i_content     = ls_create_object_command-raw_command ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |CODE_DIFF command stub. Object exists, diff path selected before overwrite: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+
+        ELSE.
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+            i_prompt_type = 'COMMAND'
+            i_content     = ls_create_object_command-raw_command ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |CREATE_OBJECT command stub. Object was not found, create path selected: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+        ENDIF.
       ENDLOOP.
 
       LOOP AT lt_save_commands INTO DATA(ls_save_command).

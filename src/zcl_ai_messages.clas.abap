@@ -325,6 +325,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   METHOD build_read_command.
     CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_save.
     CHECK is_request-object_name IS NOT INITIAL.
 
