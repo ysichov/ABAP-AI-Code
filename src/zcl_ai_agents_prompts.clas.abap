@@ -34,14 +34,22 @@ CLASS zcl_ai_agents_prompts DEFINITION
       IMPORTING i_agent           TYPE string
       RETURNING VALUE(rv_prompt)  TYPE string.
 
+protected section.
   PRIVATE SECTION.
 ENDCLASS.
 
-CLASS zcl_ai_agents_prompts IMPLEMENTATION.
+
+
+CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
+
 
   METHOD get_orchestrator_prompt.
     rv_prompt = |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
     && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}.|
+             && cl_abap_char_utilities=>newline
+             && |Never change real code text by AGENT: string insertion, analyse only user free text|
+             && cl_abap_char_utilities=>newline
+             && |IF user already pasted some object code - don't INSERT AGENT:SHOW or AGENT_READ for this|
              && cl_abap_char_utilities=>newline
              && |If the user asks for method code, use exactly \{AGENT:CODE_SEARCH class_name=>method_name + relevant_prompt_part\}; |
              "&& |do not output class_name=>... method_name=>... as separate fields.|
@@ -60,8 +68,6 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
-             && |IF user already pasted some object code - don't build {AGENT} propmt for this|
-             && cl_abap_char_utilities=>newline
              && |If the request is not relevant to SAP, answer "Not relevant"|
              && cl_abap_char_utilities=>newline
              && |If the request is not described here, answer "Not supported"|
@@ -78,9 +84,14 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |Example: delete something - deletion is not supported|.
   ENDMETHOD.
 
+
   METHOD get_code_agent_prompt.
-    rv_prompt = |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
+   rv_prompt = |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
              && |it with the commands described below. Replace in prompt only for specific objects described here! |
+             && |Never change real code text by AGENT: string insertion, analyse only user free text|
+             && cl_abap_char_utilities=>newline
+             && |IF user already pasted some object code - don't INSERT AGENT:SHOW or AGENT_READ for this|
+             && cl_abap_char_utilities=>newline
              && |For program reports - \{READ TADIR: REPS object_name\}. |
              && |If asked to find only a class: \{READ: CLASS = class_name\}. |
              && |If asked to find a method: \{READ METH class_name=>method_name\}. |
@@ -101,14 +112,10 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |A class and a method are a composite object - you can connect them using =>|
              && cl_abap_char_utilities=>newline
              && |A method without a class is "Undescribed." Don't invent a class yourself!!! |
-             && |No class means "Undescribed." Take the original prompt! | 
+             && |No class means "Undescribed." Take the original prompt! |
              && |Replace the text of the original prompt and replace the recognized parts with commands! |
              && cl_abap_char_utilities=>newline
-             
-             && |Never change real code text by AGENT: string insertion, analyse only user free text|
-             && cl_abap_char_utilities=>newline
-             && |IF user already pasted some object code - don't build {AGENT} propmt for this|
-             && cl_abap_char_utilities=>newline
+
              && |Prompts parts don't translate! Let it be original language!|
              && cl_abap_char_utilities=>newline
              && |For example, for "Compare programs z_1 z_2 z_test. Rating the programs," return |
@@ -119,11 +126,13 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |PROMPT:|.
   ENDMETHOD.
 
+
   METHOD get_data_agent_prompt.
     rv_prompt = |You are a Senior ABAP Data Search Agent. Search for data in SAP tables and objects. |
              && |Use table commands to query data from TADIR, TFDIR, and other system tables. |
              && |Return brief, relevant information without unnecessary details.|.
   ENDMETHOD.
+
 
   METHOD get_code_review_prompt.
     rv_prompt = |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
@@ -132,12 +141,14 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |and fenced code block on separate lines.|.
   ENDMETHOD.
 
+
   METHOD get_create_object_prompt.
     rv_prompt = |You are a Senior ABAP Create Object Agent. Prepare the final instruction for creating or changing |
              && |an ABAP object. Keep the original language of the user request. If code context is needed, keep |
              && |the AGENT:CODE_SEARCH dependency visible so it can be resolved before the final answer. |
              && |Do not delete objects and do not perform destructive actions.|.
   ENDMETHOD.
+
 
   METHOD get_code_reader_prompt.
     rv_prompt = |You are a Senior ABAP Code Reader Agent. Find all READ commands in the input text and resolve them. |
@@ -146,6 +157,7 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |For \{ READ METH class_name=>method_name \}, read only the requested method include. |
              && |Return resolved source code with object names. Do not call LLM and do not invent missing objects.|.
   ENDMETHOD.
+
 
   METHOD get_prompt_by_agent.
     CASE i_agent.
@@ -165,5 +177,4 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
         rv_prompt = |Agent '{ i_agent }' not found|.
     ENDCASE.
   ENDMETHOD.
-
 ENDCLASS.
