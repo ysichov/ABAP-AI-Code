@@ -273,6 +273,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       DATA lv_code_change_name TYPE string.
       DATA lv_create_object_type TYPE string.
       DATA lv_create_object_name TYPE string.
+      DATA lv_final_prompt_tasks TYPE string.
 
       IF lv_orchestrator_upper CS '{SHOW'.
         lv_has_show_command = abap_true.
@@ -310,6 +311,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
               lv_has_show_command = abap_true.
             ELSE.
               lv_has_agent_followup_text = abap_true.
+              IF lv_final_prompt_tasks IS NOT INITIAL.
+                lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+              ENDIF.
+              lv_final_prompt_tasks = lv_final_prompt_tasks && ls_agent_request-relevant_prompt.
             ENDIF.
           ENDIF.
 
@@ -514,8 +519,16 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
           EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
 
+        DATA(lv_final_user_prompt) = lv_effective_prompt.
+        IF lv_final_prompt_tasks IS NOT INITIAL.
+          lv_final_user_prompt = lv_final_user_prompt
+                              && cl_abap_char_utilities=>newline
+                              && cl_abap_char_utilities=>newline
+                              && lv_final_prompt_tasks.
+        ENDIF.
+
         DATA(lv_final_prompt) = mo_messages->build_final_request(
-          i_user_prompt = lv_effective_prompt ).
+          i_user_prompt = lv_final_user_prompt ).
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         lv_answer_log = lv_answer.
