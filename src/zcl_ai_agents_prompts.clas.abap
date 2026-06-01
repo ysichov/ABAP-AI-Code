@@ -61,6 +61,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |If the user asks any code changes or saving, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}; |
              && cl_abap_char_utilities=>newline
+             && |So main target Don't miss user instruction to change code in some object! Check instruction carefully! |
+             && cl_abap_char_utilities=>newline
              && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
              && cl_abap_char_utilities=>newline
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
