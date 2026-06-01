@@ -289,6 +289,7 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA(lv_total) = lines( lt_agent_requests ).
       DATA lt_done_read_commands TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
       DATA lt_batched_code_search TYPE zcl_ai_messages=>tt_agent_requests.
+      DATA lt_batched_code_review TYPE zcl_ai_messages=>tt_agent_requests.
 
       IF lv_orchestrator_code_context IS NOT INITIAL.
         APPEND lv_orchestrator_read_commands TO lt_done_read_commands.
@@ -303,6 +304,11 @@ CLASS lcl_popup IMPLEMENTATION.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
           APPEND ls_agent_request TO lt_batched_code_search.
+          CONTINUE.
+        ENDIF.
+
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
+          APPEND ls_agent_request TO lt_batched_code_review.
           CONTINUE.
         ENDIF.
 
@@ -419,6 +425,60 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
+      IF lt_batched_code_review IS NOT INITIAL.
+        LOOP AT lt_batched_code_review INTO DATA(ls_review_request).
+          DATA(lv_review_read_command) = mo_messages->build_read_command( ls_review_request ).
+          IF lv_review_read_command IS INITIAL.
+            CONTINUE.
+          ENDIF.
+
+          READ TABLE lt_done_read_commands
+            WITH KEY table_line = lv_review_read_command
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+          APPEND lv_review_read_command TO lt_done_read_commands.
+
+          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+            EXPORTING percentage = 80
+                      text       = |Reading code { ls_review_request-object_name }...|.
+
+          DATA(lv_review_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_review_read_command ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'COMMAND'
+            i_content     = lv_review_read_command ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_review_code_context ).
+        ENDLOOP.
+
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+          EXPORTING percentage = 90
+                    text       = 'Asking code review agent...'.
+
+        DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
+        DATA(lv_review_answer) = zcl_code_ai_api=>ask(
+          i_prompt           = lv_review_prompt
+          i_dest             = mv_dest
+          i_model            = mv_model
+          i_apikey           = mv_apikey
+          i_provider         = mv_provider
+          i_prompt_cache_key = mv_prompt_cache_key ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+          i_prompt_type = 'LLM_RESPONSE'
+          i_content     = lv_review_answer ).
+      ENDIF.
+
       DATA(lv_only_code_search) = abap_true.
       LOOP AT lt_agent_requests INTO ls_agent_request.
         IF ls_agent_request-agent <> zcl_ai_agents_prompts=>c_agent_code_search.
@@ -439,6 +499,10 @@ CLASS lcl_popup IMPLEMENTATION.
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
         lv_answer_log = lv_answer.
+      ELSEIF lt_batched_code_review IS NOT INITIAL.
+        lv_answer = lv_review_answer.
+        lv_answer_log = lv_answer.
+        lv_resolved_code = mo_messages->get_resolved_code( ).
       ELSEIF lt_agent_requests IS NOT INITIAL
       AND lv_only_code_search = abap_true.
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).

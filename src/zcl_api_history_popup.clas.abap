@@ -108,7 +108,6 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         IF lv_has_request = abap_true.
           CLEAR ls_row.
           ls_row-session_id = lv_request_session.
-          ls_row-seq = lv_request_message_id.
           ls_row-owner = lv_request_agent.
           ls_row-request_type = lv_request_type.
           ls_row-request = lv_request.
@@ -116,6 +115,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           IF lv_request_type = 'COMMAND_ERROR'.
           ls_row-rowcolor = 'C601'. " red text
           ENDIF.
+          ls_row-seq = lines( mt_history ) + 1.
           APPEND ls_row TO mt_history.
         ENDIF.
 
@@ -128,11 +128,6 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
       ELSE.
         CLEAR ls_row.
         ls_row-session_id = ls_message-session_id.
-        IF lv_request_message_id IS INITIAL.
-          ls_row-seq = ls_message-message_id.
-        ELSE.
-          ls_row-seq = lv_request_message_id.
-        ENDIF.
         ls_row-owner = ls_message-agent.
         ls_row-request_type = lv_request_type.
         ls_row-answer_type = ls_message-prompt_type.
@@ -167,6 +162,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         ENDIF.
         ls_row-request_preview = preview( ls_row-request ).
         ls_row-answer_preview = preview( ls_row-answer ).
+        ls_row-seq = lines( mt_history ) + 1.
         APPEND ls_row TO mt_history.
         CLEAR: lv_request, lv_request_type, lv_request_agent, lv_request_session, lv_request_message_id.
         lv_has_request = abap_false.
@@ -176,11 +172,11 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
     IF lv_has_request = abap_true.
       CLEAR ls_row.
       ls_row-session_id = lv_request_session.
-      ls_row-seq = lv_request_message_id.
       ls_row-owner = lv_request_agent.
       ls_row-request_type = lv_request_type.
       ls_row-request = lv_request.
       ls_row-request_preview = preview( ls_row-request ).
+      ls_row-seq = lines( mt_history ) + 1.
       APPEND ls_row TO mt_history.
     ENDIF.
 

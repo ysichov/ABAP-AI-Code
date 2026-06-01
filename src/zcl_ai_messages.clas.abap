@@ -256,6 +256,17 @@ CLASS zcl_ai_messages IMPLEMENTATION.
                && |RELEVANT PROMPT PART: { is_request-relevant_prompt }|.
     ENDIF.
 
+    IF is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline
+               && |CODE CONTEXT:|
+               && cl_abap_char_utilities=>newline
+               && COND string(
+                    WHEN get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
+                    ELSE 'No code context was resolved.' ).
+    ENDIF.
+
     add_message(
       i_role        = 'user'
       i_agent       = is_request-agent
@@ -291,6 +302,17 @@ CLASS zcl_ai_messages IMPLEMENTATION.
                  && |RELEVANT PROMPT PART: { ls_request-relevant_prompt }|.
       ENDIF.
     ENDLOOP.
+
+    IF ls_first_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline
+               && |CODE CONTEXT:|
+               && cl_abap_char_utilities=>newline
+               && COND string(
+                    WHEN get_resolved_code( ) IS NOT INITIAL THEN get_resolved_code( )
+                    ELSE 'No code context was resolved.' ).
+    ENDIF.
 
     add_message(
       i_role        = 'user'
