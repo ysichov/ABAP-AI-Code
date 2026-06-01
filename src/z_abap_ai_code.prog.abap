@@ -78,6 +78,10 @@ CLASS lcl_popup DEFINITION.
       IMPORTING i_source       TYPE string
                 i_title        TYPE string
       RETURNING VALUE(rv_html) TYPE string.
+    METHODS diff_to_html
+      IMPORTING i_old_code     TYPE string
+                i_new_code     TYPE string
+      RETURNING VALUE(rv_html) TYPE string.
     METHODS normalize_markdown
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -543,6 +547,10 @@ CLASS lcl_popup IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+
+        lv_answer = diff_to_html(
+          i_old_code = mo_messages->get_resolved_code( )
+          i_new_code = lv_extracted_code ).
       ENDIF.
 
       LOOP AT lt_create_object_commands INTO DATA(ls_create_object_command).
@@ -865,6 +873,60 @@ CLASS lcl_popup IMPLEMENTATION.
            && |.cd\{padding:1px 8px;white-space:pre\}|
            && |</style></head><body>|
            && |<div class="hdr"><span class="ttl">{ lv_title }</span></div>|
+           && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
+  ENDMETHOD.
+
+  METHOD diff_to_html.
+    DATA lt_old TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lt_new TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_rows TYPE string.
+    DATA lv_idx TYPE i.
+    DATA lv_max TYPE i.
+    DATA lv_change_id TYPE i.
+
+    SPLIT i_old_code AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
+    SPLIT i_new_code AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+    lv_max = nmax( val1 = lines( lt_old ) val2 = lines( lt_new ) ).
+
+    DO lv_max TIMES.
+      lv_idx = sy-index.
+      DATA(lv_old) = VALUE string( ).
+      DATA(lv_new) = VALUE string( ).
+
+      READ TABLE lt_old INDEX lv_idx INTO lv_old.
+      READ TABLE lt_new INDEX lv_idx INTO lv_new.
+
+      IF lv_old = lv_new.
+        lv_rows = lv_rows
+               && |<tr class="same"><td class="ln">{ lv_idx }</td><td class="code">|
+               && escape_html( lv_old )
+               && |</td><td class="ln">{ lv_idx }</td><td class="code">|
+               && escape_html( lv_new )
+               && |</td><td></td></tr>|.
+      ELSE.
+        lv_change_id = lv_change_id + 1.
+        lv_rows = lv_rows
+               && |<tr class="chg" id="chg{ lv_change_id }"><td class="ln oldln">{ lv_idx }</td><td class="code old">|
+               && escape_html( lv_old )
+               && |</td><td class="ln newln">{ lv_idx }</td><td class="code new">|
+               && escape_html( lv_new )
+               && |</td><td class="act"><button onclick="approve('chg{ lv_change_id }')">Approve</button></td></tr>|.
+      ENDIF.
+    ENDDO.
+
+    rv_html = |<!doctype html><html><head><meta charset="utf-8">|
+           && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;margin:0;background:#fff;color:#1f2933\}|
+           && |.bar\{position:sticky;top:0;background:#f7fafc;border-bottom:1px solid #d7e0ea;padding:8px 10px;display:flex;gap:8px;align-items:center\}|
+           && |button\{border:1px solid #9db7d2;background:#edf6ff;color:#18324a;padding:4px 10px;cursor:pointer\}|
+           && |button:disabled\{background:#e8f5e9;color:#2f6f3e;border-color:#9ccc9c\}|
+           && |.status\{font-size:12px;color:#52606d\}table\{border-collapse:collapse;width:100%;font:12px/1.4 Consolas,monospace\}|
+           && |td\{vertical-align:top;border-bottom:1px solid #eef2f6\}.ln\{width:44px;text-align:right;color:#98a2ad;background:#f8fafc;padding:2px 8px;border-right:1px solid #e2e8f0\}|
+           && |.code\{white-space:pre;padding:2px 8px\}.old\{background:#fff1f1\}.new\{background:#effaf0\}.same .code\{background:#fff\}.act\{width:90px;padding:2px 6px;background:#fafafa\}|
+           && |.approved .old,.approved .new\{background:#e8f5e9\}.approved button\{background:#e8f5e9;color:#2f6f3e;border-color:#9ccc9c\}|
+           && |</style><script>function approve(id)\{var r=document.getElementById(id);if(r)\{r.className='chg approved';var b=r.getElementsByTagName('button')[0];if(b)\{b.disabled=true;b.innerHTML='Approved';\}\}update();\}|
+           && |function approveAll()\{var rows=document.getElementsByTagName('tr');for(var i=0;i<rows.length;i++)\{if(rows[i].className=='chg') approve(rows[i].id);\}update();\}|
+           && |function update()\{var left=0;var rows=document.getElementsByTagName('tr');for(var i=0;i<rows.length;i++)\{if(rows[i].className=='chg') left++;\}var s=document.getElementById('status');if(s)\{s.innerHTML=left==0?'All approved. SAVE_OBJECT stub ready.':left+' diff(s) pending approval.';\}\}|
+           && |</script></head><body onload="update()"><div class="bar"><button onclick="approveAll()">Approve all</button><span id="status" class="status"></span></div>|
            && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
   ENDMETHOD.
 
