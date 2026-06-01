@@ -67,6 +67,9 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. Your main task to enrich prompt by AGENT:command! |
     && |SKIP promt only in case user ask to show the code, all other cases - please DON'T omit USER PROMOT!!!! |
     && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
+     && |Не фантазируй Таски, не выдумывай того что не просили!!! |
+     && |Если юзер просит рассказать или проанализировать, не пропускай его промпт!!! |
+
     && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
     && |CODE_SEARCH is a runtime command, not an LLM agent. |
              && cl_abap_char_utilities=>newline
@@ -88,7 +91,10 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the user asks to show table contents |
              && |request the agent:\{AGENT:DATA_SEARCH + the relevant part of the prompt with the request.\}|
              && cl_abap_char_utilities=>newline
+
              && |If the user asks to create an object: "\{AGENT:CREATE_OBJECT object_type object_name relevant_prompt_part\}" |
+             && |Never lose AGENT:CODE_SEARCH|
+
              && |Never lose AGENT:CODE_SEARCH|
              && cl_abap_char_utilities=>newline
              && |If the user asks to save an object/code in SAP and package is specified, use "\{AGENT:AGENT_SAVE object_type object_name package package_name relevant_prompt_part\}".|
