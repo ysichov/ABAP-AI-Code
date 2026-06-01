@@ -15,6 +15,12 @@ Do not add initiative beyond mandatory technical tasks such as reading the reque
 No reasoning, introductions, descriptions, or special symbols at the beginning.
 Do not over-detail the task list.
 
+Only in case one word prompt it maybe a program name - treat it as TASK - Show program that_one_word_prompt
+
+If we have object type - use it don't suggest own.
+For example Class zcl_test - TASK Show Class zcl_test
+
+
 DOn't forget to include object type and name in evey task!!!
 Ask for missing task information only when it is necessary.
 If the prompt already contains enough details, do not ask again. Make a decision.

@@ -580,6 +580,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ELSEIF lv_has_code_change = abap_false
         AND lv_has_agent_followup_text = abap_false
         AND lv_only_code_search = abap_true
+        AND lt_tasks IS INITIAL
         AND ( lv_orchestrator_read_commands IS NOT INITIAL
            OR lv_has_show_command = abap_true ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
