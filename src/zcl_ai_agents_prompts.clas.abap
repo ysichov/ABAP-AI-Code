@@ -79,6 +79,9 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |So main target Don't miss user instruction to change code in some object! Check instruction carefully! and answer AGENT:CODE_CHANGE!! don't miss it!!! |
              && cl_abap_char_utilities=>newline
+             && |If the user asks to run get_diff, show diff, compare pending changes, or task says "Провести get_diff", use exactly \{AGENT:CODE_DIFF obj_type obj_name relevant_prompt_part\}. |
+             && |CODE_DIFF is a runtime command, not an LLM agent. |
+             && cl_abap_char_utilities=>newline
              && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
              && cl_abap_char_utilities=>newline
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
@@ -122,9 +125,11 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Если какая-то задача непонятна, задай к ней уточняющие вопросы. Формат: TASK1-ASK1. |
              && cl_abap_char_utilities=>newline
              && |Своих задач не придумывай кроме обязательных технических задач типа: прочитать код программы имя_программы, |
-             && |после изменений провести get_diff изменений, сохранить изменения. |
+             && |сохранить изменения. |
              && cl_abap_char_utilities=>newline
-             && |get_diff всегда до сохранения. Сохранение только после аппрува в агенте CODE_REVIEW. |
+             && |Не добавляй отдельную задачу get_diff после изменения кода: CODE_CHANGE автоматически запускает CODE_EXTRACT и CODE_DIFF. Добавляй get_diff только если пользователь явно просит только показать или проверить diff. |
+             && |Не добавляй отдельную задачу CODE_REVIEW после изменения кода: CODE_CHANGE автоматически запускает CODE_REVIEW после CODE_EXTRACT. |
+             && |Сохранение только после аппрува в агенте CODE_REVIEW. |
              && cl_abap_char_utilities=>newline
              && |Никаких более вопросов, размышлений, описаний в начале и спецсимволов. Не делай излишнюю детализацию. |
              && |Агент начнет выполнять твои задачи и задавать вопросы. |
@@ -147,11 +152,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |TASK4: Внести изменения в код программы Z_TEST с учетом ответов на уточняющие вопросы.|
              && cl_abap_char_utilities=>newline
-             && |TASK5: Провести get_diff изменений в Z_TEST.|
-             && cl_abap_char_utilities=>newline
-             && |TASK6: Провести CODE_REVIEW изменений и получить approval.|
-             && cl_abap_char_utilities=>newline
-             && |TASK7: Сохранить изменения в программе Z_TEST только после approval.|
+             && |TASK5: Сохранить изменения в программе Z_TEST только после approval.|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |USER PROMPT|.

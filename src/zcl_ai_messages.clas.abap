@@ -176,6 +176,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_diff
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_save.
         LOOP AT lt_parts INTO lv_part FROM 2.
@@ -327,6 +328,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_diff
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_save.
     CHECK is_request-object_name IS NOT INITIAL.

@@ -465,11 +465,13 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA(lv_total) = lines( lt_agent_requests ).
       DATA lt_done_read_commands TYPE tt_strings.
       DATA lt_batched_code_review TYPE zcl_ai_messages=>tt_agent_requests.
+      DATA lt_code_diff_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_create_object_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_save_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
       DATA lv_has_code_change TYPE abap_bool.
+      DATA lv_has_code_diff TYPE abap_bool.
       DATA lv_has_show_command TYPE abap_bool.
       DATA lv_code_change_type TYPE string.
       DATA lv_code_change_name TYPE string.
@@ -543,6 +545,26 @@ CLASS lcl_popup IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_diff.
+          lv_has_code_diff = abap_true.
+          APPEND ls_agent_request TO lt_code_diff_commands.
+
+          DATA(lv_diff_read_command) = mo_messages->build_read_command( ls_agent_request ).
+          IF lv_diff_read_command IS NOT INITIAL.
+            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+              EXPORTING percentage = lv_percentage
+                        text       = |Reading code { ls_agent_request-object_name }...|.
+
+            lv_ignored_context = resolve_and_log_read_commands(
+              EXPORTING
+                i_text           = lv_diff_read_command
+              CHANGING
+                ct_done_commands = lt_done_read_commands ).
+          ENDIF.
+
+          CONTINUE.
+        ENDIF.
+
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
           APPEND ls_agent_request TO lt_create_object_commands.
           CONTINUE.
@@ -604,7 +626,7 @@ CLASS lcl_popup IMPLEMENTATION.
             ct_done_commands = lt_done_read_commands ).
       ENDLOOP.
 
-      IF lt_batched_code_review IS NOT INITIAL.
+      IF lt_batched_code_review IS NOT INITIAL AND lv_has_code_change = abap_false.
         LOOP AT lt_batched_code_review INTO DATA(ls_review_request).
           DATA(lv_review_read_command) = mo_messages->build_read_command( ls_review_request ).
           IF lv_review_read_command IS INITIAL.
@@ -666,8 +688,14 @@ CLASS lcl_popup IMPLEMENTATION.
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
         lv_answer_log = lv_answer.
-      ELSEIF lt_batched_code_review IS NOT INITIAL.
+      ELSEIF lt_batched_code_review IS NOT INITIAL AND lv_has_code_change = abap_false.
         lv_answer = lv_review_answer.
+        lv_answer_log = lv_answer.
+        lv_resolved_code = mo_messages->get_resolved_code( ).
+      ELSEIF lv_has_code_change = abap_false
+        AND lv_has_code_diff = abap_true
+        AND lv_has_agent_followup_text = abap_false.
+        lv_answer = |CODE_DIFF command stub. No changed code was extracted yet, so there is nothing to diff.|.
         lv_answer_log = lv_answer.
         lv_resolved_code = mo_messages->get_resolved_code( ).
       ELSEIF lv_has_code_change = abap_false
@@ -719,6 +747,49 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_extracted_code ).
 
+        IF lv_extracted_code IS NOT INITIAL.
+          DATA(lv_auto_review_prompt) = zcl_ai_agents_prompts=>get_code_review_prompt( )
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |ORIGINAL USER PROMPT:|
+             && cl_abap_char_utilities=>newline
+             && lv_prompt
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |ORIGINAL CODE:|
+             && cl_abap_char_utilities=>newline
+             && mo_messages->get_resolved_code( )
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |CHANGED CODE:|
+             && cl_abap_char_utilities=>newline
+             && lv_extracted_code.
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+            i_prompt_type = 'AGENT_PROMPT'
+            i_content     = lv_auto_review_prompt ).
+
+          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+            EXPORTING percentage = 90
+                      text       = 'Asking code review agent...'.
+
+          DATA(lv_auto_review_answer) = zcl_code_ai_api=>ask(
+            i_prompt           = lv_auto_review_prompt
+            i_dest             = mv_dest
+            i_model            = mv_model
+            i_apikey           = mv_apikey
+            i_provider         = mv_provider
+            i_prompt_cache_key = mv_prompt_cache_key ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+            i_prompt_type = 'LLM_RESPONSE'
+            i_content     = lv_auto_review_answer ).
+        ENDIF.
+
         mo_messages->add_message(
           i_role        = 'user'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
@@ -737,6 +808,23 @@ CLASS lcl_popup IMPLEMENTATION.
           i_object_type = lv_code_change_type
           i_object_name = lv_code_change_name ).
       ENDIF.
+
+      LOOP AT lt_code_diff_commands INTO DATA(ls_code_diff_command).
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+          i_prompt_type = 'COMMAND'
+          i_content     = ls_code_diff_command-raw_command ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = COND string(
+                            WHEN lv_has_code_change = abap_true
+                            THEN |CODE_DIFF command handled by the CODE_CHANGE diff UI: { ls_code_diff_command-object_type } { ls_code_diff_command-object_name } { ls_code_diff_command-relevant_prompt }|
+                            ELSE |CODE_DIFF command stub. No CODE_EXTRACT result exists yet: { ls_code_diff_command-object_type } { ls_code_diff_command-object_name } { ls_code_diff_command-relevant_prompt }| ) ).
+      ENDLOOP.
 
       LOOP AT lt_create_object_commands INTO DATA(ls_create_object_command).
         DATA(lv_create_read_command) = mo_messages->build_read_command( ls_create_object_command ).
