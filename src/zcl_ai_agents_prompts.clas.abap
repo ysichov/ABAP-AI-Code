@@ -56,6 +56,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the user asks for method code, use exactly \{AGENT:CODE_SEARCH class_name=>method_name + relevant_prompt_part\}; |
              "&& |do not output class_name=>... method_name=>... as separate fields.|
              && cl_abap_char_utilities=>newline
+             && |If the user asks any code changes, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}; |
+             && cl_abap_char_utilities=>newline
              && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
              && cl_abap_char_utilities=>newline
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
