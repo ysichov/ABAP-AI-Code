@@ -223,14 +223,19 @@ CLASS lcl_popup IMPLEMENTATION.
 
     DATA lv_prompt TYPE string.
     LOOP AT lt_lines INTO DATA(ls_line).
+      DATA(lv_line) = CONV string( ls_line ).
+      SHIFT lv_line RIGHT DELETING TRAILING space.
+
       IF lv_prompt IS NOT INITIAL.
         lv_prompt = lv_prompt && cl_abap_char_utilities=>newline.
       ENDIF.
-      lv_prompt = lv_prompt && ls_line.
+      lv_prompt = lv_prompt && lv_line.
     ENDLOOP.
-    CONDENSE lv_prompt.
 
-    IF lv_prompt IS INITIAL.
+    DATA(lv_prompt_check) = lv_prompt.
+    CONDENSE lv_prompt_check.
+
+    IF lv_prompt_check IS INITIAL.
       MESSAGE 'Please enter a question' TYPE 'I'.
       RETURN.
     ENDIF.

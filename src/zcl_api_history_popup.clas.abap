@@ -263,7 +263,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
 
       lv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:13px;margin:8px;\}|
-             && |.log\{font-family:Consolas,"Courier New",monospace;line-height:1.3;\}|
+             && |.log\{font-family:Consolas,"Courier New",monospace;line-height:1.3;white-space:pre;overflow-x:auto;\}|
              && |</style></head><body><div class="log">|
              && lv_escaped_text
              && |</div></body></html>|.
