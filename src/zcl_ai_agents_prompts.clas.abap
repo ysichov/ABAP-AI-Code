@@ -54,8 +54,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the user asks for method code, use exactly \{AGENT:CODE_SEARCH class_name=>method_name + relevant_prompt_part\}; |
              "&& |do not output class_name=>... method_name=>... as separate fields.|
              && cl_abap_char_utilities=>newline
-             "&& |If the user asks for several code objects or methods, put all code-search tasks into one CODE_SEARCH command.|
-             "&& cl_abap_char_utilities=>newline
+             && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
+             && cl_abap_char_utilities=>newline
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
              && cl_abap_char_utilities=>newline
              && |If requested a code review - \{AGENT:CODE_REVIEW object_type object_name\}.|
@@ -136,7 +136,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
   METHOD get_code_review_prompt.
     rv_prompt = |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
-             && |Do not make an abstract review. Find concrete issues, risks, and improvement suggestions. |
+             && |Do not make an abstract review. Find concrete issues and risks. |
+             && |DON'T offer improvements and suggestions. Only in case if user request it!!! |
              && |Return readable Markdown with real line breaks: put every heading, list item, paragraph, |
              && |and fenced code block on separate lines.|.
   ENDMETHOD.
