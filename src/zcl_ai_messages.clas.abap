@@ -47,6 +47,10 @@ CLASS zcl_ai_messages DEFINITION
       IMPORTING is_request       TYPE ty_agent_request
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS build_agent_requests
+      IMPORTING it_requests      TYPE tt_agent_requests
+      RETURNING VALUE(rv_prompt) TYPE string.
+
     METHODS build_read_command
       IMPORTING is_request       TYPE ty_agent_request
       RETURNING VALUE(rv_command) TYPE string.
@@ -124,6 +128,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     DATA lv_rest TYPE string.
     DATA lv_pos  TYPE i.
     DATA lv_end  TYPE i.
+    DATA lt_seen_commands TYPE tt_strings.
 
     lv_rest = i_orchestrator_answer.
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:' IN lv_rest WITH '{AGENT:'.
@@ -140,6 +145,16 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       DATA(lv_command) = substring( val = lv_rest len = lv_end ).
       lv_rest = substring( val = lv_rest off = lv_end + 1 ).
 
+      DATA(lv_seen_command) = lv_command.
+      TRANSLATE lv_seen_command TO UPPER CASE.
+      CONDENSE lv_seen_command.
+
+      READ TABLE lt_seen_commands WITH KEY table_line = lv_seen_command TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+      APPEND lv_seen_command TO lt_seen_commands.
+
       DATA lt_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
       SPLIT lv_command AT space INTO TABLE lt_parts.
       DELETE lt_parts WHERE table_line IS INITIAL.
@@ -151,26 +166,62 @@ CLASS zcl_ai_messages IMPLEMENTATION.
         agent      = lt_parts[ 1 ]
         raw_command = |{ '{' }AGENT:{ lv_command }{ '}' }| ).
       DATA lv_part TYPE string.
+      DATA lv_part_upper TYPE string.
+      DATA lv_arrow TYPE i.
+      DATA lv_class_name TYPE string.
+      DATA lv_method_name TYPE string.
 
       TRANSLATE ls_request-agent TO UPPER CASE.
 
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
-        IF lines( lt_parts ) >= 2.
-          ls_request-object_type = lt_parts[ 2 ].
-          TRANSLATE ls_request-object_type TO UPPER CASE.
-        ENDIF.
-        IF lines( lt_parts ) >= 3.
-          ls_request-object_name = lt_parts[ 3 ].
-        ENDIF.
-        IF lines( lt_parts ) >= 4.
-          LOOP AT lt_parts INTO lv_part FROM 4.
+        LOOP AT lt_parts INTO lv_part FROM 2.
+          lv_part_upper = lv_part.
+          TRANSLATE lv_part_upper TO UPPER CASE.
+
+          IF lv_part_upper CP 'CLASS_NAME=>*'.
+            FIND FIRST OCCURRENCE OF '=>' IN lv_part MATCH OFFSET lv_arrow.
+            IF sy-subrc = 0.
+              lv_class_name = substring( val = lv_part off = lv_arrow + 2 ).
+            ENDIF.
+          ELSEIF lv_part_upper CP 'METHOD_NAME=>*'.
+            FIND FIRST OCCURRENCE OF '=>' IN lv_part MATCH OFFSET lv_arrow.
+            IF sy-subrc = 0.
+              lv_method_name = substring( val = lv_part off = lv_arrow + 2 ).
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+
+        IF lv_class_name IS NOT INITIAL AND lv_method_name IS NOT INITIAL.
+          ls_request-object_type = 'METH'.
+          ls_request-object_name = |{ lv_class_name }=>{ lv_method_name }|.
+
+          LOOP AT lt_parts INTO lv_part FROM 2.
+            lv_part_upper = lv_part.
+            TRANSLATE lv_part_upper TO UPPER CASE.
+            CHECK lv_part_upper NP 'CLASS_NAME=>*'
+              AND lv_part_upper NP 'METHOD_NAME=>*'.
+
             IF ls_request-relevant_prompt IS NOT INITIAL.
               ls_request-relevant_prompt = ls_request-relevant_prompt && space.
             ENDIF.
             ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
           ENDLOOP.
+        ELSEIF lines( lt_parts ) >= 2.
+          ls_request-object_type = lt_parts[ 2 ].
+          TRANSLATE ls_request-object_type TO UPPER CASE.
+          IF lines( lt_parts ) >= 3.
+            ls_request-object_name = lt_parts[ 3 ].
+          ENDIF.
+          IF lines( lt_parts ) >= 4.
+            LOOP AT lt_parts INTO lv_part FROM 4.
+              IF ls_request-relevant_prompt IS NOT INITIAL.
+                ls_request-relevant_prompt = ls_request-relevant_prompt && space.
+              ENDIF.
+              ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
+            ENDLOOP.
+          ENDIF.
         ENDIF.
       ELSE.
         LOOP AT lt_parts INTO lv_part FROM 2.
@@ -208,6 +259,42 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     add_message(
       i_role        = 'user'
       i_agent       = is_request-agent
+      i_prompt_type = 'AGENT_PROMPT'
+      i_content     = rv_prompt ).
+  ENDMETHOD.
+
+  METHOD build_agent_requests.
+    READ TABLE it_requests INDEX 1 INTO DATA(ls_first_request).
+    CHECK sy-subrc = 0.
+
+    rv_prompt = zcl_ai_agents_prompts=>get_prompt_by_agent( ls_first_request-agent )
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |ORIGINAL PROMPT: { mv_user_prompt }|
+             && cl_abap_char_utilities=>newline
+             && |AGENT COMMANDS:|.
+
+    LOOP AT it_requests INTO DATA(ls_request).
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && ls_request-raw_command.
+
+      IF ls_request-object_type IS NOT INITIAL OR ls_request-object_name IS NOT INITIAL.
+        rv_prompt = rv_prompt
+                 && cl_abap_char_utilities=>newline
+                 && |OBJECT: { ls_request-object_type } { ls_request-object_name }|.
+      ENDIF.
+
+      IF ls_request-relevant_prompt IS NOT INITIAL.
+        rv_prompt = rv_prompt
+                 && cl_abap_char_utilities=>newline
+                 && |RELEVANT PROMPT PART: { ls_request-relevant_prompt }|.
+      ENDIF.
+    ENDLOOP.
+
+    add_message(
+      i_role        = 'user'
+      i_agent       = ls_first_request-agent
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
   ENDMETHOD.

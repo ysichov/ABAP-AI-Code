@@ -274,18 +274,21 @@ CLASS lcl_popup IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_answer) = lv_orchestrator_answer.
+    DATA(lv_answer_log) = lv_answer.
     DATA lv_resolved_code TYPE string.
 
     IF lt_agent_requests IS INITIAL
     AND lv_orchestrator_code_context IS INITIAL
     AND lv_orchestrator_upper CS 'AGENT'.
       lv_answer = |Error: Orchestrator returned an agent command that could not be parsed. Check History for the raw response.|.
+      lv_answer_log = lv_answer.
     ENDIF.
 
     IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_code_context IS NOT INITIAL.
       DATA(lv_index) = 0.
       DATA(lv_total) = lines( lt_agent_requests ).
       DATA lt_done_read_commands TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+      DATA lt_batched_code_search TYPE zcl_ai_messages=>tt_agent_requests.
 
       IF lv_orchestrator_code_context IS NOT INITIAL.
         APPEND lv_orchestrator_read_commands TO lt_done_read_commands.
@@ -336,6 +339,11 @@ CLASS lcl_popup IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
+          APPEND ls_agent_request TO lt_batched_code_search.
+          CONTINUE.
+        ENDIF.
+
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
           EXPORTING percentage = lv_percentage
                     text       = |Asking agent { ls_agent_request-agent }...|.
@@ -373,6 +381,44 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
+      IF lt_batched_code_search IS NOT INITIAL.
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+          EXPORTING percentage = 75
+                    text       = 'Asking code search agent...'.
+
+        DATA(lv_batched_agent_prompt) = mo_messages->build_agent_requests( lt_batched_code_search ).
+        DATA(lv_batched_agent_answer) = zcl_code_ai_api=>ask(
+          i_prompt           = lv_batched_agent_prompt
+          i_dest             = mv_dest
+          i_model            = mv_model
+          i_apikey           = mv_apikey
+          i_provider         = mv_provider
+          i_prompt_cache_key = mv_prompt_cache_key ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+          i_prompt_type = 'LLM_RESPONSE'
+          i_content     = lv_batched_agent_answer ).
+
+        DATA(lv_batched_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_batched_agent_answer ).
+        IF lv_batched_code_context IS NOT INITIAL.
+          DATA(lv_batched_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_batched_agent_answer ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'COMMAND'
+            i_content     = lv_batched_read_commands ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_batched_code_context ).
+        ENDIF.
+      ENDIF.
+
       DATA(lv_only_code_search) = abap_true.
       LOOP AT lt_agent_requests INTO ls_agent_request.
         IF ls_agent_request-agent <> zcl_ai_agents_prompts=>c_agent_code_search.
@@ -392,9 +438,11 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA(lv_agent_error) = mo_messages->get_agent_error( ).
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
+        lv_answer_log = lv_answer.
       ELSEIF lt_agent_requests IS NOT INITIAL
       AND lv_only_code_search = abap_true.
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
+        lv_answer_log = lv_code_only.
         lv_answer = source_to_html(
           i_source = lv_code_only
           i_title  = 'ABAP Source' ).
@@ -410,6 +458,7 @@ CLASS lcl_popup IMPLEMENTATION.
           i_apikey           = mv_apikey
           i_provider         = mv_provider
           i_prompt_cache_key = mv_prompt_cache_key ).
+        lv_answer_log = lv_answer.
 
         lv_resolved_code = mo_messages->get_resolved_code( ).
       ENDIF.
@@ -418,7 +467,7 @@ CLASS lcl_popup IMPLEMENTATION.
         i_role        = 'assistant'
         i_agent       = 'FINAL'
         i_prompt_type = 'FINAL_ANSWER'
-        i_content     = lv_answer ).
+        i_content     = lv_answer_log ).
     ENDIF.
 
     DATA(lt_dbg_msgs) = mo_messages->get_messages( ).
