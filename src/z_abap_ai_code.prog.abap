@@ -431,8 +431,6 @@ CLASS lcl_popup IMPLEMENTATION.
         DATA(lv_task_orchestrator_prompt) = zcl_ai_agents_prompts=>get_orchestrator_prompt( )
           && cl_abap_char_utilities=>newline
           && cl_abap_char_utilities=>newline
-          && |ORIGINAL USER PROMPT: { lv_prompt }|
-          && cl_abap_char_utilities=>newline
           && |PROMPT: { lv_task }|.
 
         mo_messages->add_message(
