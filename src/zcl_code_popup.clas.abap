@@ -141,6 +141,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       DATA(lv_line) = CONV string( ls_line ).
       SHIFT lv_line RIGHT DELETING TRAILING space.
 
+      IF lv_prompt IS NOT INITIAL.
+        lv_prompt = lv_prompt && cl_abap_char_utilities=>newline.
+      ENDIF.
       lv_prompt = lv_prompt && lv_line.
     ENDLOOP.
 
@@ -168,6 +171,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = lv_prompt.
+    DATA lv_code_search_task_prompts TYPE string.
     IF lt_tasks IS NOT INITIAL.
       LOOP AT lt_tasks INTO DATA(lv_effective_task).
         DATA(lv_effective_task_upper) = lv_effective_task.
@@ -230,6 +234,22 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           i_duration_seconds = mo_llm->get_last_seconds( )
           i_content     = lv_task_orchestrator_answer ).
 
+        DATA(lt_task_agent_requests) = mo_messages->parse_agent_requests( lv_task_orchestrator_answer ).
+        LOOP AT lt_task_agent_requests INTO DATA(ls_task_agent_request).
+          CHECK ls_task_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
+          CHECK ls_task_agent_request-relevant_prompt IS NOT INITIAL.
+
+          DATA(lv_clean_task_prompt) = lv_task.
+          REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s*[0-9]+(\.[0-9]+)?\s*:\s*'
+            IN lv_clean_task_prompt WITH ''.
+          CONDENSE lv_clean_task_prompt.
+
+          IF lv_code_search_task_prompts IS NOT INITIAL.
+            lv_code_search_task_prompts = lv_code_search_task_prompts && cl_abap_char_utilities=>newline.
+          ENDIF.
+          lv_code_search_task_prompts = lv_code_search_task_prompts && lv_clean_task_prompt.
+        ENDLOOP.
+
         IF lv_orchestrator_answer IS NOT INITIAL.
           lv_orchestrator_answer = lv_orchestrator_answer && cl_abap_char_utilities=>newline.
         ENDIF.
@@ -273,7 +293,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       DATA lv_code_change_name TYPE string.
       DATA lv_create_object_type TYPE string.
       DATA lv_create_object_name TYPE string.
-      DATA lv_final_prompt_tasks TYPE string.
+      DATA(lv_final_prompt_tasks) = lv_code_search_task_prompts.
 
       IF lv_orchestrator_upper CS '{SHOW'.
         lv_has_show_command = abap_true.
@@ -311,10 +331,18 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
               lv_has_show_command = abap_true.
             ELSE.
               lv_has_agent_followup_text = abap_true.
-              IF lv_final_prompt_tasks IS NOT INITIAL.
-                lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+              IF lv_code_search_task_prompts IS INITIAL.
+                IF lv_final_prompt_tasks IS NOT INITIAL.
+                  lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+                ENDIF.
+                DATA(lv_clean_prompt_task) = ls_agent_request-raw_command.
+                REPLACE FIRST OCCURRENCE OF REGEX '^\{\s*AGENT\s*:\s*CODE_SEARCH\s+\S+\s+\S+\s*'
+                  IN lv_clean_prompt_task WITH ''.
+                REPLACE FIRST OCCURRENCE OF REGEX '\}\s*$'
+                  IN lv_clean_prompt_task WITH ''.
+                CONDENSE lv_clean_prompt_task.
+                lv_final_prompt_tasks = lv_final_prompt_tasks && lv_clean_prompt_task.
               ENDIF.
-              lv_final_prompt_tasks = lv_final_prompt_tasks && ls_agent_request-relevant_prompt.
             ENDIF.
           ENDIF.
 
