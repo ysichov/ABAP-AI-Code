@@ -41,7 +41,9 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
   METHOD get_orchestrator_prompt.
     rv_prompt = |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
-             && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}.|
+    && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}.|
+             && cl_abap_char_utilities=>newline
+             && |If the user asks for method code, \{AGENT:CODE_SEARCH METH class_name=>method_name + relevant_prompt_part\}.|
              && cl_abap_char_utilities=>newline
              && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
              && cl_abap_char_utilities=>newline
