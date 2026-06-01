@@ -65,6 +65,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
   METHOD get_orchestrator_prompt.
     rv_prompt = get_system_prompt_prefix( )
     && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
+
+    && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
     && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
     && |CODE_SEARCH is a runtime command, not an LLM agent. |
              && cl_abap_char_utilities=>newline
@@ -107,15 +109,13 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |If the request is not described here, answer "Not supported"|
              && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
              && |Allowed object types: PROG, CLASS, METH, FM - functional module|
-             && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |Example: Open the Z_test program and, based on it, create an example calculator program Z_CALC. |
              && |Answer: "\{AGENT:CODE_SEARCH PROG Z_TEST\} and, based on it, create an example |
              && |calculator program \{AGENT:CREATE_OBJECT program Z_CALC\}.|
              && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
+             && |DON'T LOOSE extra prompt with tasks - add it after AGENT command, dont miss it, please!!!|
              && |Example: delete something - deletion is not supported|.
   ENDMETHOD.
 
@@ -127,12 +127,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |Если какая-то задача непонятна, задай к ней уточняющие вопросы. Формат: TASK1-ASK1. |
              && cl_abap_char_utilities=>newline
-             && |Своих задач не придумывай кроме обязательных технических задач типа: прочитать код программы имя_программы, |
-             && |сохранить изменения. |
-             && cl_abap_char_utilities=>newline
-             && |Не добавляй отдельную задачу get_diff после изменения кода: CODE_CHANGE автоматически запускает CODE_EXTRACT и CODE_DIFF. Добавляй get_diff только если пользователь явно просит только показать или проверить diff. |
-             && |Не добавляй отдельную задачу CODE_REVIEW после изменения кода. CODE_REVIEW запускается только если пользователь явно попросил ревью. |
-             && |Сохранение только после approve в diff UI. |
+             && |Своих задач не придумывай кроме обязательных технических задач типа: прочитать код программы имя_программы. На этом все - никакой инициативы|
              && cl_abap_char_utilities=>newline
              && |Никаких более вопросов, размышлений, описаний в начале и спецсимволов. Не делай излишнюю детализацию. |
              && |Агент начнет выполнять твои задачи и задавать вопросы. |
@@ -147,15 +142,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Например, для "добавь комментарии с кратким описанием" не спрашивай текст описания, а поставь задачу вывести описание из кода. |
              && |Пример: TASK2-ASK1: Текст вопроса?|
              && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |Example USER PROMPT: В программе z_test добавь комментарии в начале программы с кратким описанием|
-             && cl_abap_char_utilities=>newline
-             && |TASK1: Прочитать код программы Z_TEST.|
-             && cl_abap_char_utilities=>newline
-             && |TASK2: Добавить комментарии в начале программы Z_TEST с кратким описанием, выведенным из кода программы.|
-             && cl_abap_char_utilities=>newline
-             && |TASK3: Сохранить изменения в программе Z_TEST только после approval.|
-             && cl_abap_char_utilities=>newline
+
              && |Example ASK only when necessary: TASK2-ASK1: Какая точная формула расчета прибыли должна быть использована?|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
