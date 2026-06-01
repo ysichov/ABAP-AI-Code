@@ -19,6 +19,64 @@ SELECTION-SCREEN END OF BLOCK b_api.
 * zcl_api_history_popup - message history popup
 *----------------------------------------------------------------------*
 
+CLASS lcl_llm_client DEFINITION.
+  PUBLIC SECTION.
+    METHODS constructor
+      IMPORTING i_dest     TYPE text255
+                i_model    TYPE text255
+                i_apikey   TYPE string
+                i_provider TYPE string.
+
+    METHODS ask
+      IMPORTING i_prompt        TYPE string
+      RETURNING VALUE(rv_answer) TYPE string.
+
+    METHODS get_last_seconds
+      RETURNING VALUE(rv_seconds) TYPE string.
+
+  PRIVATE SECTION.
+    DATA mv_dest     TYPE text255.
+    DATA mv_model    TYPE text255.
+    DATA mv_apikey   TYPE string.
+    DATA mv_provider TYPE string.
+    DATA mv_prompt_cache_key TYPE string.
+    DATA mv_last_seconds TYPE string.
+ENDCLASS.
+
+CLASS lcl_task_planner DEFINITION.
+  PUBLIC SECTION.
+    TYPES tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    METHODS constructor
+      IMPORTING io_messages TYPE REF TO zcl_ai_messages
+                io_llm      TYPE REF TO lcl_llm_client.
+
+    METHODS prepare_task_list
+      IMPORTING i_prompt TYPE string
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
+
+  PRIVATE SECTION.
+    DATA mo_messages TYPE REF TO zcl_ai_messages.
+    DATA mo_llm      TYPE REF TO lcl_llm_client.
+
+    METHODS should_use_task_orchestrator
+      IMPORTING i_prompt TYPE string
+      RETURNING VALUE(rv_use) TYPE abap_bool.
+    METHODS split_task_list
+      IMPORTING i_text TYPE string
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
+    METHODS enrich_tasks_with_answers
+      IMPORTING it_tasks TYPE tt_strings
+      RETURNING VALUE(rt_tasks) TYPE tt_strings.
+ENDCLASS.
+
+CLASS lcl_code_answer_tools DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS extract_code_from_answer
+      IMPORTING i_text         TYPE string
+      RETURNING VALUE(rv_code) TYPE string.
+ENDCLASS.
+
 *----------------------------------------------------------------------*
 * lcl_popup - GUI popup with splitter: left=question, right=answer
 *----------------------------------------------------------------------*
@@ -38,13 +96,10 @@ CLASS lcl_popup DEFINITION.
            tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY,
            tt_strings            TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
 
-    DATA: mv_dest     TYPE text255,
-          mv_model    TYPE text255,
-          mv_apikey   TYPE string,
-          mv_provider TYPE string,
-          mv_prompt_cache_key TYPE string,
-          mv_session_counter TYPE i,
+    DATA: mv_session_counter TYPE i,
           mo_messages TYPE REF TO zcl_ai_messages,
+          mo_llm      TYPE REF TO lcl_llm_client,
+          mo_task_planner TYPE REF TO lcl_task_planner,
           mt_message_history TYPE zcl_ai_messages=>tt_messages,
           mo_history  TYPE REF TO zcl_api_history_popup,
           mo_dialog   TYPE REF TO cl_gui_dialogbox_container,
@@ -53,7 +108,6 @@ CLASS lcl_popup DEFINITION.
           mo_question TYPE REF TO cl_gui_textedit,
           mo_answer   TYPE REF TO cl_gui_html_viewer.
     DATA: mv_diff_base_html TYPE string,
-          mv_last_llm_seconds TYPE string,
           mv_diff_key TYPE string,
           mv_diff_save_stub_logged TYPE abap_bool,
           mt_diff_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info,
@@ -76,29 +130,11 @@ CLASS lcl_popup DEFINITION.
       IMPORTING action getdata postdata.
 
     METHODS ask_ai.
-    METHODS ask_llm
-      IMPORTING i_prompt        TYPE string
-      RETURNING VALUE(rv_answer) TYPE string.
-    METHODS should_use_task_orchestrator
-      IMPORTING i_prompt TYPE string
-      RETURNING VALUE(rv_use) TYPE abap_bool.
-    METHODS prepare_task_list
-      IMPORTING i_prompt TYPE string
-      RETURNING VALUE(rt_tasks) TYPE tt_strings.
-    METHODS split_task_list
-      IMPORTING i_text TYPE string
-      RETURNING VALUE(rt_tasks) TYPE tt_strings.
-    METHODS enrich_tasks_with_answers
-      IMPORTING it_tasks TYPE tt_strings
-      RETURNING VALUE(rt_tasks) TYPE tt_strings.
     METHODS show_history.
     METHODS resolve_and_log_read_commands
       IMPORTING i_text            TYPE string
       CHANGING  ct_done_commands  TYPE tt_strings
       RETURNING VALUE(rv_context) TYPE string.
-    METHODS extract_code_from_answer
-      IMPORTING i_text         TYPE string
-      RETURNING VALUE(rv_code) TYPE string.
     METHODS display_text
       IMPORTING i_text TYPE string.
     METHODS display_answer
@@ -139,7 +175,7 @@ CLASS lcl_popup DEFINITION.
       RETURNING VALUE(rv_text) TYPE string.
 ENDCLASS.
 
-CLASS lcl_popup IMPLEMENTATION.
+CLASS lcl_llm_client IMPLEMENTATION.
 
   METHOD constructor.
     mv_dest     = i_dest.
@@ -147,6 +183,259 @@ CLASS lcl_popup IMPLEMENTATION.
     mv_apikey   = i_apikey.
     mv_provider = i_provider.
     mv_prompt_cache_key = |{ sy-mandt }-{ sy-uname }-{ sy-datum }-{ sy-uzeit }|.
+  ENDMETHOD.
+
+  METHOD ask.
+    DATA lv_start TYPE i.
+    DATA lv_end TYPE i.
+    DATA lv_elapsed TYPE p LENGTH 16 DECIMALS 2.
+
+    CLEAR mv_last_seconds.
+    GET RUN TIME FIELD lv_start.
+
+    rv_answer = zcl_code_ai_api=>ask(
+      i_prompt           = i_prompt
+      i_dest             = mv_dest
+      i_model            = mv_model
+      i_apikey           = mv_apikey
+      i_provider         = mv_provider
+      i_prompt_cache_key = mv_prompt_cache_key ).
+
+    GET RUN TIME FIELD lv_end.
+    lv_elapsed = ( lv_end - lv_start ) / 1000000.
+    mv_last_seconds = |{ lv_elapsed }|.
+    CONDENSE mv_last_seconds.
+  ENDMETHOD.
+
+  METHOD get_last_seconds.
+    rv_seconds = mv_last_seconds.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_task_planner IMPLEMENTATION.
+
+  METHOD constructor.
+    mo_messages = io_messages.
+    mo_llm = io_llm.
+  ENDMETHOD.
+
+  METHOD should_use_task_orchestrator.
+    DATA(lv_prompt_upper) = i_prompt.
+    TRANSLATE lv_prompt_upper TO UPPER CASE.
+
+    rv_use = xsdbool(
+      lv_prompt_upper CS 'ИЗМЕН'
+      OR lv_prompt_upper CS 'ДОБАВ'
+      OR lv_prompt_upper CS 'КОММЕНТ'
+      OR lv_prompt_upper CS 'ПЕРЕПИШ'
+      OR lv_prompt_upper CS 'ОБНОВ'
+      OR lv_prompt_upper CS 'СОХРАН'
+      OR lv_prompt_upper CS 'CREATE'
+      OR lv_prompt_upper CS 'CHANGE'
+      OR lv_prompt_upper CS 'COMMENT'
+      OR lv_prompt_upper CS 'MODIFY'
+      OR lv_prompt_upper CS 'UPDATE'
+      OR lv_prompt_upper CS 'REWRITE'
+      OR lv_prompt_upper CS 'REFACTOR'
+      OR lv_prompt_upper CS 'SAVE' ).
+  ENDMETHOD.
+
+  METHOD prepare_task_list.
+    CHECK should_use_task_orchestrator( i_prompt ) = abap_true.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
+
+    DATA(lv_task_prompt) = zcl_ai_agents_prompts=>get_task_orchestrator_prompt( )
+                          && cl_abap_char_utilities=>newline
+                          && i_prompt.
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+      i_prompt_type = 'AGENT_PROMPT'
+      i_content     = lv_task_prompt ).
+
+    DATA(lv_task_answer) = mo_llm->ask( lv_task_prompt ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+      i_prompt_type = 'LLM_RESPONSE'
+      i_duration_seconds = mo_llm->get_last_seconds( )
+      i_content     = lv_task_answer ).
+
+    rt_tasks = split_task_list( lv_task_answer ).
+    rt_tasks = enrich_tasks_with_answers( rt_tasks ).
+  ENDMETHOD.
+
+  METHOD split_task_list.
+    DATA(lv_text) = i_text.
+    DATA(lv_nl) = cl_abap_char_utilities=>newline.
+
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_text WITH lv_nl.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+(TASK\s*[0-9]+(\.[0-9]+)?(\s*-\s*ASK\s*[0-9]+|-ASK[0-9]+)?:)'
+      IN lv_text WITH |{ lv_nl }$1|.
+
+    DATA lt_lines TYPE tt_strings.
+    SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      CONDENSE lv_line.
+      DATA(lv_line_upper) = lv_line.
+      TRANSLATE lv_line_upper TO UPPER CASE.
+      CHECK lv_line_upper CP 'TASK*'.
+      APPEND lv_line TO rt_tasks.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD enrich_tasks_with_answers.
+    rt_tasks = it_tasks.
+
+    LOOP AT it_tasks INTO DATA(lv_task_line).
+      DATA(lv_task_upper) = lv_task_line.
+      TRANSLATE lv_task_upper TO UPPER CASE.
+      CHECK lv_task_upper CS '-ASK'.
+
+      DATA(lv_colon_off) = 0.
+      FIND FIRST OCCURRENCE OF ':' IN lv_task_line MATCH OFFSET lv_colon_off.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_ask_key) = substring( val = lv_task_line len = lv_colon_off ).
+      DATA(lv_question_start) = lv_colon_off + 1.
+      DATA(lv_question) = substring( val = lv_task_line off = lv_question_start ).
+      CONDENSE lv_ask_key.
+      CONDENSE lv_question.
+
+      DATA(lv_base_key) = lv_ask_key.
+      REPLACE FIRST OCCURRENCE OF REGEX '\s*-\s*ASK\s*[0-9]+$' IN lv_base_key WITH ''.
+      REPLACE FIRST OCCURRENCE OF REGEX '-ASK[0-9]+$' IN lv_base_key WITH ''.
+      CONDENSE lv_base_key.
+
+      DATA lt_fields TYPE TABLE OF sval.
+      APPEND VALUE #(
+        tabname   = 'TLINE'
+        fieldname = 'TDLINE'
+        value     = '' ) TO lt_fields.
+
+      CALL FUNCTION 'POPUP_GET_VALUES'
+        EXPORTING
+          popup_title = CONV text80( |{ lv_ask_key }: { lv_question }| )
+        TABLES
+          fields      = lt_fields
+        EXCEPTIONS
+          error_in_fields = 1
+          OTHERS          = 2.
+
+      DATA(lv_answer) = VALUE string( ).
+      IF sy-subrc = 0.
+        READ TABLE lt_fields INTO DATA(ls_field) INDEX 1.
+        IF sy-subrc = 0.
+          lv_answer = ls_field-value.
+          CONDENSE lv_answer.
+        ENDIF.
+      ENDIF.
+
+      IF lv_answer IS INITIAL.
+        MESSAGE |Task clarification skipped: { lv_ask_key }| TYPE 'S'.
+        CONTINUE.
+      ENDIF.
+
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+        i_prompt_type = 'TASK_ANSWER'
+        i_content     = |{ lv_ask_key }: { lv_question } -> { lv_answer }| ).
+
+      LOOP AT rt_tasks ASSIGNING FIELD-SYMBOL(<task_to_enrich>).
+        DATA(lv_enrich_upper) = <task_to_enrich>.
+        TRANSLATE lv_enrich_upper TO UPPER CASE.
+        CHECK NOT lv_enrich_upper CS '-ASK'.
+
+        DATA(lv_current_key) = <task_to_enrich>.
+        FIND FIRST OCCURRENCE OF ':' IN lv_current_key MATCH OFFSET DATA(lv_current_colon).
+        IF sy-subrc = 0.
+          lv_current_key = substring( val = lv_current_key len = lv_current_colon ).
+        ENDIF.
+        CONDENSE lv_current_key.
+
+        IF lv_current_key = lv_base_key.
+          <task_to_enrich> = <task_to_enrich>
+                          && | Clarification for { lv_ask_key }: { lv_question } Answer: { lv_answer }|.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    DATA lt_filtered_tasks TYPE tt_strings.
+    LOOP AT rt_tasks INTO DATA(lv_filtered_task).
+      DATA(lv_filtered_upper) = lv_filtered_task.
+      TRANSLATE lv_filtered_upper TO UPPER CASE.
+      CHECK NOT lv_filtered_upper CS '-ASK'.
+      APPEND lv_filtered_task TO lt_filtered_tasks.
+    ENDLOOP.
+    rt_tasks = lt_filtered_tasks.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_code_answer_tools IMPLEMENTATION.
+
+  METHOD extract_code_from_answer.
+    DATA lv_start TYPE i.
+    DATA lv_fence_len TYPE i.
+    DATA lv_code_start TYPE i.
+    DATA lv_end TYPE i.
+    DATA lv_after TYPE string.
+
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN i_text
+      MATCH OFFSET lv_start
+      MATCH LENGTH lv_fence_len.
+    IF sy-subrc = 0.
+      lv_code_start = lv_start + lv_fence_len.
+      lv_after = substring( val = i_text off = lv_code_start ).
+      FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
+      IF sy-subrc <> 0.
+        rv_code = lv_after.
+      ELSE.
+        rv_code = substring( val = lv_after len = lv_end ).
+      ENDIF.
+      SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
+      RETURN.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN i_text
+      MATCH OFFSET lv_start
+      MATCH LENGTH lv_fence_len.
+    IF sy-subrc <> 0.
+      rv_code = i_text.
+      RETURN.
+    ENDIF.
+
+    lv_code_start = lv_start + lv_fence_len.
+    lv_after = substring( val = i_text off = lv_code_start ).
+    FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
+    IF sy-subrc <> 0.
+      rv_code = lv_after.
+      RETURN.
+    ENDIF.
+
+    rv_code = substring( val = lv_after len = lv_end ).
+    SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_popup IMPLEMENTATION.
+
+  METHOD constructor.
+    mo_llm = NEW lcl_llm_client(
+      i_dest     = i_dest
+      i_model    = i_model
+      i_apikey   = i_apikey
+      i_provider = i_provider ).
   ENDMETHOD.
 
   METHOD show.
@@ -382,8 +671,11 @@ CLASS lcl_popup IMPLEMENTATION.
     mo_messages = NEW zcl_ai_messages(
       i_user_prompt = lv_prompt
       i_session_id  = mv_session_counter ).
+    mo_task_planner = NEW lcl_task_planner(
+      io_messages = mo_messages
+      io_llm      = mo_llm ).
 
-    DATA(lt_tasks) = prepare_task_list( lv_prompt ).
+    DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = lv_prompt.
     IF lt_tasks IS NOT INITIAL.
       LOOP AT lt_tasks INTO DATA(lv_effective_task).
@@ -411,13 +703,13 @@ CLASS lcl_popup IMPLEMENTATION.
 
     IF lt_tasks IS INITIAL.
       DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
-      lv_orchestrator_answer = ask_llm( lv_orchestrator_prompt ).
+      lv_orchestrator_answer = mo_llm->ask( lv_orchestrator_prompt ).
 
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
         i_prompt_type = 'LLM_RESPONSE'
-        i_duration_seconds = mv_last_llm_seconds
+        i_duration_seconds = mo_llm->get_last_seconds( )
         i_content     = lv_orchestrator_answer ).
     ELSE.
       DATA(lv_task_count) = lines( lt_tasks ).
@@ -438,13 +730,13 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'SYSTEM_PROMPT'
           i_content     = lv_task_orchestrator_prompt ).
 
-        DATA(lv_task_orchestrator_answer) = ask_llm( lv_task_orchestrator_prompt ).
+        DATA(lv_task_orchestrator_answer) = mo_llm->ask( lv_task_orchestrator_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
           i_prompt_type = 'LLM_RESPONSE'
-          i_duration_seconds = mv_last_llm_seconds
+          i_duration_seconds = mo_llm->get_last_seconds( )
           i_content     = lv_task_orchestrator_answer ).
 
         IF lv_orchestrator_answer IS NOT INITIAL.
@@ -607,13 +899,13 @@ CLASS lcl_popup IMPLEMENTATION.
                     text       = |Asking agent { ls_agent_request-agent }...|.
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
-        DATA(lv_agent_answer) = ask_llm( lv_agent_prompt ).
+        DATA(lv_agent_answer) = mo_llm->ask( lv_agent_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = ls_agent_request-agent
           i_prompt_type = 'LLM_RESPONSE'
-          i_duration_seconds = mv_last_llm_seconds
+          i_duration_seconds = mo_llm->get_last_seconds( )
           i_content     = lv_agent_answer ).
 
         IF mo_messages->has_text_after_agent_commands( lv_agent_answer ) = abap_true.
@@ -656,13 +948,13 @@ CLASS lcl_popup IMPLEMENTATION.
                     text       = 'Asking code review agent...'.
 
         DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
-        DATA(lv_review_answer) = ask_llm( lv_review_prompt ).
+        DATA(lv_review_answer) = mo_llm->ask( lv_review_prompt ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
           i_prompt_type = 'LLM_RESPONSE'
-          i_duration_seconds = mv_last_llm_seconds
+          i_duration_seconds = mo_llm->get_last_seconds( )
           i_content     = lv_review_answer ).
       ENDIF.
 
@@ -717,8 +1009,8 @@ CLASS lcl_popup IMPLEMENTATION.
 
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_effective_prompt ).
-        lv_answer = ask_llm( lv_final_prompt ).
-        lv_final_duration_seconds = mv_last_llm_seconds.
+        lv_answer = mo_llm->ask( lv_final_prompt ).
+        lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         lv_answer_log = lv_answer.
 
         lv_resolved_code = mo_messages->get_resolved_code( ).
@@ -732,37 +1024,55 @@ CLASS lcl_popup IMPLEMENTATION.
         i_content     = lv_answer_log ).
 
       IF lv_has_code_change = abap_true AND lv_agent_error IS INITIAL.
-        DATA(lv_extracted_code) = extract_code_from_answer( lv_answer_log ).
+        DATA(lv_answer_log_upper) = lv_answer_log.
+        TRANSLATE lv_answer_log_upper TO UPPER CASE.
 
-        mo_messages->add_message(
-          i_role        = 'user'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
-          i_prompt_type = 'COMMAND'
-          i_content     = |Extract changed code from final answer| ).
+        IF lv_answer_log_upper CS 'CHANGES:NO'.
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'COMMAND'
+            i_content     = |Extract changed code from final answer| ).
 
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
-          i_prompt_type = 'AGENT_RESPONSE'
-          i_content     = lv_extracted_code ).
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |No changed code extracted. LLM returned CHANGES:NO.| ).
 
-        mo_messages->add_message(
-          i_role        = 'user'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
-          i_prompt_type = 'COMMAND'
-          i_content     = |Diff original code with extracted changed code| ).
+        ELSE.
+          DATA(lv_extracted_code) = lcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
 
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
-          i_prompt_type = 'AGENT_RESPONSE'
-          i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'COMMAND'
+            i_content     = |Extract changed code from final answer| ).
 
-        lv_answer = diff_to_html(
-          i_old_code   = mo_messages->get_resolved_code( )
-          i_new_code   = lv_extracted_code
-          i_object_type = lv_code_change_type
-          i_object_name = lv_code_change_name ).
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_extracted_code ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+            i_prompt_type = 'COMMAND'
+            i_content     = |Diff original code with extracted changed code| ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+
+          lv_answer = diff_to_html(
+            i_old_code   = mo_messages->get_resolved_code( )
+            i_new_code   = lv_extracted_code
+            i_object_type = lv_code_change_type
+            i_object_name = lv_code_change_name ).
+        ENDIF.
       ENDIF.
 
       LOOP AT lt_code_diff_commands INTO DATA(ls_code_diff_command).
@@ -917,187 +1227,6 @@ CLASS lcl_popup IMPLEMENTATION.
       i_source = lv_resolved_code ).
   ENDMETHOD.
 
-  METHOD ask_llm.
-    DATA lv_start TYPE i.
-    DATA lv_end TYPE i.
-    DATA lv_elapsed TYPE p LENGTH 16 DECIMALS 2.
-
-    CLEAR mv_last_llm_seconds.
-    GET RUN TIME FIELD lv_start.
-
-    rv_answer = zcl_code_ai_api=>ask(
-      i_prompt           = i_prompt
-      i_dest             = mv_dest
-      i_model            = mv_model
-      i_apikey           = mv_apikey
-      i_provider         = mv_provider
-      i_prompt_cache_key = mv_prompt_cache_key ).
-
-    GET RUN TIME FIELD lv_end.
-    lv_elapsed = ( lv_end - lv_start ) / 1000000.
-    mv_last_llm_seconds = |{ lv_elapsed }|.
-    CONDENSE mv_last_llm_seconds.
-  ENDMETHOD.
-
-  METHOD should_use_task_orchestrator.
-    DATA(lv_prompt_upper) = i_prompt.
-    TRANSLATE lv_prompt_upper TO UPPER CASE.
-
-    rv_use = xsdbool(
-      lv_prompt_upper CS 'ИЗМЕН'
-      OR lv_prompt_upper CS 'ДОБАВ'
-      OR lv_prompt_upper CS 'КОММЕНТ'
-      OR lv_prompt_upper CS 'ПЕРЕПИШ'
-      OR lv_prompt_upper CS 'ОБНОВ'
-      OR lv_prompt_upper CS 'СОХРАН'
-      OR lv_prompt_upper CS 'CREATE'
-      OR lv_prompt_upper CS 'CHANGE'
-      OR lv_prompt_upper CS 'COMMENT'
-      OR lv_prompt_upper CS 'MODIFY'
-      OR lv_prompt_upper CS 'UPDATE'
-      OR lv_prompt_upper CS 'REWRITE'
-      OR lv_prompt_upper CS 'REFACTOR'
-      OR lv_prompt_upper CS 'SAVE' ).
-  ENDMETHOD.
-
-  METHOD prepare_task_list.
-    CHECK should_use_task_orchestrator( i_prompt ) = abap_true.
-
-    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-      EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
-
-    DATA(lv_task_prompt) = zcl_ai_agents_prompts=>get_task_orchestrator_prompt( )
-                          && cl_abap_char_utilities=>newline
-                          && i_prompt.
-    mo_messages->add_message(
-      i_role        = 'user'
-      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
-      i_prompt_type = 'AGENT_PROMPT'
-      i_content     = lv_task_prompt ).
-
-    DATA(lv_task_answer) = ask_llm( lv_task_prompt ).
-
-    mo_messages->add_message(
-      i_role        = 'assistant'
-      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
-      i_prompt_type = 'LLM_RESPONSE'
-      i_duration_seconds = mv_last_llm_seconds
-      i_content     = lv_task_answer ).
-
-    rt_tasks = split_task_list( lv_task_answer ).
-    rt_tasks = enrich_tasks_with_answers( rt_tasks ).
-  ENDMETHOD.
-
-  METHOD split_task_list.
-    DATA(lv_text) = i_text.
-    DATA(lv_nl) = cl_abap_char_utilities=>newline.
-
-    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_text WITH lv_nl.
-    REPLACE ALL OCCURRENCES OF REGEX '\s+(TASK\s*[0-9]+(\.[0-9]+)?(\s*-\s*ASK\s*[0-9]+|-ASK[0-9]+)?:)'
-      IN lv_text WITH |{ lv_nl }$1|.
-
-    DATA lt_lines TYPE tt_strings.
-    SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
-
-    LOOP AT lt_lines INTO DATA(lv_line).
-      CONDENSE lv_line.
-      DATA(lv_line_upper) = lv_line.
-      TRANSLATE lv_line_upper TO UPPER CASE.
-      CHECK lv_line_upper CP 'TASK*'.
-      APPEND lv_line TO rt_tasks.
-    ENDLOOP.
-  ENDMETHOD.
-
-  METHOD enrich_tasks_with_answers.
-    rt_tasks = it_tasks.
-
-    LOOP AT it_tasks INTO DATA(lv_task_line).
-      DATA(lv_task_upper) = lv_task_line.
-      TRANSLATE lv_task_upper TO UPPER CASE.
-      CHECK lv_task_upper CS '-ASK'.
-
-      DATA(lv_colon_off) = 0.
-      FIND FIRST OCCURRENCE OF ':' IN lv_task_line MATCH OFFSET lv_colon_off.
-      IF sy-subrc <> 0.
-        CONTINUE.
-      ENDIF.
-
-      DATA(lv_ask_key) = substring( val = lv_task_line len = lv_colon_off ).
-      DATA(lv_question_start) = lv_colon_off + 1.
-      DATA(lv_question) = substring( val = lv_task_line off = lv_question_start ).
-      CONDENSE lv_ask_key.
-      CONDENSE lv_question.
-
-      DATA(lv_base_key) = lv_ask_key.
-      REPLACE FIRST OCCURRENCE OF REGEX '\s*-\s*ASK\s*[0-9]+$' IN lv_base_key WITH ''.
-      REPLACE FIRST OCCURRENCE OF REGEX '-ASK[0-9]+$' IN lv_base_key WITH ''.
-      CONDENSE lv_base_key.
-
-      DATA lt_fields TYPE TABLE OF sval.
-      APPEND VALUE #(
-        tabname   = 'TLINE'
-        fieldname = 'TDLINE'
-        value     = '' ) TO lt_fields.
-
-      CALL FUNCTION 'POPUP_GET_VALUES'
-        EXPORTING
-          popup_title = CONV text80( |{ lv_ask_key }: { lv_question }| )
-        TABLES
-          fields      = lt_fields
-        EXCEPTIONS
-          error_in_fields = 1
-          OTHERS          = 2.
-
-      DATA(lv_answer) = VALUE string( ).
-      IF sy-subrc = 0.
-        READ TABLE lt_fields INTO DATA(ls_field) INDEX 1.
-        IF sy-subrc = 0.
-          lv_answer = ls_field-value.
-          CONDENSE lv_answer.
-        ENDIF.
-      ENDIF.
-
-      IF lv_answer IS INITIAL.
-        MESSAGE |Task clarification skipped: { lv_ask_key }| TYPE 'S'.
-        CONTINUE.
-      ENDIF.
-
-      mo_messages->add_message(
-        i_role        = 'user'
-        i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
-        i_prompt_type = 'TASK_ANSWER'
-        i_content     = |{ lv_ask_key }: { lv_question } -> { lv_answer }| ).
-
-      LOOP AT rt_tasks ASSIGNING FIELD-SYMBOL(<task_to_enrich>).
-        DATA(lv_enrich_upper) = <task_to_enrich>.
-        TRANSLATE lv_enrich_upper TO UPPER CASE.
-        CHECK NOT lv_enrich_upper CS '-ASK'.
-
-        DATA(lv_current_key) = <task_to_enrich>.
-        FIND FIRST OCCURRENCE OF ':' IN lv_current_key MATCH OFFSET DATA(lv_current_colon).
-        IF sy-subrc = 0.
-          lv_current_key = substring( val = lv_current_key len = lv_current_colon ).
-        ENDIF.
-        CONDENSE lv_current_key.
-
-        IF lv_current_key = lv_base_key.
-          <task_to_enrich> = <task_to_enrich>
-                          && | Clarification for { lv_ask_key }: { lv_question } Answer: { lv_answer }|.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
-    ENDLOOP.
-
-    DATA lt_filtered_tasks TYPE tt_strings.
-    LOOP AT rt_tasks INTO DATA(lv_filtered_task).
-      DATA(lv_filtered_upper) = lv_filtered_task.
-      TRANSLATE lv_filtered_upper TO UPPER CASE.
-      CHECK NOT lv_filtered_upper CS '-ASK'.
-      APPEND lv_filtered_task TO lt_filtered_tasks.
-    ENDLOOP.
-    rt_tasks = lt_filtered_tasks.
-  ENDMETHOD.
-
   METHOD show_history.
     IF mt_message_history IS INITIAL.
       MESSAGE 'No message history yet' TYPE 'I'.
@@ -1181,49 +1310,6 @@ CLASS lcl_popup IMPLEMENTATION.
       ENDIF.
       rv_context = rv_context && lv_code_context.
     ENDLOOP.
-  ENDMETHOD.
-
-  METHOD extract_code_from_answer.
-    DATA lv_start TYPE i.
-    DATA lv_fence_len TYPE i.
-    DATA lv_code_start TYPE i.
-    DATA lv_end TYPE i.
-    DATA lv_after TYPE string.
-
-    FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN i_text
-      MATCH OFFSET lv_start
-      MATCH LENGTH lv_fence_len.
-    IF sy-subrc = 0.
-      lv_code_start = lv_start + lv_fence_len.
-      lv_after = substring( val = i_text off = lv_code_start ).
-      FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
-      IF sy-subrc <> 0.
-        rv_code = lv_after.
-      ELSE.
-        rv_code = substring( val = lv_after len = lv_end ).
-      ENDIF.
-      SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
-      RETURN.
-    ENDIF.
-
-    FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN i_text
-      MATCH OFFSET lv_start
-      MATCH LENGTH lv_fence_len.
-    IF sy-subrc <> 0.
-      rv_code = i_text.
-      RETURN.
-    ENDIF.
-
-    lv_code_start = lv_start + lv_fence_len.
-    lv_after = substring( val = i_text off = lv_code_start ).
-    FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
-    IF sy-subrc <> 0.
-      rv_code = lv_after.
-      RETURN.
-    ENDIF.
-
-    rv_code = substring( val = lv_after len = lv_end ).
-    SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
   ENDMETHOD.
 
   METHOD display_text.
