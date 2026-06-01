@@ -380,6 +380,19 @@ CLASS lcl_popup IMPLEMENTATION.
       i_session_id  = mv_session_counter ).
 
     DATA(lt_tasks) = prepare_task_list( lv_prompt ).
+    DATA(lv_effective_prompt) = lv_prompt.
+    IF lt_tasks IS NOT INITIAL.
+      lv_effective_prompt = lv_effective_prompt
+                         && cl_abap_char_utilities=>newline
+                         && cl_abap_char_utilities=>newline
+                         && |TASKS AND CLARIFICATIONS:|.
+
+      LOOP AT lt_tasks INTO DATA(lv_effective_task).
+        lv_effective_prompt = lv_effective_prompt
+                           && cl_abap_char_utilities=>newline
+                           && lv_effective_task.
+      ENDLOOP.
+    ENDIF.
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 20 text = 'Asking orchestrator...'.
@@ -713,7 +726,8 @@ CLASS lcl_popup IMPLEMENTATION.
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
           EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
 
-        DATA(lv_final_prompt) = mo_messages->build_final_request( ).
+        DATA(lv_final_prompt) = mo_messages->build_final_request(
+          i_user_prompt = lv_effective_prompt ).
         lv_answer = zcl_code_ai_api=>ask(
           i_prompt           = lv_final_prompt
           i_dest             = mv_dest
@@ -753,7 +767,7 @@ CLASS lcl_popup IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |ORIGINAL USER PROMPT:|
              && cl_abap_char_utilities=>newline
-             && lv_prompt
+             && lv_effective_prompt
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |ORIGINAL CODE:|

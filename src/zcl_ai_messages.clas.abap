@@ -60,6 +60,7 @@ CLASS zcl_ai_messages DEFINITION
       RETURNING VALUE(rv_answer) TYPE string.
 
     METHODS build_final_request
+      IMPORTING i_user_prompt    TYPE string OPTIONAL
       RETURNING VALUE(rv_prompt) TYPE string.
 
     METHODS get_resolved_code
@@ -355,6 +356,10 @@ CLASS zcl_ai_messages IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD build_final_request.
+    DATA(lv_user_prompt) = COND string(
+      WHEN i_user_prompt IS NOT INITIAL THEN i_user_prompt
+      ELSE mv_user_prompt ).
+
     rv_prompt = |You are a Senior ABAP. Return readable Markdown with real line breaks: |
              && |put every heading, list item, paragraph, and fenced code block on separate lines. |.
 
@@ -363,7 +368,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |USER PROMPT:|
              && cl_abap_char_utilities=>newline
-             && mv_user_prompt
+             && lv_user_prompt
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && COND string(

@@ -141,24 +141,20 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |Если нет какой-то инфо по таску, запроси ее дополнительно, только если это необходимо. |
              && |Если в промпте есть детали, не спрашивай лишний раз, а сам прими решение!!! |
+             && |Если можно использовать разумное стандартное решение или вывести описание из кода, не задавай ASK. |
+             && |Например, для "добавь комментарии с кратким описанием" не спрашивай текст описания, а поставь задачу вывести описание из кода. |
              && |Пример: TASK2-ASK1: Текст вопроса?|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
-             && |Example USER PROMPT: В программе z_test измени заголовок и функцию расчета прибыли|
+             && |Example USER PROMPT: В программе z_test добавь комментарии в начале программы с кратким описанием|
              && cl_abap_char_utilities=>newline
              && |TASK1: Прочитать код программы Z_TEST.|
              && cl_abap_char_utilities=>newline
-             && |TASK2: Найти и идентифицировать заголовочную часть программы Z_TEST.|
+             && |TASK2: Добавить комментарии в начале программы Z_TEST с кратким описанием, выведенным из кода программы.|
              && cl_abap_char_utilities=>newline
-             && |TASK2-ASK1: Какой именно заголовок нужно изменить и на какой текст?|
+             && |TASK3: Сохранить изменения в программе Z_TEST только после approval.|
              && cl_abap_char_utilities=>newline
-             && |TASK3: Найти и идентифицировать функцию расчета прибыли в Z_TEST.|
-             && cl_abap_char_utilities=>newline
-             && |TASK3-ASK1: Какая точная формула расчета прибыли должна быть использована?|
-             && cl_abap_char_utilities=>newline
-             && |TASK4: Внести изменения в код программы Z_TEST с учетом ответов на уточняющие вопросы.|
-             && cl_abap_char_utilities=>newline
-             && |TASK5: Сохранить изменения в программе Z_TEST только после approval.|
+             && |Example ASK only when necessary: TASK2-ASK1: Какая точная формула расчета прибыли должна быть использована?|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |USER PROMPT|.
