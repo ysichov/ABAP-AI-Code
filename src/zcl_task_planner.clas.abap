@@ -34,6 +34,11 @@ private section.
       !IT_TASKS type TT_STRINGS
     returning
       value(RT_TASKS) type TT_STRINGS .
+  methods STRIP_TASK_LABELS
+    importing
+      !IT_TASKS type TT_STRINGS
+    returning
+      value(RT_TASKS) type TT_STRINGS .
 ENDCLASS.
 
 
@@ -168,6 +173,7 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
     rt_tasks = split_task_list( lv_task_answer ).
     rt_tasks = enrich_tasks_with_answers( rt_tasks ).
+    rt_tasks = strip_task_labels( rt_tasks ).
 
   endmethod.
 
@@ -190,6 +196,20 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       TRANSLATE lv_line_upper TO UPPER CASE.
       CHECK lv_line_upper CP 'TASK*'.
       APPEND lv_line TO rt_tasks.
+    ENDLOOP.
+
+  endmethod.
+
+
+  method STRIP_TASK_LABELS.
+
+    LOOP AT it_tasks INTO DATA(lv_task).
+      REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s*[0-9]+(\.[0-9]+)?\s*:\s*'
+        IN lv_task WITH '' IGNORING CASE.
+      CONDENSE lv_task.
+      IF lv_task IS NOT INITIAL.
+        APPEND lv_task TO rt_tasks.
+      ENDIF.
     ENDLOOP.
 
   endmethod.
