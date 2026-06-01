@@ -93,7 +93,7 @@ ENDCLASS.
 
 
 
-CLASS zcl_ai_agents_prompts IMPLEMENTATION.
+CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
 
   METHOD build_agent_prompt.
@@ -222,7 +222,7 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
     IF mv_user_language IS NOT INITIAL.
       rv_prompt = rv_prompt
                && cl_abap_char_utilities=>newline
-               && |USE LANGUAGE: { mv_user_language }|.
+               && |ANSWER LANGUAGE: { mv_user_language }|.
     ENDIF.
     IF rv_prompt IS NOT INITIAL.
       rv_prompt = rv_prompt
