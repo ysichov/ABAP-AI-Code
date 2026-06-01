@@ -188,7 +188,18 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     rv_requested = xsdbool(
       lv_prompt_upper CS 'CODE_REVIEW'
       OR lv_prompt_upper CS 'CODE REVIEW'
-      OR lv_prompt_upper CS 'REVIEW' ).
+      OR lv_prompt_upper CS 'REVIEW'
+      OR lv_prompt_upper CS 'CHECK'
+      OR lv_prompt_upper CS 'SYNTAX'
+      OR lv_prompt_upper CS 'ПРОВЕР'
+      OR lv_prompt_upper CS 'ОШИБ'
+      OR lv_prompt_upper CS 'СИНТАКС'
+      OR i_prompt CS 'Провер'
+      OR i_prompt CS 'провер'
+      OR i_prompt CS 'Ошиб'
+      OR i_prompt CS 'ошиб'
+      OR i_prompt CS 'Синтакс'
+      OR i_prompt CS 'синтакс' ).
 
   endmethod.
 

@@ -491,8 +491,13 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       TRANSLATE lv_content_upper TO UPPER CASE.
 
       IF ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_search
-      OR ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader
-      OR lv_content_upper CS 'CODE_SEARCH'.
+      OR ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
+        lv_has_code_search = abap_true.
+      ENDIF.
+
+      IF ls_message-role = 'assistant'
+      AND ls_message-agent = zcl_ai_agents_prompts=>c_agent_orchestrator
+      AND lv_content_upper CS '{AGENT:CODE_SEARCH'.
         lv_has_code_search = abap_true.
       ENDIF.
 
