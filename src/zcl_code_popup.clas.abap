@@ -153,7 +153,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       OR lv_user_prompt_upper CS 'CODE REVIEW'
       OR lv_user_prompt_upper CS 'REVIEW'
       OR lv_user_prompt_upper CS 'РЕВЬЮ' ).
-
     IF lv_prompt_check IS INITIAL.
       MESSAGE 'Please enter a question' TYPE 'I'.
       RETURN.
@@ -307,7 +306,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
 
-            IF ls_agent_request-relevant_prompt IS NOT INITIAL.
+            IF ls_agent_request-relevant_prompt IS INITIAL.
+              lv_has_show_command = abap_true.
+            ELSE.
               lv_has_agent_followup_text = abap_true.
             ENDIF.
           ENDIF.
@@ -478,10 +479,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           EXIT.
         ENDIF.
       ENDLOOP.
-
-      IF mo_messages->has_text_after_agent_commands( lv_orchestrator_answer ) = abap_true.
-        lv_only_code_search = abap_false.
-      ENDIF.
 
       IF lv_has_agent_followup_text = abap_true.
         lv_only_code_search = abap_false.
