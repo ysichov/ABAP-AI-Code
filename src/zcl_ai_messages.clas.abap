@@ -81,6 +81,7 @@ CLASS zcl_ai_messages DEFINITION
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
 
+protected section.
   PRIVATE SECTION.
     DATA mv_user_prompt TYPE string.
     DATA mv_session_id  TYPE i.
@@ -88,7 +89,10 @@ CLASS zcl_ai_messages DEFINITION
 
 ENDCLASS.
 
-CLASS zcl_ai_messages IMPLEMENTATION.
+
+
+CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
+
 
   METHOD constructor.
     mv_user_prompt = i_user_prompt.
@@ -104,6 +108,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_content     = mv_user_prompt ).
   ENDMETHOD.
 
+
   METHOD build_orchestrator_request.
     rv_prompt = zcl_ai_agents_prompts=>get_orchestrator_prompt( )
              && cl_abap_char_utilities=>newline
@@ -117,6 +122,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_content     = rv_prompt ).
   ENDMETHOD.
 
+
   METHOD add_message.
     APPEND VALUE #(
       session_id  = mv_session_id
@@ -127,6 +133,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       duration_seconds = i_duration_seconds
       content     = i_content ) TO mt_messages.
   ENDMETHOD.
+
 
   METHOD parse_agent_requests.
     DATA lv_rest TYPE string.
@@ -243,6 +250,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDWHILE.
   ENDMETHOD.
 
+
   METHOD build_agent_request.
     rv_prompt = zcl_ai_agents_prompts=>get_prompt_by_agent( is_request-agent )
              && cl_abap_char_utilities=>newline
@@ -280,6 +288,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
   ENDMETHOD.
+
 
   METHOD build_agent_requests.
     READ TABLE it_requests INDEX 1 INTO DATA(ls_first_request).
@@ -328,6 +337,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_content     = rv_prompt ).
   ENDMETHOD.
 
+
   METHOD build_read_command.
     CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
@@ -347,6 +357,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
 
+
   METHOD enrich_agent_answer.
     rv_answer = i_agent_answer.
 
@@ -358,6 +369,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+
   METHOD build_final_request.
     DATA(lv_user_prompt) = COND string(
       WHEN i_user_prompt IS NOT INITIAL THEN i_user_prompt
@@ -367,8 +379,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
              && |put every heading, list item, paragraph, and fenced code block on separate lines. |.
 
     rv_prompt = rv_prompt
-             && |For code change requests, return the complete changed ABAP source in an abap fenced code block. |
-             && |For create object requests, return the complete new ABAP source in an abap fenced code block. |
+             && |For code change requests, return the complete changed ABAP source in an abap fenced code block. with remark CHANGES:YES at the end |
+             && |For create object requests, return the complete new ABAP source in an abap fenced code block.  with remark CHANGES:YES at the end |
              && |For code change requests only: if you only provide recommendations and did not change the code, put CHANGES:NO at the very end of the answer. |
              && |For create object requests, do not use CHANGES:NO; return the proposed new object source code. |.
 
@@ -391,6 +403,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
   ENDMETHOD.
+
 
   METHOD get_resolved_code.
     DATA lt_seen TYPE tt_strings.
@@ -424,6 +437,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
   METHOD get_agent_error.
     LOOP AT mt_messages INTO DATA(ls_message).
       CHECK ls_message-agent = zcl_ai_agents_prompts=>c_agent_code_reader.
@@ -447,6 +461,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
   METHOD needs_code_context.
     DATA lv_has_code_search TYPE abap_bool.
     DATA lv_has_code_review TYPE abap_bool.
@@ -469,6 +484,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     rv_needed = xsdbool( lv_has_code_search = abap_true AND lv_has_code_review = abap_true ).
   ENDMETHOD.
 
+
   METHOD has_text_after_agent_commands.
     DATA(lv_text) = i_orchestrator_answer.
 
@@ -484,8 +500,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
     rv_has_text = xsdbool( lv_text IS NOT INITIAL ).
   ENDMETHOD.
 
+
   METHOD get_messages.
     rt_messages = mt_messages.
   ENDMETHOD.
-
 ENDCLASS.
