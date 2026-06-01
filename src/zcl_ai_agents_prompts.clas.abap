@@ -49,7 +49,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
   METHOD get_orchestrator_prompt.
     rv_prompt = |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
-    && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}.|
+    && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
+    && |CODE_SEARCH is a runtime command, not an LLM agent. |
              && cl_abap_char_utilities=>newline
              && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
@@ -88,7 +89,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |Example: Open the Z_test program and, based on it, create an example calculator program Z_CALC. |
-             && |Answer: "\{AGENT:CODE_SEARCH Open the Z_TEST program\} and, based on it, create an example |
+             && |Answer: "\{AGENT:CODE_SEARCH PROG Z_TEST\} and, based on it, create an example |
              && |calculator program \{AGENT:CREATE_OBJECT program Z_CALC\}.|
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
@@ -177,7 +178,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
       WHEN c_agent_orchestrator.
         rv_prompt = get_orchestrator_prompt( ).
       WHEN c_agent_code_search.
-        rv_prompt = get_code_agent_prompt( ).
+        rv_prompt = |CODE_SEARCH is a command, not an LLM agent.|.
       WHEN c_agent_code_change.
         rv_prompt = |CODE_CHANGE is a command, not an LLM agent.|.
       WHEN c_agent_code_review.

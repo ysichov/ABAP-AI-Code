@@ -406,7 +406,6 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA(lv_index) = 0.
       DATA(lv_total) = lines( lt_agent_requests ).
       DATA lt_done_read_commands TYPE tt_strings.
-      DATA lt_batched_code_search TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_batched_code_review TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_create_object_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_save_commands TYPE zcl_ai_messages=>tt_agent_requests.
@@ -437,7 +436,25 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
-          APPEND ls_agent_request TO lt_batched_code_search.
+          DATA(lv_search_read_command) = mo_messages->build_read_command( ls_agent_request ).
+          IF lv_search_read_command IS NOT INITIAL.
+            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+              EXPORTING percentage = lv_percentage
+                        text       = |Reading code { ls_agent_request-object_name }...|.
+
+            lv_ignored_context = resolve_and_log_read_commands(
+              EXPORTING
+                i_text           = lv_search_read_command
+              CHANGING
+                ct_done_commands = lt_done_read_commands ).
+
+            IF ls_agent_request-relevant_prompt IS INITIAL.
+              lv_has_show_command = abap_true.
+            ELSE.
+              lv_has_agent_followup_text = abap_true.
+            ENDIF.
+          ENDIF.
+
           CONTINUE.
         ENDIF.
 
@@ -528,43 +545,6 @@ CLASS lcl_popup IMPLEMENTATION.
           CHANGING
             ct_done_commands = lt_done_read_commands ).
       ENDLOOP.
-
-      IF lt_batched_code_search IS NOT INITIAL.
-        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-          EXPORTING percentage = 75
-                    text       = 'Asking code search agent...'.
-
-        DATA(lv_batched_agent_prompt) = mo_messages->build_agent_requests( lt_batched_code_search ).
-        DATA(lv_batched_agent_answer) = zcl_code_ai_api=>ask(
-          i_prompt           = lv_batched_agent_prompt
-          i_dest             = mv_dest
-          i_model            = mv_model
-          i_apikey           = mv_apikey
-          i_provider         = mv_provider
-          i_prompt_cache_key = mv_prompt_cache_key ).
-
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
-          i_prompt_type = 'LLM_RESPONSE'
-          i_content     = lv_batched_agent_answer ).
-
-        IF mo_messages->has_text_after_agent_commands( lv_batched_agent_answer ) = abap_true.
-          lv_has_agent_followup_text = abap_true.
-        ENDIF.
-
-        DATA(lv_batched_agent_answer_upper) = lv_batched_agent_answer.
-        TRANSLATE lv_batched_agent_answer_upper TO UPPER CASE.
-        IF lv_batched_agent_answer_upper CS '{SHOW'.
-          lv_has_show_command = abap_true.
-        ENDIF.
-
-        lv_ignored_context = resolve_and_log_read_commands(
-          EXPORTING
-            i_text           = lv_batched_agent_answer
-          CHANGING
-            ct_done_commands = lt_done_read_commands ).
-      ENDIF.
 
       IF lt_batched_code_review IS NOT INITIAL.
         LOOP AT lt_batched_code_review INTO DATA(ls_review_request).
