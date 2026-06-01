@@ -35,7 +35,8 @@ CLASS lcl_popup DEFINITION.
   PRIVATE SECTION.
     TYPES: ty_textedit_line(255) TYPE c,
            tt_textedit_lines     TYPE TABLE OF ty_textedit_line,
-           tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
+           tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY,
+           tt_strings            TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
 
     DATA: mv_dest     TYPE text255,
           mv_model    TYPE text255,
@@ -61,6 +62,10 @@ CLASS lcl_popup DEFINITION.
 
     METHODS ask_ai.
     METHODS show_history.
+    METHODS resolve_and_log_read_commands
+      IMPORTING i_text            TYPE string
+      CHANGING  ct_done_commands  TYPE tt_strings
+      RETURNING VALUE(rv_context) TYPE string.
     METHODS display_text
       IMPORTING i_text TYPE string.
     METHODS display_answer
@@ -254,45 +259,36 @@ CLASS lcl_popup IMPLEMENTATION.
       i_content     = lv_orchestrator_answer ).
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
-    DATA(lv_orchestrator_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_orchestrator_answer ).
+    DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
+    DATA lv_orchestrator_code_context TYPE string.
     DATA(lv_orchestrator_upper) = lv_orchestrator_answer.
     TRANSLATE lv_orchestrator_upper TO UPPER CASE.
-    IF lv_orchestrator_code_context IS NOT INITIAL.
-      DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
-
-      mo_messages->add_message(
-        i_role        = 'user'
-        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-        i_prompt_type = 'COMMAND'
-        i_content     = lv_orchestrator_read_commands ).
-
-      mo_messages->add_message(
-        i_role        = 'assistant'
-        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-        i_prompt_type = 'AGENT_RESPONSE'
-        i_content     = lv_orchestrator_code_context ).
-    ENDIF.
 
     DATA(lv_answer) = lv_orchestrator_answer.
     DATA(lv_answer_log) = lv_answer.
     DATA lv_resolved_code TYPE string.
 
     IF lt_agent_requests IS INITIAL
-    AND lv_orchestrator_code_context IS INITIAL
+    AND lv_orchestrator_read_commands IS INITIAL
     AND lv_orchestrator_upper CS 'AGENT'.
       lv_answer = |Error: Orchestrator returned an agent command that could not be parsed. Check History for the raw response.|.
       lv_answer_log = lv_answer.
     ENDIF.
 
-    IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_code_context IS NOT INITIAL.
+    IF lt_agent_requests IS NOT INITIAL OR lv_orchestrator_read_commands IS NOT INITIAL.
       DATA(lv_index) = 0.
       DATA(lv_total) = lines( lt_agent_requests ).
-      DATA lt_done_read_commands TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+      DATA lt_done_read_commands TYPE tt_strings.
       DATA lt_batched_code_search TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lt_batched_code_review TYPE zcl_ai_messages=>tt_agent_requests.
+      DATA lv_ignored_context TYPE string.
 
-      IF lv_orchestrator_code_context IS NOT INITIAL.
-        APPEND lv_orchestrator_read_commands TO lt_done_read_commands.
+      IF lv_orchestrator_read_commands IS NOT INITIAL.
+        lv_orchestrator_code_context = resolve_and_log_read_commands(
+          EXPORTING
+            i_text           = lv_orchestrator_answer
+          CHANGING
+            ct_done_commands = lt_done_read_commands ).
       ENDIF.
 
       LOOP AT lt_agent_requests INTO DATA(ls_agent_request).
@@ -314,38 +310,15 @@ CLASS lcl_popup IMPLEMENTATION.
 
         DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
         IF lv_direct_read_command IS NOT INITIAL.
-          READ TABLE lt_done_read_commands
-            WITH KEY table_line = lv_direct_read_command
-            TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-            CONTINUE.
-          ENDIF.
-          APPEND lv_direct_read_command TO lt_done_read_commands.
-
           CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
             EXPORTING percentage = lv_percentage
                       text       = |Reading code { ls_agent_request-object_name }...|.
 
-          DATA(lv_direct_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_direct_read_command ).
-
-          DATA(lv_direct_ctx_upper) = lv_direct_code_context.
-          TRANSLATE lv_direct_ctx_upper TO UPPER CASE.
-          DATA(lv_direct_is_error) = xsdbool(
-            lv_direct_ctx_upper CS 'WAS NOT FOUND OR CANNOT BE READ' OR
-            lv_direct_ctx_upper CS 'WAS NOT FOUND' OR
-            lv_direct_ctx_upper CS 'CANNOT BE READ' ).
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = COND string( WHEN lv_direct_is_error = abap_true THEN 'COMMAND_ERROR' ELSE 'COMMAND' )
-            i_content     = lv_direct_read_command ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = lv_direct_code_context ).
+          lv_ignored_context = resolve_and_log_read_commands(
+            EXPORTING
+              i_text           = lv_direct_read_command
+            CHANGING
+              ct_done_commands = lt_done_read_commands ).
 
           CONTINUE.
         ENDIF.
@@ -369,22 +342,11 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'LLM_RESPONSE'
           i_content     = lv_agent_answer ).
 
-        DATA(lv_agent_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_agent_answer ).
-        IF lv_agent_code_context IS NOT INITIAL.
-          DATA(lv_agent_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_agent_answer ).
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'COMMAND'
-            i_content     = lv_agent_read_commands ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = lv_agent_code_context ).
-        ENDIF.
+        lv_ignored_context = resolve_and_log_read_commands(
+          EXPORTING
+            i_text           = lv_agent_answer
+          CHANGING
+            ct_done_commands = lt_done_read_commands ).
       ENDLOOP.
 
       IF lt_batched_code_search IS NOT INITIAL.
@@ -407,22 +369,11 @@ CLASS lcl_popup IMPLEMENTATION.
           i_prompt_type = 'LLM_RESPONSE'
           i_content     = lv_batched_agent_answer ).
 
-        DATA(lv_batched_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_batched_agent_answer ).
-        IF lv_batched_code_context IS NOT INITIAL.
-          DATA(lv_batched_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_batched_agent_answer ).
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'COMMAND'
-            i_content     = lv_batched_read_commands ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = lv_batched_code_context ).
-        ENDIF.
+        lv_ignored_context = resolve_and_log_read_commands(
+          EXPORTING
+            i_text           = lv_batched_agent_answer
+          CHANGING
+            ct_done_commands = lt_done_read_commands ).
       ENDIF.
 
       IF lt_batched_code_review IS NOT INITIAL.
@@ -432,31 +383,15 @@ CLASS lcl_popup IMPLEMENTATION.
             CONTINUE.
           ENDIF.
 
-          READ TABLE lt_done_read_commands
-            WITH KEY table_line = lv_review_read_command
-            TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-            CONTINUE.
-          ENDIF.
-          APPEND lv_review_read_command TO lt_done_read_commands.
-
           CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
             EXPORTING percentage = 80
                       text       = |Reading code { ls_review_request-object_name }...|.
 
-          DATA(lv_review_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_review_read_command ).
-
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'COMMAND'
-            i_content     = lv_review_read_command ).
-
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = lv_review_code_context ).
+          lv_ignored_context = resolve_and_log_read_commands(
+            EXPORTING
+              i_text           = lv_review_read_command
+            CHANGING
+              ct_done_commands = lt_done_read_commands ).
         ENDLOOP.
 
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
@@ -553,6 +488,50 @@ CLASS lcl_popup IMPLEMENTATION.
 
     mo_history = NEW zcl_api_history_popup( mt_message_history ).
     mo_history->show( ).
+  ENDMETHOD.
+
+  METHOD resolve_and_log_read_commands.
+    DATA(lt_commands) = zcl_ai_code_reader=>parse_read_commands( i_text ).
+
+    LOOP AT lt_commands INTO DATA(ls_command).
+      DATA(lv_read_command) = ls_command-raw_command.
+
+      READ TABLE ct_done_commands
+        WITH KEY table_line = lv_read_command
+        TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+      APPEND lv_read_command TO ct_done_commands.
+
+      DATA(lv_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_read_command ).
+      DATA(lv_context_upper) = lv_code_context.
+      TRANSLATE lv_context_upper TO UPPER CASE.
+      DATA(lv_is_error) = xsdbool(
+        lv_context_upper CS 'WAS NOT FOUND OR CANNOT BE READ' OR
+        lv_context_upper CS 'WAS NOT FOUND' OR
+        lv_context_upper CS 'CANNOT BE READ' OR
+        lv_context_upper CS 'METHOD COMMAND IS INCOMPLETE' ).
+
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+        i_prompt_type = COND string( WHEN lv_is_error = abap_true THEN 'COMMAND_ERROR' ELSE 'COMMAND' )
+        i_content     = lv_read_command ).
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = lv_code_context ).
+
+      IF rv_context IS NOT INITIAL.
+        rv_context = rv_context
+                  && cl_abap_char_utilities=>newline
+                  && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_context = rv_context && lv_code_context.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD display_text.

@@ -58,6 +58,7 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |If the user asks to create an object: "\{AGENT:CREATE_OBJECT object_type object_name relevant_prompt_part\}" |
              && |Never lose AGENT:CODE_SEARCH|
              && cl_abap_char_utilities=>newline
+             && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
              && |If the request is not relevant to SAP, answer "Not relevant"|
              && cl_abap_char_utilities=>newline
