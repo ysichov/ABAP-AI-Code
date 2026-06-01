@@ -226,9 +226,6 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA(lv_line) = CONV string( ls_line ).
       SHIFT lv_line RIGHT DELETING TRAILING space.
 
-      IF lv_prompt IS NOT INITIAL.
-        lv_prompt = lv_prompt && cl_abap_char_utilities=>newline.
-      ENDIF.
       lv_prompt = lv_prompt && lv_line.
     ENDLOOP.
 
