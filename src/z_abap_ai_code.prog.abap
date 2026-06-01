@@ -66,6 +66,9 @@ CLASS lcl_popup DEFINITION.
       IMPORTING i_text            TYPE string
       CHANGING  ct_done_commands  TYPE tt_strings
       RETURNING VALUE(rv_context) TYPE string.
+    METHODS extract_code_from_answer
+      IMPORTING i_text         TYPE string
+      RETURNING VALUE(rv_code) TYPE string.
     METHODS display_text
       IMPORTING i_text TYPE string.
     METHODS display_answer
@@ -287,6 +290,7 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA lt_save_commands TYPE zcl_ai_messages=>tt_agent_requests.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
+      DATA lv_has_code_change TYPE abap_bool.
 
       IF lv_orchestrator_read_commands IS NOT INITIAL.
         lv_orchestrator_code_context = resolve_and_log_read_commands(
@@ -309,6 +313,7 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_change.
+          lv_has_code_change = abap_true.
           DATA(lv_change_read_command) = mo_messages->build_read_command( ls_agent_request ).
           IF lv_change_read_command IS NOT INITIAL.
             CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
@@ -512,6 +517,34 @@ CLASS lcl_popup IMPLEMENTATION.
         i_prompt_type = 'FINAL_ANSWER'
         i_content     = lv_answer_log ).
 
+      IF lv_has_code_change = abap_true AND lv_agent_error IS INITIAL.
+        DATA(lv_extracted_code) = extract_code_from_answer( lv_answer_log ).
+
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+          i_prompt_type = 'COMMAND'
+          i_content     = |Extract changed code from final answer| ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = lv_extracted_code ).
+
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+          i_prompt_type = 'COMMAND'
+          i_content     = |Diff original code with extracted changed code| ).
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+      ENDIF.
+
       LOOP AT lt_create_object_commands INTO DATA(ls_create_object_command).
         DATA(lv_create_read_command) = mo_messages->build_read_command( ls_create_object_command ).
         DATA(lv_create_context) = VALUE string( ).
@@ -692,6 +725,33 @@ CLASS lcl_popup IMPLEMENTATION.
       ENDIF.
       rv_context = rv_context && lv_code_context.
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD extract_code_from_answer.
+    DATA lv_start TYPE i.
+    DATA lv_fence_len TYPE i.
+    DATA lv_code_start TYPE i.
+    DATA lv_end TYPE i.
+    DATA lv_after TYPE string.
+
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN i_text
+      MATCH OFFSET lv_start
+      MATCH LENGTH lv_fence_len.
+    IF sy-subrc <> 0.
+      rv_code = i_text.
+      RETURN.
+    ENDIF.
+
+    lv_code_start = lv_start + lv_fence_len.
+    lv_after = substring( val = i_text off = lv_code_start ).
+    FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
+    IF sy-subrc <> 0.
+      rv_code = lv_after.
+      RETURN.
+    ENDIF.
+
+    rv_code = substring( val = lv_after len = lv_end ).
+    SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
   ENDMETHOD.
 
   METHOD display_text.
