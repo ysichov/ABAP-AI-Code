@@ -382,15 +382,21 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA(lt_tasks) = prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = lv_prompt.
     IF lt_tasks IS NOT INITIAL.
-      lv_effective_prompt = lv_effective_prompt
-                         && cl_abap_char_utilities=>newline
-                         && cl_abap_char_utilities=>newline
-                         && |TASKS AND CLARIFICATIONS:|.
-
       LOOP AT lt_tasks INTO DATA(lv_effective_task).
+        DATA(lv_effective_task_upper) = lv_effective_task.
+        TRANSLATE lv_effective_task_upper TO UPPER CASE.
+        CHECK lv_effective_task_upper CS 'CLARIFICATION FOR'.
+
+        IF lv_effective_prompt NS 'TASK CLARIFICATIONS:'.
+          lv_effective_prompt = lv_effective_prompt
+                             && cl_abap_char_utilities=>newline
+                             && cl_abap_char_utilities=>newline
+                             && |TASK CLARIFICATIONS:|.
+        ENDIF.
+
         lv_effective_prompt = lv_effective_prompt
-                           && cl_abap_char_utilities=>newline
-                           && lv_effective_task.
+                         && cl_abap_char_utilities=>newline
+                         && lv_effective_task.
       ENDLOOP.
     ENDIF.
 
