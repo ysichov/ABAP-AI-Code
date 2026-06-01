@@ -847,6 +847,41 @@ CLASS lcl_popup IMPLEMENTATION.
   METHOD resolve_and_log_read_commands.
     DATA(lt_commands) = zcl_ai_code_reader=>parse_read_commands( i_text ).
 
+    IF lt_commands IS INITIAL.
+      DATA(lv_show_rest) = i_text.
+      REPLACE ALL OCCURRENCES OF REGEX '\{\s*SHOW' IN lv_show_rest WITH '{SHOW'.
+
+      WHILE lv_show_rest CS '{SHOW'.
+        FIND FIRST OCCURRENCE OF '{SHOW' IN lv_show_rest MATCH OFFSET DATA(lv_show_pos).
+        lv_show_rest = substring( val = lv_show_rest off = lv_show_pos + 1 ).
+
+        FIND FIRST OCCURRENCE OF '}' IN lv_show_rest MATCH OFFSET DATA(lv_show_end).
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+
+        DATA(lv_show_command) = substring( val = lv_show_rest len = lv_show_end ).
+        lv_show_rest = substring( val = lv_show_rest off = lv_show_end + 1 ).
+
+        DATA(lv_show_object) = lv_show_command.
+        REPLACE FIRST OCCURRENCE OF REGEX '^SHOW\s*-?' IN lv_show_object WITH ''.
+        CONDENSE lv_show_object.
+
+        DATA lt_show_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+        SPLIT lv_show_object AT space INTO TABLE lt_show_parts.
+        DELETE lt_show_parts WHERE table_line IS INITIAL.
+        IF lt_show_parts IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        DATA(ls_show_read_command) = VALUE zcl_ai_code_reader=>ty_read_command(
+          object_type = 'REPS'
+          object_name = lt_show_parts[ 1 ]
+          raw_command = |{ '{' }READ TADIR: REPS { lt_show_parts[ 1 ] }{ '}' }| ).
+        APPEND ls_show_read_command TO lt_commands.
+      ENDWHILE.
+    ENDIF.
+
     LOOP AT lt_commands INTO DATA(ls_command).
       DATA(lv_read_command) = ls_command-raw_command.
 
