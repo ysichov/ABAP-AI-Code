@@ -22,11 +22,6 @@ private section.
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_LLM type ref to ZCL_LLM_CLIENT .
 
-  methods SHOULD_USE_TASK_ORCHESTRATOR
-    importing
-      !I_PROMPT type STRING
-    returning
-      value(RV_USE) type ABAP_BOOL .
   methods SPLIT_TASK_LIST
     importing
       !I_TEXT type STRING
@@ -147,8 +142,6 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
   method PREPARE_TASK_LIST.
 
-    CHECK should_use_task_orchestrator( i_prompt ) = abap_true.
-
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
 
@@ -172,30 +165,6 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
     rt_tasks = split_task_list( lv_task_answer ).
     rt_tasks = enrich_tasks_with_answers( rt_tasks ).
-
-  endmethod.
-
-
-  method SHOULD_USE_TASK_ORCHESTRATOR.
-
-    DATA(lv_prompt_upper) = i_prompt.
-    TRANSLATE lv_prompt_upper TO UPPER CASE.
-
-    rv_use = xsdbool(
-      lv_prompt_upper CS 'ИЗМЕН'
-      OR lv_prompt_upper CS 'ДОБАВ'
-      OR lv_prompt_upper CS 'КОММЕНТ'
-      OR lv_prompt_upper CS 'ПЕРЕПИШ'
-      OR lv_prompt_upper CS 'ОБНОВ'
-      OR lv_prompt_upper CS 'СОХРАН'
-      OR lv_prompt_upper CS 'CREATE'
-      OR lv_prompt_upper CS 'CHANGE'
-      OR lv_prompt_upper CS 'COMMENT'
-      OR lv_prompt_upper CS 'MODIFY'
-      OR lv_prompt_upper CS 'UPDATE'
-      OR lv_prompt_upper CS 'REWRITE'
-      OR lv_prompt_upper CS 'REFACTOR'
-      OR lv_prompt_upper CS 'SAVE' ).
 
   endmethod.
 

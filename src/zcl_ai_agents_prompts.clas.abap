@@ -248,7 +248,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     CASE i_agent.
       WHEN c_agent_orchestrator.
         rv_prompt = get_orchestrator_prompt( ).
-      WHEN c_agent_task_orchestrator OR 'TASK_ORCHESTRSTOR'.
+      WHEN c_agent_task_orchestrator OR 'TASK_ORCHESTRATOR'.
         rv_prompt = get_task_orchestrator_prompt( ).
       WHEN c_agent_code_search.
         rv_prompt = |CODE_SEARCH is a command, not an LLM agent.|.
