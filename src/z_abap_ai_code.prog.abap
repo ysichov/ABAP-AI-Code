@@ -1114,6 +1114,76 @@ CLASS lcl_popup IMPLEMENTATION.
                 lv_create_context_upper CS 'CANNOT BE READ' OR
                 lv_create_context_upper CS 'METHOD COMMAND IS INCOMPLETE' ) ).
 
+        DATA(lv_create_answer_upper) = lv_answer_log.
+        TRANSLATE lv_create_answer_upper TO UPPER CASE.
+
+        IF NOT lv_create_answer_upper CS 'CHANGES:NO'.
+          DATA(lv_create_extracted_code) = lcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'COMMAND'
+            i_content     = |Extract new object code from final answer| ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_create_extracted_code ).
+
+          DATA(lv_create_review_prompt) = zcl_ai_agents_prompts=>get_code_review_prompt( )
+            && cl_abap_char_utilities=>newline
+            && cl_abap_char_utilities=>newline
+            && |This is a new object review. There is no previous version or diff. Review only the proposed new ABAP source as one block.|
+            && cl_abap_char_utilities=>newline
+            && |If there are no concrete issues, say that the new object can be approved.|
+            && cl_abap_char_utilities=>newline
+            && cl_abap_char_utilities=>newline
+            && |ORIGINAL USER PROMPT:|
+            && cl_abap_char_utilities=>newline
+            && lv_effective_prompt
+            && cl_abap_char_utilities=>newline
+            && cl_abap_char_utilities=>newline
+            && |PROPOSED NEW OBJECT: { ls_create_object_command-object_type } { ls_create_object_command-object_name }|
+            && cl_abap_char_utilities=>newline
+            && cl_abap_char_utilities=>newline
+            && |PROPOSED CODE:|
+            && cl_abap_char_utilities=>newline
+            && lv_create_extracted_code.
+
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+            i_prompt_type = 'AGENT_PROMPT'
+            i_content     = lv_create_review_prompt ).
+
+          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+            EXPORTING percentage = 90
+                      text       = |Reviewing new object { ls_create_object_command-object_name }...|.
+
+          DATA(lv_create_review_answer) = mo_llm->ask( lv_create_review_prompt ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+            i_prompt_type = 'LLM_RESPONSE'
+            i_duration_seconds = mo_llm->get_last_seconds( )
+            i_content     = lv_create_review_answer ).
+        ELSE.
+          mo_messages->add_message(
+            i_role        = 'user'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'COMMAND'
+            i_content     = |Extract new object code from final answer| ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |No new object code extracted. LLM returned CHANGES:NO.| ).
+        ENDIF.
+
         IF lv_create_object_exists = abap_true.
           mo_messages->add_message(
             i_role        = 'user'
@@ -1140,17 +1210,52 @@ CLASS lcl_popup IMPLEMENTATION.
             i_content     = |CODE_DIFF command stub. Object exists, diff path selected before overwrite: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
 
         ELSE.
+          DATA lv_create_confirm_answer TYPE c LENGTH 1.
+          CALL FUNCTION 'POPUP_TO_CONFIRM'
+            EXPORTING
+              titlebar              = 'Confirm SAP Save'
+              text_question         = |Object { ls_create_object_command-object_type } { ls_create_object_command-object_name } does not exist. Save/create it in SAP?|
+              text_button_1         = 'Yes'
+              text_button_2         = 'No'
+              default_button        = '2'
+              display_cancel_button = abap_true
+            IMPORTING
+              answer                = lv_create_confirm_answer
+            EXCEPTIONS
+              text_not_found        = 1
+              OTHERS                = 2.
+
           mo_messages->add_message(
             i_role        = 'user'
             i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
             i_prompt_type = 'COMMAND'
             i_content     = ls_create_object_command-raw_command ).
 
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = |CREATE_OBJECT command stub. Object was not found, create path selected: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+          IF lv_create_confirm_answer = '1'.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CREATE_OBJECT command stub. User approved save/create for missing object: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+
+            mo_messages->add_message(
+              i_role        = 'user'
+              i_agent       = 'SAVE_OBJECT'
+              i_prompt_type = 'COMMAND'
+              i_content     = |SAVE_OBJECT command stub after create approval: { ls_create_object_command-object_type } { ls_create_object_command-object_name }| ).
+
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = 'SAVE_OBJECT'
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |SAVE_OBJECT command stub. New object creation approved for { ls_create_object_command-object_type } { ls_create_object_command-object_name }.| ).
+          ELSE.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_create_obj
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CREATE_OBJECT command cancelled. User did not approve save/create for missing object: { ls_create_object_command-object_type } { ls_create_object_command-object_name }| ).
+          ENDIF.
         ENDIF.
       ENDLOOP.
 

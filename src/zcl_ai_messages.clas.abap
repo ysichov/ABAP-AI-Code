@@ -368,6 +368,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
 
     rv_prompt = rv_prompt
              && |For code change requests, return the complete changed ABAP source in an abap fenced code block. |
+             && |For create object requests, return the complete new ABAP source in an abap fenced code block. |
              && |If you only provide recommendations and did not change the code, put CHANGES:NO at the very end of the answer. |.
 
     rv_prompt = rv_prompt
