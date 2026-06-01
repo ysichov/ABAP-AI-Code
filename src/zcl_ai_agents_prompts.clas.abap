@@ -64,8 +64,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
   METHOD get_orchestrator_prompt.
     rv_prompt = get_system_prompt_prefix( )
-    && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. |
-
+    && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. Your main task to enrich prompt by AGENT:command! |
+    && |SKIP promt only in case user ask to show the code, all other cases - please DON'T omit USER PROMOT!!!! |
     && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
     && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
     && |CODE_SEARCH is a runtime command, not an LLM agent. |
@@ -80,19 +80,12 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If the user asks any code changes or saving, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}. |
              && |It is the most common task - DON'T SKIP IT - search carefully! |
              && cl_abap_char_utilities=>newline
-             && |So main target Don't miss user instruction to change code in some object! Check instruction carefully! and answer AGENT:CODE_CHANGE!! don't miss it!!! |
-             && cl_abap_char_utilities=>newline
-             && |If the user asks to run get_diff, show diff, compare pending changes, or task says "Провести get_diff", use exactly \{AGENT:CODE_DIFF obj_type obj_name relevant_prompt_part\}. |
-             && |CODE_DIFF is a runtime command, not an LLM agent. |
-             && cl_abap_char_utilities=>newline
              && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
-             && cl_abap_char_utilities=>newline
-             && |If the prompt asks for more than just showing the code, add that part of the prompt to the answer.|
              && cl_abap_char_utilities=>newline
              && |If requested a code review - \{AGENT:CODE_REVIEW object_type object_name\}.|
              && |Do not add CODE_REVIEW for CREATE_OBJECT. CREATE_OBJECT uses CODE_DIFF for manual user review before save/create.|
              && cl_abap_char_utilities=>newline
-             && |If the user asks to show table contents or find some information, |
+             && |If the user asks to show table contents |
              && |request the agent:\{AGENT:DATA_SEARCH + the relevant part of the prompt with the request.\}|
              && cl_abap_char_utilities=>newline
              && |If the user asks to create an object: "\{AGENT:CREATE_OBJECT object_type object_name relevant_prompt_part\}" |
@@ -115,8 +108,11 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Answer: "\{AGENT:CODE_SEARCH PROG Z_TEST\} and, based on it, create an example |
              && |calculator program \{AGENT:CREATE_OBJECT program Z_CALC\}.|
              && cl_abap_char_utilities=>newline
-             && |DON'T LOOSE extra prompt with tasks - add it after AGENT command, dont miss it, please!!!|
-             && |Example: delete something - deletion is not supported|.
+             && |Example: delete something - deletion is not supported|
+             && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. Your main task to enrich prompt by AGENT:command! |
+    && |SKIP promt only in case user ask to show the code, all other cases - please DON'T omit USER PROMOT!!!! |
+    && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
+    .
   ENDMETHOD.
 
 
