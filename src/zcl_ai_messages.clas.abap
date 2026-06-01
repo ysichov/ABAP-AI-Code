@@ -175,7 +175,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
 
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
-      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_save.
         LOOP AT lt_parts INTO lv_part FROM 2.
           lv_part_upper = lv_part.
           TRANSLATE lv_part_upper TO UPPER CASE.
@@ -323,7 +324,8 @@ CLASS zcl_ai_messages IMPLEMENTATION.
 
   METHOD build_read_command.
     CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
-       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_save.
     CHECK is_request-object_name IS NOT INITIAL.
 
     CASE is_request-object_type.

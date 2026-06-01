@@ -10,6 +10,8 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_code_review  TYPE string VALUE 'CODE_REVIEW',
       c_agent_data_search  TYPE string VALUE 'DATA_SEARCH',
       c_agent_create_obj   TYPE string VALUE 'CREATE_OBJECT',
+      c_agent_save         TYPE string VALUE 'AGENT_SAVE',
+      c_agent_code_diff    TYPE string VALUE 'CODE_DIFF',
       c_agent_code_reader  TYPE string VALUE 'CODE_READER'.
 
     CLASS-METHODS get_orchestrator_prompt
@@ -65,6 +67,11 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |If the user asks to create an object: "\{AGENT:CREATE_OBJECT object_type object_name relevant_prompt_part\}" |
              && |Never lose AGENT:CODE_SEARCH|
+             && cl_abap_char_utilities=>newline
+             && |If the user asks to save an object/code in SAP and package is specified, use "\{AGENT:AGENT_SAVE object_type object_name package package_name relevant_prompt_part\}".|
+             && |AGENT_SAVE means modify if the object exists; the runtime checks existence, runs CODE_DIFF for existing objects, and routes to CREATE_OBJECT if not found.|
+             && cl_abap_char_utilities=>newline
+             && |If the user asks to save in SAP but package is not specified, ask only: "Please specify SAP package." Do not call any agent.|
              && cl_abap_char_utilities=>newline
              && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
@@ -172,6 +179,10 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = get_data_agent_prompt( ).
       WHEN c_agent_create_obj.
         rv_prompt = get_create_object_prompt( ).
+      WHEN c_agent_save.
+        rv_prompt = |AGENT_SAVE is a command, not an LLM agent.|.
+      WHEN c_agent_code_diff.
+        rv_prompt = |CODE_DIFF is a command, not an LLM agent.|.
       WHEN c_agent_code_reader.
         rv_prompt = get_code_reader_prompt( ).
       WHEN OTHERS.
