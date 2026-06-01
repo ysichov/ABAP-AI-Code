@@ -55,6 +55,11 @@ private section.
       !IT_TASKS type TT_STRINGS
     returning
       value(RV_ANSWER) type STRING .
+  methods DETECT_PROMPT_LANGUAGE
+    importing
+      !I_PROMPT type STRING
+    returning
+      value(RV_LANGUAGE) type STRING .
   methods RESOLVE_AND_LOG_READ_COMMANDS
     importing
       !I_TEXT type STRING
@@ -143,6 +148,35 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && lv_task.
     ENDLOOP.
+
+  endmethod.
+
+
+  method DETECT_PROMPT_LANGUAGE.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 5 text = 'Detecting prompt language...'.
+
+    DATA(lv_language_prompt) = mo_prompts->get_language_detector_prompt( )
+                            && cl_abap_char_utilities=>newline
+                            && cl_abap_char_utilities=>newline
+                            && |PROMPT: { i_prompt }|.
+
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_language_detector
+      i_prompt_type = 'AGENT_PROMPT'
+      i_content     = lv_language_prompt ).
+
+    rv_language = mo_llm->ask( lv_language_prompt ).
+    CONDENSE rv_language.
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_language_detector
+      i_prompt_type = 'LLM_RESPONSE'
+      i_duration_seconds = mo_llm->get_last_seconds( )
+      i_content     = rv_language ).
 
   endmethod.
 
@@ -250,6 +284,11 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       io_messages = mo_messages
       io_llm      = mo_llm
       io_prompts  = mo_prompts ).
+
+    DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
+    IF lv_user_language IS NOT INITIAL.
+      mo_prompts->set_user_language( lv_user_language ).
+    ENDIF.
 
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = build_effective_prompt(

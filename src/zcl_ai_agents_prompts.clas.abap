@@ -7,6 +7,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     CONSTANTS:
       c_agent_orchestrator      TYPE string VALUE 'ORCHESTRATOR',
       c_agent_task_orchestrator TYPE string VALUE 'TASK_ORCHESTRATOR',
+      c_agent_language_detector TYPE string VALUE 'LANGUAGE_DETECTOR',
       c_agent_code_search       TYPE string VALUE 'CODE_SEARCH',
       c_agent_code_change       TYPE string VALUE 'CODE_CHANGE',
       c_agent_code_review       TYPE string VALUE 'CODE_REVIEW',
@@ -30,6 +31,9 @@ CLASS zcl_ai_agents_prompts DEFINITION
     METHODS get_task_orchestrator_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_language_detector_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
     METHODS get_code_agent_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
@@ -49,6 +53,10 @@ CLASS zcl_ai_agents_prompts DEFINITION
       IMPORTING i_agent          TYPE string
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS set_user_language
+      IMPORTING
+        !i_language TYPE string.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     TYPES:
@@ -56,8 +64,10 @@ CLASS zcl_ai_agents_prompts DEFINITION
 
     DATA mv_agents_path              TYPE string.
     DATA mv_system_prompt            TYPE string.
+    DATA mv_user_language            TYPE string.
     DATA mv_orchestrator_prompt      TYPE string.
     DATA mv_task_orchestrator_prompt TYPE string.
+    DATA mv_language_detector_prompt TYPE string.
     DATA mv_code_review_prompt       TYPE string.
 
     METHODS load_agent_prompts.
@@ -88,8 +98,7 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
   METHOD build_agent_prompt.
 
-    rv_prompt = get_system_prompt_prefix( )
-             && read_prompt_file( i_agent_filename ).
+    rv_prompt = read_prompt_file( i_agent_filename ).
 
   ENDMETHOD.
 
@@ -138,7 +147,8 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
   METHOD get_code_review_prompt.
 
-    rv_prompt = mv_code_review_prompt.
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_code_review_prompt.
 
   ENDMETHOD.
 
@@ -159,7 +169,15 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
   METHOD get_orchestrator_prompt.
 
-    rv_prompt = mv_orchestrator_prompt.
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_orchestrator_prompt.
+
+  ENDMETHOD.
+
+
+  METHOD get_language_detector_prompt.
+
+    rv_prompt = mv_language_detector_prompt.
 
   ENDMETHOD.
 
@@ -171,6 +189,8 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
         rv_prompt = get_orchestrator_prompt( ).
       WHEN c_agent_task_orchestrator OR 'TASK_ORCHESTRATOR'.
         rv_prompt = get_task_orchestrator_prompt( ).
+      WHEN c_agent_language_detector.
+        rv_prompt = get_language_detector_prompt( ).
       WHEN c_agent_code_search.
         rv_prompt = |CODE_SEARCH is a command, not an LLM agent.|.
       WHEN c_agent_code_change.
@@ -199,6 +219,11 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
   METHOD get_system_prompt_prefix.
 
     rv_prompt = mv_system_prompt.
+    IF mv_user_language IS NOT INITIAL.
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && |USE LANGUAGE: { mv_user_language }|.
+    ENDIF.
     IF rv_prompt IS NOT INITIAL.
       rv_prompt = rv_prompt
                && cl_abap_char_utilities=>newline
@@ -208,9 +233,18 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD set_user_language.
+
+    mv_user_language = i_language.
+    CONDENSE mv_user_language.
+
+  ENDMETHOD.
+
+
   METHOD get_task_orchestrator_prompt.
 
-    rv_prompt = mv_task_orchestrator_prompt.
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_task_orchestrator_prompt.
 
   ENDMETHOD.
 
@@ -218,9 +252,10 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
   METHOD load_agent_prompts.
 
     mv_system_prompt = read_prompt_file( 'system.md' ).
-    mv_orchestrator_prompt = build_agent_prompt( 'orchestrator.md' ).
-    mv_task_orchestrator_prompt = build_agent_prompt( 'task_orchestrator.md' ).
-    mv_code_review_prompt = build_agent_prompt( 'code_review.md' ).
+    mv_language_detector_prompt = read_prompt_file( 'language_detector.md' ).
+    mv_orchestrator_prompt = read_prompt_file( 'orchestrator.md' ).
+    mv_task_orchestrator_prompt = read_prompt_file( 'task_orchestrator.md' ).
+    mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
 
   ENDMETHOD.
 
