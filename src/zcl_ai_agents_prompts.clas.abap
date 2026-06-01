@@ -107,6 +107,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |If they ask for a code review, use "Code_review -object name" |
              && cl_abap_char_utilities=>newline
              && |If you need to show the code, add the object type to the response - \{SHOW - objname\}. |
+             && |If user asks to add/change/comment/refactor/update code, return READ commands and keep that action text; do not return only SHOW. |
              && |Don't lose the READ command! |
              && cl_abap_char_utilities=>newline
              && |Allowed substitutions here only PROG, REPS, CLAS, METH!!! |
