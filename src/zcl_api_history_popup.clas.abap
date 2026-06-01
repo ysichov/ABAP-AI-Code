@@ -143,12 +143,20 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
             cs_row = ls_row ).
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.
-        IF lv_answer_upper CS 'WAS NOT FOUND OR CANNOT BE READ'
-        OR lv_answer_upper CS 'WAS NOT FOUND'
-        OR lv_answer_upper CS 'CANNOT BE READ'
-        OR lv_answer_upper CS 'METHOD COMMAND IS INCOMPLETE'
-        OR lv_answer_upper CS 'NO CODE CONTEXT WAS RESOLVED'
-        OR lv_answer_upper CS 'ERROR:'.
+        DATA(lv_answer_key) = lv_answer_upper.
+        CONDENSE lv_answer_key.
+
+        IF ls_row-owner = zcl_ai_agents_prompts=>c_agent_code_reader
+        AND ls_row-answer_type = 'AGENT_RESPONSE'
+        AND (    lv_answer_key CP 'SOURCE FOR PROGRAM * WAS NOT FOUND*'
+              OR lv_answer_key CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
+              OR lv_answer_key CP 'CLASS * WAS NOT FOUND*'
+              OR lv_answer_key CP 'METHOD * WAS NOT FOUND*'
+              OR lv_answer_key CP 'METHOD COMMAND IS INCOMPLETE*'
+              OR lv_answer_key CP 'NO CODE CONTEXT WAS RESOLVED*' ).
+          ls_row-rowcolor = 'C601'. " red text
+        ELSEIF ls_row-owner <> zcl_ai_agents_prompts=>c_agent_code_reader
+        AND lv_answer_upper CS 'ERROR:'.
           ls_row-rowcolor = 'C601'. " red text
         ELSEIF ls_row-prompt_tokens IS NOT INITIAL
             OR ls_row-total_tokens IS NOT INITIAL
