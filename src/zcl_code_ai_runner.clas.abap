@@ -20,7 +20,8 @@ public section.
 
   methods CONSTRUCTOR
     importing
-      !IO_LLM type ref to ZCL_LLM_CLIENT .
+      !IO_LLM type ref to ZCL_LLM_CLIENT
+      !IO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   methods RUN
     importing
       !I_PROMPT type STRING
@@ -34,6 +35,7 @@ private section.
     tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY .
 
   data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_TASK_PLANNER type ref to ZCL_TASK_PLANNER .
 
@@ -70,6 +72,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
   method CONSTRUCTOR.
 
     mo_llm = io_llm.
+    mo_prompts = io_prompts.
 
   endmethod.
 
@@ -97,7 +100,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           EXPORTING percentage = 10 + ( lv_task_idx * 20 / lv_task_count )
                     text       = |Asking orchestrator for task { lv_task_idx }...|.
 
-        DATA(lv_task_orchestrator_prompt) = zcl_ai_agents_prompts=>get_orchestrator_prompt( )
+        DATA(lv_task_orchestrator_prompt) = mo_prompts->get_orchestrator_prompt( )
           && cl_abap_char_utilities=>newline
           && cl_abap_char_utilities=>newline
           && |PROMPT: { lv_task }|.
@@ -236,10 +239,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     mo_messages = NEW zcl_ai_messages(
       i_user_prompt = lv_prompt
+      io_prompts    = mo_prompts
       i_session_id  = i_session_id ).
     mo_task_planner = NEW zcl_task_planner(
       io_messages = mo_messages
-      io_llm      = mo_llm ).
+      io_llm      = mo_llm
+      io_prompts  = mo_prompts ).
 
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = build_effective_prompt(

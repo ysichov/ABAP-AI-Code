@@ -29,6 +29,7 @@ CLASS zcl_ai_messages DEFINITION
 
     METHODS constructor
       IMPORTING i_user_prompt TYPE string
+                io_prompts    TYPE REF TO zcl_ai_agents_prompts
                 i_session_id  TYPE i OPTIONAL.
 
     METHODS build_orchestrator_request
@@ -86,6 +87,7 @@ protected section.
     DATA mv_user_prompt TYPE string.
     DATA mv_session_id  TYPE i.
     DATA mt_messages    TYPE tt_messages.
+    DATA mo_prompts     TYPE REF TO zcl_ai_agents_prompts.
 
 ENDCLASS.
 
@@ -97,6 +99,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
   METHOD constructor.
     mv_user_prompt = i_user_prompt.
     mv_session_id = i_session_id.
+    mo_prompts = io_prompts.
     IF mv_session_id IS INITIAL.
       mv_session_id = 1.
     ENDIF.
@@ -110,7 +113,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
 
   METHOD build_orchestrator_request.
-    rv_prompt = zcl_ai_agents_prompts=>get_orchestrator_prompt( )
+    rv_prompt = mo_prompts->get_orchestrator_prompt( )
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |PROMPT: { mv_user_prompt }|.
@@ -268,7 +271,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
 
   METHOD build_agent_request.
-    rv_prompt = zcl_ai_agents_prompts=>get_prompt_by_agent( is_request-agent )
+    rv_prompt = mo_prompts->get_prompt_by_agent( is_request-agent )
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |ORIGINAL PROMPT: { mv_user_prompt }|
@@ -310,7 +313,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
     READ TABLE it_requests INDEX 1 INTO DATA(ls_first_request).
     CHECK sy-subrc = 0.
 
-    rv_prompt = zcl_ai_agents_prompts=>get_prompt_by_agent( ls_first_request-agent )
+    rv_prompt = mo_prompts->get_prompt_by_agent( ls_first_request-agent )
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
              && |ORIGINAL PROMPT: { mv_user_prompt }|

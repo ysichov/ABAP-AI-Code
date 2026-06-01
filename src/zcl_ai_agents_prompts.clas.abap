@@ -5,235 +5,167 @@ CLASS zcl_ai_agents_prompts DEFINITION
 
   PUBLIC SECTION.
     CONSTANTS:
-      c_agent_orchestrator TYPE string VALUE 'ORCHESTRATOR',
+      c_agent_orchestrator      TYPE string VALUE 'ORCHESTRATOR',
       c_agent_task_orchestrator TYPE string VALUE 'TASK_ORCHESTRATOR',
-      c_agent_code_search  TYPE string VALUE 'CODE_SEARCH',
-      c_agent_code_change  TYPE string VALUE 'CODE_CHANGE',
-      c_agent_code_review  TYPE string VALUE 'CODE_REVIEW',
-      c_agent_data_search  TYPE string VALUE 'DATA_SEARCH',
-      c_agent_create_obj   TYPE string VALUE 'CREATE_OBJECT',
-      c_agent_save         TYPE string VALUE 'AGENT_SAVE',
-      c_agent_code_extract TYPE string VALUE 'CODE_EXTRACT',
-      c_agent_code_diff    TYPE string VALUE 'CODE_DIFF',
-      c_agent_code_reader  TYPE string VALUE 'CODE_READER'.
+      c_agent_code_search       TYPE string VALUE 'CODE_SEARCH',
+      c_agent_code_change       TYPE string VALUE 'CODE_CHANGE',
+      c_agent_code_review       TYPE string VALUE 'CODE_REVIEW',
+      c_agent_data_search       TYPE string VALUE 'DATA_SEARCH',
+      c_agent_create_obj        TYPE string VALUE 'CREATE_OBJECT',
+      c_agent_save              TYPE string VALUE 'AGENT_SAVE',
+      c_agent_code_extract      TYPE string VALUE 'CODE_EXTRACT',
+      c_agent_code_diff         TYPE string VALUE 'CODE_DIFF',
+      c_agent_code_reader       TYPE string VALUE 'CODE_READER'.
 
-    CLASS-METHODS get_orchestrator_prompt
+    METHODS constructor
+      IMPORTING
+        !i_agents_path TYPE string.
+
+    METHODS get_orchestrator_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_system_prompt_prefix
+    METHODS get_system_prompt_prefix
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_task_orchestrator_prompt
+    METHODS get_task_orchestrator_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_code_agent_prompt
+    METHODS get_code_agent_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_data_agent_prompt
+    METHODS get_data_agent_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_code_review_prompt
+    METHODS get_code_review_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_create_object_prompt
+    METHODS get_create_object_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_code_reader_prompt
+    METHODS get_code_reader_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    CLASS-METHODS get_prompt_by_agent
-      IMPORTING i_agent           TYPE string
-      RETURNING VALUE(rv_prompt)  TYPE string.
+    METHODS get_prompt_by_agent
+      IMPORTING i_agent          TYPE string
+      RETURNING VALUE(rv_prompt) TYPE string.
 
-protected section.
+  PROTECTED SECTION.
   PRIVATE SECTION.
+    TYPES:
+      tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    DATA mv_agents_path              TYPE string.
+    DATA mv_system_prompt            TYPE string.
+    DATA mv_orchestrator_prompt      TYPE string.
+    DATA mv_task_orchestrator_prompt TYPE string.
+    DATA mv_code_review_prompt       TYPE string.
+
+    METHODS load_agent_prompts.
+
+    METHODS read_prompt_file
+      IMPORTING
+        !i_filename       TYPE string
+      RETURNING
+        VALUE(rv_content) TYPE string.
+
+    METHODS build_agent_prompt
+      IMPORTING
+        !i_agent_filename TYPE string
+      RETURNING
+        VALUE(rv_prompt)  TYPE string.
+
+    METHODS build_file_path
+      IMPORTING
+        !i_filename     TYPE string
+      RETURNING
+        VALUE(rv_path)  TYPE string.
 ENDCLASS.
 
 
 
-CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
+CLASS zcl_ai_agents_prompts IMPLEMENTATION.
 
 
-  METHOD get_system_prompt_prefix.
-    rv_prompt = |We are in an SAP system. The programming language is ABAP. |
-             && |Work only with SAP/ABAP objects, source code, packages, transports, and runtime context.|
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline.
+  METHOD build_agent_prompt.
+
+    rv_prompt = get_system_prompt_prefix( )
+             && read_prompt_file( i_agent_filename ).
+
   ENDMETHOD.
 
 
-  METHOD get_orchestrator_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-    && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. Your main task to enrich prompt by AGENT:command! |
-    && |SKIP promt only in case user ask to show the code, all other cases - please DON'T omit USER PROMOT!!!! |
-    && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
-     && |Не фантазируй Таски, не выдумывай того что не просили!!! |
-     && |Если юзер просит рассказать или проанализировать, не пропускай его промпт!!! |
+  METHOD build_file_path.
 
-    && |If the user asks for code, \{AGENT:CODE_SEARCH object_type object_name relevant_prompt_part\}. |
-    && |CODE_SEARCH is a runtime command, not an LLM agent. |
-             && cl_abap_char_utilities=>newline
-             && |Never change real code text by AGENT: string insertion, analyse only user free text|
-             && cl_abap_char_utilities=>newline
-             && |IF user already pasted some object code - don't INSERT AGENT:SHOW or AGENT_READ for this|
-             && cl_abap_char_utilities=>newline
-             && |If the user asks for method code, use exactly \{AGENT:CODE_SEARCH class_name=>method_name + relevant_prompt_part\}; |
-             "&& |do not output class_name=>... method_name=>... as separate fields.|
-             && cl_abap_char_utilities=>newline
-             && |If the user asks any code changes or saving, use exactly \{AGENT:CODE_CHANGE obj_type obj_name + relevant_prompt_part\}. |
-             && |It is the most common task - DON'T SKIP IT - search carefully! |
-             && cl_abap_char_utilities=>newline
-             && |IF user asks for definiete class method - DON'T create AGENT READ string for CLASS itself. For example READ: CLASS = ZCL_AI_AGENTS_PROMPTS - don'r create it|
-             && cl_abap_char_utilities=>newline
-             && |If requested a code review - \{AGENT:CODE_REVIEW object_type object_name\}.|
-             && |Do not add CODE_REVIEW for CREATE_OBJECT. CREATE_OBJECT uses CODE_DIFF for manual user review before save/create.|
-             && cl_abap_char_utilities=>newline
-             && |If the user asks to show table contents |
-             && |request the agent:\{AGENT:DATA_SEARCH + the relevant part of the prompt with the request.\}|
-             && cl_abap_char_utilities=>newline
+    rv_path = mv_agents_path.
+    REPLACE ALL OCCURRENCES OF '\' IN rv_path WITH '/'.
 
-             && |If the user asks to create an object: "\{AGENT:CREATE_OBJECT object_type object_name relevant_prompt_part\}" |
-             && |Never lose AGENT:CODE_SEARCH|
+    IF rv_path IS INITIAL.
+      rv_path = i_filename.
+      RETURN.
+    ENDIF.
 
-             && |Never lose AGENT:CODE_SEARCH|
-             && cl_abap_char_utilities=>newline
-             && |If the user asks to save an object/code in SAP and package is specified, use "\{AGENT:AGENT_SAVE object_type object_name package package_name relevant_prompt_part\}".|
-             && |AGENT_SAVE means modify if the object exists; the runtime checks existence, runs CODE_DIFF for existing objects, and routes to CREATE_OBJECT if not found.|
-             && cl_abap_char_utilities=>newline
-             && |If the user asks to save in SAP but package is not specified, ask only: "Please specify SAP package." Do not call any agent.|
-             && cl_abap_char_utilities=>newline
-             && |Never change real code text by AGENT: string insertion, analyse only user free text|
-             && cl_abap_char_utilities=>newline
-             && |If the request is not relevant to SAP, answer "Not relevant"|
-             && cl_abap_char_utilities=>newline
-             && |If the request is not described here, answer "Not supported"|
-             && cl_abap_char_utilities=>newline
-             && |Allowed object types: PROG, CLASS, METH, FM - functional module|
-             && cl_abap_char_utilities=>newline
-             && |Example: Open the Z_test program and, based on it, create an example calculator program Z_CALC. |
-             && |Answer: "\{AGENT:CODE_SEARCH PROG Z_TEST\} and, based on it, create an example |
-             && |calculator program \{AGENT:CREATE_OBJECT program Z_CALC\}.|
-             && cl_abap_char_utilities=>newline
-             && |Example: delete something - deletion is not supported|
-             && |You are a Senior ABAP Orchestration AGENT. Answer briefly, without explanations. Your main task to enrich prompt by AGENT:command! |
-    && |SKIP promt only in case user ask to show the code, all other cases - please DON'T omit USER PROMOT!!!! |
-    && |DON'T LOOSE extra prompt and task - add it after AGENT command!!!|
-    .
+    DATA(lv_last_offset) = strlen( rv_path ) - 1.
+    IF rv_path+lv_last_offset(1) <> '/'.
+      rv_path = rv_path && '/'.
+    ENDIF.
+
+    rv_path = rv_path && i_filename.
+
   ENDMETHOD.
 
 
-  METHOD get_task_orchestrator_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-             && |Ты оркестратор задач. Проанализируй внимательно ПРОМПТ и разбей его на задачи и подзадачи. |
-             && |Например TASK1, TASK2.5. |
-             && cl_abap_char_utilities=>newline
-             && |Если какая-то задача непонятна, задай к ней уточняющие вопросы. Формат: TASK1-ASK1. |
-             && cl_abap_char_utilities=>newline
-             && |Своих задач не придумывай кроме обязательных технических задач типа: прочитать код программы имя_программы. На этом все - никакой инициативы|
-             && cl_abap_char_utilities=>newline
-             && |Никаких более вопросов, размышлений, описаний в начале и спецсимволов. Не делай излишнюю детализацию. |
-             && |Агент начнет выполнять твои задачи и задавать вопросы. |
-             && cl_abap_char_utilities=>newline
-             && |Если имя объекта в задаче по какой-то причине указано или распознано, переделай задачу с явным упоминанием типа и имени объекта. |
-             && |Например: программа Z_TEST, класс ZCL_TEST, метод ZCL_TEST=>GET_DATA. |
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |Если нет какой-то инфо по таску, запроси ее дополнительно, только если это необходимо. |
-             && |Если в промпте есть детали, не спрашивай лишний раз, а сам прими решение!!! |
-             && |Если можно использовать разумное стандартное решение или вывести описание из кода, не задавай ASK. |
-             && |Например, для "добавь комментарии с кратким описанием" не спрашивай текст описания, а поставь задачу вывести описание из кода. |
-             && |Пример: TASK2-ASK1: Текст вопроса?|
-             && cl_abap_char_utilities=>newline
+  METHOD constructor.
 
-             && |Example ASK only when necessary: TASK2-ASK1: Какая точная формула расчета прибыли должна быть использована?|
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |USER PROMPT|.
+    mv_agents_path = i_agents_path.
+    load_agent_prompts( ).
+
   ENDMETHOD.
 
 
   METHOD get_code_agent_prompt.
-   rv_prompt = get_system_prompt_prefix( )
-             && |You are a Senior ABAP CODE AGENT. You should carefully analyze the prompt and replace part of |
-             && |it with the commands described below. Replace in prompt only for specific objects described here! |
-             && |Never change real code text by AGENT: string insertion, analyse only user free text|
-             && cl_abap_char_utilities=>newline
-             && |IF user already pasted some object code - don't INSERT AGENT:SHOW or AGENT_READ for this|
-             && cl_abap_char_utilities=>newline
-             && |For program reports - \{READ TADIR: REPS object_name\}. |
-             && |If asked to find only a class: \{READ: CLASS = class_name\}. |
-             && |If asked to find a method: \{READ METH class_name=>method_name\}. |
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |If they ask for a code review, use "Code_review -object name" |
-             && cl_abap_char_utilities=>newline
-             && |If you need to show the code, add the object type to the response - \{SHOW - objname\}. |
-             && |If user asks to add/change/comment/refactor/update code, return READ commands and keep that action text; do not return only SHOW. |
-             && |Don't lose the READ command! |
-             && cl_abap_char_utilities=>newline
-             && |Allowed substitutions here only PROG, REPS, CLAS, METH!!! |
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |There can be multiple commands - don't lose the READ commands! |
 
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |A class and a method are a composite object - you can connect them using =>|
-             && cl_abap_char_utilities=>newline
-             && |A method without a class is "Undescribed." Don't invent a class yourself!!! |
-             && |No class means "Undescribed." Take the original prompt! |
-             && |Replace the text of the original prompt and replace the recognized parts with commands! |
-             && cl_abap_char_utilities=>newline
+    rv_prompt = |CODE_SEARCH is a command, not an LLM agent.|.
 
-             && |Prompts parts don't translate! Let it be original language!|
-             && cl_abap_char_utilities=>newline
-             && |For example, for "Compare programs z_1 z_2 z_test. Rating the programs," return |
-             && |"Compare programs \{READ TADIR: REPS z_1\} \{READ TADIR: REPS z_2\} |
-             && |\{READ TADIR: REPS z_test\}. Rating all programs Code_review - z_1, z_2, z_test".|
-             && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |PROMPT:|.
-  ENDMETHOD.
-
-
-  METHOD get_data_agent_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-             && |You are a Senior ABAP Data Search Agent. Search for data in SAP tables and objects. |
-             && |Use table commands to query data from TADIR, TFDIR, and other system tables. |
-             && |Return brief, relevant information without unnecessary details.|.
-  ENDMETHOD.
-
-
-  METHOD get_code_review_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-             && |You are a Senior ABAP Code Review Agent. Review only the provided ABAP code. |
-             && |Do not make an abstract review. Find concrete issues and risks. |
-             && |DON'T offer improvements and suggestions. Only in case if user request it!!! |
-             && |Return readable simple Markdown with real line breaks - without # ## ** starters and any other special symbols|
-             && |and fenced code block on separate lines.|.
-  ENDMETHOD.
-
-
-  METHOD get_create_object_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-             && |You are a Senior ABAP Create Object Agent. Prepare the final instruction for creating or changing |
-             && |an ABAP object. Keep the original language of the user request. If code context is needed, keep |
-             && |the AGENT:CODE_SEARCH dependency visible so it can be resolved before the final answer. |
-             && |Do not delete objects and do not perform destructive actions.|.
   ENDMETHOD.
 
 
   METHOD get_code_reader_prompt.
-    rv_prompt = get_system_prompt_prefix( )
-             && |You are a Senior ABAP Code Reader Agent. Find all READ commands in the input text and resolve them. |
-             && |For \{ READ TADIR: REPS object_name \} or PROG, read the ABAP report source. |
-             && |For \{ READ: CLASS = class_name \}, read class sections and method includes. |
-             && |For \{ READ METH class_name=>method_name \}, read only the requested method include. |
-             && |Return resolved source code with object names. Do not call LLM and do not invent missing objects.|.
+
+    rv_prompt = |CODE_READER is a command, not an LLM agent.|.
+
+  ENDMETHOD.
+
+
+  METHOD get_code_review_prompt.
+
+    rv_prompt = mv_code_review_prompt.
+
+  ENDMETHOD.
+
+
+  METHOD get_create_object_prompt.
+
+    rv_prompt = |CREATE_OBJECT is a command, not an LLM agent.|.
+
+  ENDMETHOD.
+
+
+  METHOD get_data_agent_prompt.
+
+    rv_prompt = |DATA_SEARCH is a command, not an LLM agent.|.
+
+  ENDMETHOD.
+
+
+  METHOD get_orchestrator_prompt.
+
+    rv_prompt = mv_orchestrator_prompt.
+
   ENDMETHOD.
 
 
   METHOD get_prompt_by_agent.
+
     CASE i_agent.
       WHEN c_agent_orchestrator.
         rv_prompt = get_orchestrator_prompt( ).
@@ -260,5 +192,82 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
       WHEN OTHERS.
         rv_prompt = |Agent '{ i_agent }' not found|.
     ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD get_system_prompt_prefix.
+
+    rv_prompt = mv_system_prompt.
+    IF rv_prompt IS NOT INITIAL.
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_task_orchestrator_prompt.
+
+    rv_prompt = mv_task_orchestrator_prompt.
+
+  ENDMETHOD.
+
+
+  METHOD load_agent_prompts.
+
+    mv_system_prompt = read_prompt_file( 'system.md' ).
+    mv_orchestrator_prompt = build_agent_prompt( 'orchestrator.md' ).
+    mv_task_orchestrator_prompt = build_agent_prompt( 'task_orchestrator.md' ).
+    mv_code_review_prompt = build_agent_prompt( 'code_review.md' ).
+
+  ENDMETHOD.
+
+
+  METHOD read_prompt_file.
+
+    DATA lt_lines TYPE tt_strings.
+    DATA(lv_filename) = build_file_path( i_filename ).
+
+    cl_gui_frontend_services=>gui_upload(
+      EXPORTING
+        filename                = lv_filename
+        filetype                = 'ASC'
+      CHANGING
+        data_tab                = lt_lines
+      EXCEPTIONS
+        file_open_error         = 1
+        file_read_error         = 2
+        no_batch                = 3
+        gui_refuse_filetransfer = 4
+        invalid_type            = 5
+        no_authority            = 6
+        unknown_error           = 7
+        bad_data_format         = 8
+        header_not_allowed      = 9
+        separator_not_allowed   = 10
+        header_too_long         = 11
+        unknown_dp_error        = 12
+        access_denied           = 13
+        dp_out_of_memory        = 14
+        disk_full               = 15
+        dp_timeout              = 16
+        not_supported_by_gui    = 17
+        error_no_gui            = 18
+        OTHERS                  = 19 ).
+
+    IF sy-subrc <> 0.
+      rv_content = |Prompt file cannot be read: { lv_filename }|.
+      RETURN.
+    ENDIF.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      IF rv_content IS NOT INITIAL.
+        rv_content = rv_content && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_content = rv_content && lv_line.
+    ENDLOOP.
+
   ENDMETHOD.
 ENDCLASS.

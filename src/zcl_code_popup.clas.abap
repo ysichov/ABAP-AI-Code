@@ -9,7 +9,8 @@ public section.
       !I_DEST type TEXT255
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
-      !I_PROVIDER type STRING .
+      !I_PROVIDER type STRING
+      !I_AGENTS_PATH type STRING .
   methods SHOW .
 protected section.
 private section.
@@ -23,6 +24,7 @@ private section.
   data MV_SESSION_COUNTER type I .
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   data MT_MESSAGE_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES .
   data MO_HISTORY type ref to ZCL_API_HISTORY_POPUP .
   data MO_DIALOG type ref to CL_GUI_DIALOGBOX_CONTAINER .
@@ -103,7 +105,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     mv_session_counter = mv_session_counter + 1.
 
-    DATA(lo_runner) = NEW zcl_code_ai_runner( io_llm = mo_llm ).
+    DATA(lo_runner) = NEW zcl_code_ai_runner(
+      io_llm     = mo_llm
+      io_prompts = mo_prompts ).
     DATA(ls_result) = lo_runner->run(
       i_prompt     = lv_prompt
       i_session_id = mv_session_counter ).
@@ -142,6 +146,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_model    = i_model
       i_apikey   = i_apikey
       i_provider = i_provider ).
+
+    mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 
   endmethod.
 

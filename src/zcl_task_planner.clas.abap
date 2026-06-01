@@ -10,7 +10,8 @@ public section.
   methods CONSTRUCTOR
     importing
       !IO_MESSAGES type ref to ZCL_AI_MESSAGES
-      !IO_LLM type ref to ZCL_LLM_CLIENT .
+      !IO_LLM type ref to ZCL_LLM_CLIENT
+      !IO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   methods PREPARE_TASK_LIST
     importing
       !I_PROMPT type STRING
@@ -21,6 +22,7 @@ private section.
 
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
 
   methods SPLIT_TASK_LIST
     importing
@@ -43,6 +45,7 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
     mo_messages = io_messages.
     mo_llm = io_llm.
+    mo_prompts = io_prompts.
 
   endmethod.
 
@@ -145,7 +148,7 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
 
-    DATA(lv_task_prompt) = zcl_ai_agents_prompts=>get_task_orchestrator_prompt( )
+    DATA(lv_task_prompt) = mo_prompts->get_task_orchestrator_prompt( )
                           && cl_abap_char_utilities=>newline
                           && i_prompt.
     mo_messages->add_message(
