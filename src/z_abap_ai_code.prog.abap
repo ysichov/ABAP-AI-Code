@@ -99,8 +99,6 @@ CLASS lcl_popup DEFINITION.
                 i_object_name   TYPE string OPTIONAL
       RETURNING VALUE(rv_html) TYPE string.
     METHODS refresh_diff_html.
-    METHODS is_diff_fully_approved
-      RETURNING VALUE(rv_approved) TYPE abap_bool.
     METHODS normalize_markdown
       IMPORTING i_text          TYPE string
       RETURNING VALUE(rv_text) TYPE string.
@@ -227,7 +225,7 @@ CLASS lcl_popup IMPLEMENTATION.
 
     DATA lt_html_events TYPE cntl_simple_events.
     APPEND VALUE #( eventid = cl_gui_html_viewer=>m_id_sapevent ) TO lt_html_events.
-    mo_answer->set_registered_events( lt_html_events ).
+    mo_answer->set_registered_events( events = lt_html_events ).
     SET HANDLER on_answer_sapevent FOR mo_answer.
 
     CALL METHOD cl_gui_cfw=>flush.
@@ -315,7 +313,18 @@ CLASS lcl_popup IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    IF is_diff_fully_approved( ) = abap_true
+    DATA(lv_all_approved) = abap_true.
+    IF mt_diff_hunk_info IS INITIAL.
+      lv_all_approved = abap_false.
+    ENDIF.
+    LOOP AT mt_diff_hunk_info INTO DATA(ls_approved_check).
+      IF NOT line_exists( mt_diff_approved[ table_line = ls_approved_check-hunk_key ] ).
+        lv_all_approved = abap_false.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_all_approved = abap_true
        AND mv_diff_save_stub_logged = abap_false.
       mv_diff_save_stub_logged = abap_true.
       mo_messages->add_message(
@@ -998,11 +1007,6 @@ CLASS lcl_popup IMPLEMENTATION.
     DATA lt_new TYPE abaptxt255_tab.
     DATA lt_hunk_html TYPE string_table.
     DATA lt_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info.
-    DATA lt_approved TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_declined TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_decline_notes TYPE zif_ave_acr_types=>ty_t_decline_notes.
-    DATA lt_hunk_actions TYPE zif_ave_acr_types=>ty_t_hunk_actions.
-    DATA lt_hunk_threads TYPE zif_ave_acr_types=>ty_t_hunk_threads.
     DATA lt_acr_stats TYPE zif_ave_acr_types=>ty_t_obj_stats.
     DATA lt_blame TYPE zif_ave_popup_types=>ty_blame_map.
     DATA lv_hunk_count TYPE i.
@@ -1020,7 +1024,7 @@ CLASS lcl_popup IMPLEMENTATION.
       it_new = lt_new
       i_title = 'Computing AI code diff' ).
 
-    lt_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( lt_diff ).
+    lt_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_diff ).
 
     rv_html = zcl_ave_popup_html=>diff_to_html(
       it_diff       = lt_diff
@@ -1050,7 +1054,7 @@ CLASS lcl_popup IMPLEMENTATION.
       iv_ignore_case = abap_false
       iv_is_created  = abap_false ).
 
-    lv_author = sy-uname.
+    lv_author = 'AI_AGENT'.
     ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'PROG' ).
     ls_part-object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' ).
     ls_part-name = ls_part-object_name.
@@ -1087,19 +1091,55 @@ CLASS lcl_popup IMPLEMENTATION.
       hunk_del     = lv_hunk_del
       display_name = ls_part-display_name ) TO lt_acr_stats.
 
+    mv_diff_base_html = rv_html.
+    mv_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
+    mt_diff_hunk_info = lt_hunk_info.
+    CLEAR: mt_diff_approved,
+           mt_diff_declined,
+           mt_diff_decline_notes,
+           mt_diff_hunk_actions,
+           mt_diff_hunk_threads,
+           mt_diff_acr_stats,
+           mv_diff_save_stub_logged.
+    mt_diff_acr_stats = lt_acr_stats.
+
     zcl_ave_acr_hunk_renderer=>inject_approve_btn(
       EXPORTING
-        iv_key           = |{ ls_part-type }~{ ls_part-object_name }|
-        it_hunk_info     = lt_hunk_info
-        it_approved      = lt_approved
-        it_declined      = lt_declined
-        it_decline_notes = lt_decline_notes
-        it_hunk_actions  = lt_hunk_actions
-        it_hunk_threads  = lt_hunk_threads
+        iv_key           = mv_diff_key
+        it_hunk_info     = mt_diff_hunk_info
+        it_approved      = mt_diff_approved
+        it_declined      = mt_diff_declined
+        it_decline_notes = mt_diff_decline_notes
+        it_hunk_actions  = mt_diff_hunk_actions
+        it_hunk_threads  = mt_diff_hunk_threads
         iv_ai_enabled    = abap_true
       CHANGING
         cv_html          = rv_html
-        ct_acr_stats     = lt_acr_stats ).
+        ct_acr_stats     = mt_diff_acr_stats ).
+  ENDMETHOD.
+
+  METHOD refresh_diff_html.
+    DATA(lv_html) = mv_diff_base_html.
+
+    IF lv_html IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+      EXPORTING
+        iv_key           = mv_diff_key
+        it_hunk_info     = mt_diff_hunk_info
+        it_approved      = mt_diff_approved
+        it_declined      = mt_diff_declined
+        it_decline_notes = mt_diff_decline_notes
+        it_hunk_actions  = mt_diff_hunk_actions
+        it_hunk_threads  = mt_diff_hunk_threads
+        iv_ai_enabled    = abap_true
+      CHANGING
+        cv_html          = lv_html
+        ct_acr_stats     = mt_diff_acr_stats ).
+
+    display_answer( lv_html ).
   ENDMETHOD.
 
   METHOD normalize_markdown.
