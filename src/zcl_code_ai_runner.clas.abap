@@ -96,6 +96,11 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       DATA(lv_task_count) = lines( it_tasks ).
       LOOP AT it_tasks INTO DATA(lv_task).
         DATA(lv_task_idx) = sy-tabix.
+        DATA(lv_task_prompt_text) = lv_task.
+        REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s*[0-9]+(\.[0-9]+)?\s*:\s*'
+          IN lv_task_prompt_text WITH '' IGNORING CASE.
+        CONDENSE lv_task_prompt_text.
+
         CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
           EXPORTING percentage = 10 + ( lv_task_idx * 20 / lv_task_count )
                     text       = |Asking orchestrator for task { lv_task_idx }...|.
@@ -103,7 +108,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_task_orchestrator_prompt) = mo_prompts->get_orchestrator_prompt( )
           && cl_abap_char_utilities=>newline
           && cl_abap_char_utilities=>newline
-          && |PROMPT: { lv_task }|.
+          && |PROMPT: { lv_task_prompt_text }|.
 
         mo_messages->add_message(
           i_role        = 'user'
