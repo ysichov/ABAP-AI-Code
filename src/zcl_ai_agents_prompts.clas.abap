@@ -138,6 +138,11 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
              && |Например: программа Z_TEST, класс ZCL_TEST, метод ZCL_TEST=>GET_DATA. |
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
+             && |Если нет какой-то инфо по таску, запроси ее дополнительно, только если это необходимо. |
+             && |Если в промпте есть детали, не спрашивай лишний раз, а сам прими решение!!! |
+             && |Пример: TASK2-ASK1: Текст вопроса?|
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
              && |Example USER PROMPT: В программе z_test измени заголовок и функцию расчета прибыли|
              && cl_abap_char_utilities=>newline
              && |TASK1: Прочитать код программы Z_TEST.|
