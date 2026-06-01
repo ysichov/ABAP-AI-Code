@@ -60,7 +60,7 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && cl_abap_char_utilities=>newline
              && |Never change real code text by AGENT: string insertion, analyse only user free text|
              && cl_abap_char_utilities=>newline
-             && |IF user already pasted some object code - don't build {AGENT} propmtfor this|
+             && |IF user already pasted some object code - don't build {AGENT} propmt for this|
              && cl_abap_char_utilities=>newline
              && |If the request is not relevant to SAP, answer "Not relevant"|
              && cl_abap_char_utilities=>newline
@@ -103,6 +103,9 @@ CLASS zcl_ai_agents_prompts IMPLEMENTATION.
              && |No class means "Undescribed." Take the original prompt! |
              && |Replace the text of the original prompt and replace the recognized parts with commands! |
              && cl_abap_char_utilities=>newline
+             && |Never change real code text by AGENT: string insertion, analyse only user free text|
+             && cl_abap_char_utilities=>newline
+             && |IF user already pasted some object code - don't build {AGENT} propmt for this|
              && cl_abap_char_utilities=>newline
              && |Prompts parts don't translate! Let it be original language!|
              && cl_abap_char_utilities=>newline

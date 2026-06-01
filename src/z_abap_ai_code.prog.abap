@@ -507,18 +507,11 @@ CLASS lcl_popup IMPLEMENTATION.
       APPEND lv_read_command TO ct_done_commands.
 
       DATA(lv_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_read_command ).
-      DATA(lv_context_upper) = lv_code_context.
-      TRANSLATE lv_context_upper TO UPPER CASE.
-      DATA(lv_is_error) = xsdbool(
-        lv_context_upper CS 'WAS NOT FOUND OR CANNOT BE READ' OR
-        lv_context_upper CS 'WAS NOT FOUND' OR
-        lv_context_upper CS 'CANNOT BE READ' OR
-        lv_context_upper CS 'METHOD COMMAND IS INCOMPLETE' ).
 
       mo_messages->add_message(
         i_role        = 'user'
         i_agent       = zcl_ai_agents_prompts=>c_agent_code_reader
-        i_prompt_type = COND string( WHEN lv_is_error = abap_true THEN 'COMMAND_ERROR' ELSE 'COMMAND' )
+        i_prompt_type = 'COMMAND'
         i_content     = lv_read_command ).
 
       mo_messages->add_message(

@@ -112,9 +112,6 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           ls_row-request_type = lv_request_type.
           ls_row-request = lv_request.
           ls_row-request_preview = preview( ls_row-request ).
-          IF lv_request_type = 'COMMAND_ERROR'.
-          ls_row-rowcolor = 'C601'. " red text
-          ENDIF.
           ls_row-seq = lines( mt_history ) + 1.
           APPEND ls_row TO mt_history.
         ENDIF.
@@ -146,8 +143,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
             cs_row = ls_row ).
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.
-        IF ls_row-request_type = 'COMMAND_ERROR'
-        OR lv_answer_upper CS 'WAS NOT FOUND OR CANNOT BE READ'
+        IF lv_answer_upper CS 'WAS NOT FOUND OR CANNOT BE READ'
         OR lv_answer_upper CS 'WAS NOT FOUND'
         OR lv_answer_upper CS 'CANNOT BE READ'
         OR lv_answer_upper CS 'METHOD COMMAND IS INCOMPLETE'
