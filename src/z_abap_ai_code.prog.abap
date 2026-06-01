@@ -775,10 +775,13 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
       DATA lv_has_code_change TYPE abap_bool.
+      DATA lv_has_create_object TYPE abap_bool.
       DATA lv_has_code_diff TYPE abap_bool.
       DATA lv_has_show_command TYPE abap_bool.
       DATA lv_code_change_type TYPE string.
       DATA lv_code_change_name TYPE string.
+      DATA lv_create_object_type TYPE string.
+      DATA lv_create_object_name TYPE string.
 
       IF lv_orchestrator_upper CS '{SHOW'.
         lv_has_show_command = abap_true.
@@ -870,6 +873,12 @@ CLASS lcl_popup IMPLEMENTATION.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
+          lv_has_create_object = abap_true.
+          lv_has_agent_followup_text = abap_true.
+          IF lv_create_object_name IS INITIAL.
+            lv_create_object_type = ls_agent_request-object_type.
+            lv_create_object_name = ls_agent_request-object_name.
+          ENDIF.
           APPEND ls_agent_request TO lt_create_object_commands.
           CONTINUE.
         ENDIF.
@@ -1182,6 +1191,12 @@ CLASS lcl_popup IMPLEMENTATION.
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = |No new object code extracted. LLM returned CHANGES:NO.| ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = |CODE_REVIEW skipped. No proposed new object code was extracted.| ).
         ENDIF.
 
         IF lv_create_object_exists = abap_true.
