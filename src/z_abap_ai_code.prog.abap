@@ -413,8 +413,13 @@ CLASS lcl_popup IMPLEMENTATION.
       DATA lv_ignored_context TYPE string.
       DATA lv_has_agent_followup_text TYPE abap_bool.
       DATA lv_has_code_change TYPE abap_bool.
+      DATA lv_has_show_command TYPE abap_bool.
       DATA lv_code_change_type TYPE string.
       DATA lv_code_change_name TYPE string.
+
+      IF lv_orchestrator_upper CS '{SHOW'.
+        lv_has_show_command = abap_true.
+      ENDIF.
 
       IF lv_orchestrator_read_commands IS NOT INITIAL.
         lv_orchestrator_code_context = resolve_and_log_read_commands(
@@ -511,6 +516,12 @@ CLASS lcl_popup IMPLEMENTATION.
           lv_has_agent_followup_text = abap_true.
         ENDIF.
 
+        DATA(lv_agent_answer_upper) = lv_agent_answer.
+        TRANSLATE lv_agent_answer_upper TO UPPER CASE.
+        IF lv_agent_answer_upper CS '{SHOW'.
+          lv_has_show_command = abap_true.
+        ENDIF.
+
         lv_ignored_context = resolve_and_log_read_commands(
           EXPORTING
             i_text           = lv_agent_answer
@@ -540,6 +551,12 @@ CLASS lcl_popup IMPLEMENTATION.
 
         IF mo_messages->has_text_after_agent_commands( lv_batched_agent_answer ) = abap_true.
           lv_has_agent_followup_text = abap_true.
+        ENDIF.
+
+        DATA(lv_batched_agent_answer_upper) = lv_batched_agent_answer.
+        TRANSLATE lv_batched_agent_answer_upper TO UPPER CASE.
+        IF lv_batched_agent_answer_upper CS '{SHOW'.
+          lv_has_show_command = abap_true.
         ENDIF.
 
         lv_ignored_context = resolve_and_log_read_commands(
@@ -615,8 +632,11 @@ CLASS lcl_popup IMPLEMENTATION.
         lv_answer = lv_review_answer.
         lv_answer_log = lv_answer.
         lv_resolved_code = mo_messages->get_resolved_code( ).
-      ELSEIF lt_agent_requests IS NOT INITIAL
-      AND lv_only_code_search = abap_true.
+      ELSEIF ( lv_has_show_command = abap_true
+            AND lv_has_code_change = abap_false )
+          OR ( ( lt_agent_requests IS NOT INITIAL
+              OR lv_orchestrator_read_commands IS NOT INITIAL )
+            AND lv_only_code_search = abap_true ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
         lv_answer = source_to_html(
