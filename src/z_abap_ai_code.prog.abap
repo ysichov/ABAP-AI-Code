@@ -308,6 +308,23 @@ CLASS lcl_popup IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_change.
+          DATA(lv_change_read_command) = mo_messages->build_read_command( ls_agent_request ).
+          IF lv_change_read_command IS NOT INITIAL.
+            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+              EXPORTING percentage = lv_percentage
+                        text       = |Reading code { ls_agent_request-object_name }...|.
+
+            lv_ignored_context = resolve_and_log_read_commands(
+              EXPORTING
+                i_text           = lv_change_read_command
+              CHANGING
+                ct_done_commands = lt_done_read_commands ).
+          ENDIF.
+          lv_has_agent_followup_text = abap_true.
+          CONTINUE.
+        ENDIF.
+
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
           APPEND ls_agent_request TO lt_batched_code_review.
           CONTINUE.

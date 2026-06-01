@@ -174,6 +174,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
       TRANSLATE ls_request-agent TO UPPER CASE.
 
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_save.
@@ -324,6 +325,7 @@ CLASS zcl_ai_messages IMPLEMENTATION.
 
   METHOD build_read_command.
     CHECK is_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
+       OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
        OR is_request-agent = zcl_ai_agents_prompts=>c_agent_save.

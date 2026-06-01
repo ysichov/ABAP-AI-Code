@@ -7,6 +7,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     CONSTANTS:
       c_agent_orchestrator TYPE string VALUE 'ORCHESTRATOR',
       c_agent_code_search  TYPE string VALUE 'CODE_SEARCH',
+      c_agent_code_change  TYPE string VALUE 'CODE_CHANGE',
       c_agent_code_review  TYPE string VALUE 'CODE_REVIEW',
       c_agent_data_search  TYPE string VALUE 'DATA_SEARCH',
       c_agent_create_obj   TYPE string VALUE 'CREATE_OBJECT',
@@ -176,6 +177,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = get_orchestrator_prompt( ).
       WHEN c_agent_code_search.
         rv_prompt = get_code_agent_prompt( ).
+      WHEN c_agent_code_change.
+        rv_prompt = |CODE_CHANGE is a command, not an LLM agent.|.
       WHEN c_agent_code_review.
         rv_prompt = get_code_review_prompt( ).
       WHEN c_agent_data_search.
