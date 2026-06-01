@@ -612,11 +612,12 @@ CLASS lcl_popup IMPLEMENTATION.
         lv_answer = lv_review_answer.
         lv_answer_log = lv_answer.
         lv_resolved_code = mo_messages->get_resolved_code( ).
-      ELSEIF ( lv_has_show_command = abap_true
-            AND lv_has_code_change = abap_false )
-          OR ( ( lt_agent_requests IS NOT INITIAL
-              OR lv_orchestrator_read_commands IS NOT INITIAL )
-            AND lv_only_code_search = abap_true ).
+      ELSEIF lv_has_code_change = abap_false
+        AND lv_has_agent_followup_text = abap_false
+        AND lv_only_code_search = abap_true
+        AND ( lt_agent_requests IS NOT INITIAL
+           OR lv_orchestrator_read_commands IS NOT INITIAL
+           OR lv_has_show_command = abap_true ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
         lv_answer = source_to_html(
