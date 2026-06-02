@@ -32,11 +32,43 @@ public section.
 protected section.
 private section.
 
+  types:
+    BEGIN OF ty_diff_part,
+      key   TYPE string,
+      title TYPE string,
+      text  TYPE string,
+    END OF ty_diff_part .
+  types:
+    tt_diff_parts TYPE STANDARD TABLE OF ty_diff_part WITH NON-UNIQUE DEFAULT KEY .
+
   class-methods NORMALIZE_MARKDOWN
     importing
       !I_TEXT type STRING
     returning
       value(RV_TEXT) type STRING .
+  class-methods BUILD_COMPARABLE_DIFF_SOURCE
+    importing
+      !I_OLD_CODE type STRING
+      !I_NEW_CODE type STRING
+      !I_OBJECT_TYPE type STRING optional
+    exporting
+      !E_OLD_CODE type STRING
+      !E_NEW_CODE type STRING .
+  class-methods SPLIT_CLASS_PARTS
+    importing
+      !I_SOURCE type STRING
+    returning
+      value(RT_PARTS) type TT_DIFF_PARTS .
+  class-methods APPEND_DIFF_PART
+    importing
+      !IS_PART type TY_DIFF_PART
+    changing
+      !CT_PARTS type TT_DIFF_PARTS .
+  class-methods NORMALIZE_PART_KEY
+    importing
+      !I_TITLE type STRING
+    returning
+      value(RV_KEY) type STRING .
   class-methods RENDER_ABAP_BLOCKS
     importing
       !I_TEXT type STRING
@@ -148,8 +180,20 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            et_hunk_info,
            et_acr_stats.
 
-    SPLIT i_old_code AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
-    SPLIT i_new_code AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+    DATA lv_old_code TYPE string.
+    DATA lv_new_code TYPE string.
+
+    build_comparable_diff_source(
+      EXPORTING
+        i_old_code    = i_old_code
+        i_new_code    = i_new_code
+        i_object_type = i_object_type
+      IMPORTING
+        e_old_code    = lv_old_code
+        e_new_code    = lv_new_code ).
+
+    SPLIT lv_old_code AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
+    SPLIT lv_new_code AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
 
     DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff(
       it_old = lt_old
@@ -243,6 +287,130 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
   endmethod.
 
 
+  method APPEND_DIFF_PART.
+
+    IF is_part-key IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    READ TABLE ct_parts ASSIGNING FIELD-SYMBOL(<ls_part>)
+      WITH KEY key = is_part-key.
+    IF sy-subrc = 0.
+      IF <ls_part>-text IS NOT INITIAL
+      AND is_part-text IS NOT INITIAL.
+        <ls_part>-text = <ls_part>-text
+                       && cl_abap_char_utilities=>newline
+                       && is_part-text.
+      ELSEIF is_part-text IS NOT INITIAL.
+        <ls_part>-text = is_part-text.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
+    APPEND is_part TO ct_parts.
+
+  endmethod.
+
+
+  method BUILD_COMPARABLE_DIFF_SOURCE.
+
+    DATA lv_object_type TYPE string.
+    DATA lt_old_parts TYPE tt_diff_parts.
+    DATA lt_new_parts TYPE tt_diff_parts.
+    DATA lt_all_parts TYPE tt_diff_parts.
+    DATA ls_old_part TYPE ty_diff_part.
+    DATA ls_new_part TYPE ty_diff_part.
+
+    e_old_code = i_old_code.
+    e_new_code = i_new_code.
+
+    lv_object_type = i_object_type.
+    TRANSLATE lv_object_type TO UPPER CASE.
+    IF lv_object_type NP 'CLAS*'.
+      RETURN.
+    ENDIF.
+
+    lt_old_parts = split_class_parts( i_old_code ).
+    lt_new_parts = split_class_parts( i_new_code ).
+    IF lt_old_parts IS INITIAL
+    AND lt_new_parts IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    READ TABLE lt_old_parts INTO ls_old_part WITH KEY key = 'SECTION:CLASS_HEADER'.
+    IF sy-subrc = 0.
+      append_diff_part(
+        EXPORTING
+          is_part = VALUE ty_diff_part(
+            key   = ls_old_part-key
+            title = ls_old_part-title )
+        CHANGING
+          ct_parts = lt_all_parts ).
+    ENDIF.
+
+    READ TABLE lt_new_parts INTO ls_new_part WITH KEY key = 'SECTION:CLASS_HEADER'.
+    IF sy-subrc = 0.
+      append_diff_part(
+        EXPORTING
+          is_part = VALUE ty_diff_part(
+            key   = ls_new_part-key
+            title = ls_new_part-title )
+        CHANGING
+          ct_parts = lt_all_parts ).
+    ENDIF.
+
+    LOOP AT lt_old_parts INTO ls_old_part.
+      append_diff_part(
+        EXPORTING
+          is_part = VALUE ty_diff_part(
+            key   = ls_old_part-key
+            title = ls_old_part-title )
+        CHANGING
+          ct_parts = lt_all_parts ).
+    ENDLOOP.
+
+    LOOP AT lt_new_parts INTO ls_new_part.
+      append_diff_part(
+        EXPORTING
+          is_part = VALUE ty_diff_part(
+            key   = ls_new_part-key
+            title = ls_new_part-title )
+        CHANGING
+          ct_parts = lt_all_parts ).
+    ENDLOOP.
+
+    CLEAR: e_old_code,
+           e_new_code.
+
+    LOOP AT lt_all_parts INTO DATA(ls_part).
+      CLEAR: ls_old_part,
+             ls_new_part.
+
+      READ TABLE lt_old_parts INTO ls_old_part WITH KEY key = ls_part-key.
+      READ TABLE lt_new_parts INTO ls_new_part WITH KEY key = ls_part-key.
+
+      IF e_old_code IS NOT INITIAL.
+        e_old_code = e_old_code
+                  && cl_abap_char_utilities=>newline
+                  && cl_abap_char_utilities=>newline.
+        e_new_code = e_new_code
+                  && cl_abap_char_utilities=>newline
+                  && cl_abap_char_utilities=>newline.
+      ENDIF.
+
+      e_old_code = e_old_code
+                && |--- { ls_part-title } ---|
+                && cl_abap_char_utilities=>newline
+                && ls_old_part-text.
+      e_new_code = e_new_code
+                && |--- { ls_part-title } ---|
+                && cl_abap_char_utilities=>newline
+                && ls_new_part-text.
+    ENDLOOP.
+
+  endmethod.
+
+
   method CODE_BLOCK_TO_HTML.
 
     DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
@@ -294,6 +462,45 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '## Conclusion ' IN rv_text WITH |## Conclusion{ lv_nl }|.
     REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+)\.\s+(\*\*)' IN rv_text WITH |{ lv_nl }$1. $2|.
     REPLACE ALL OCCURRENCES OF REGEX '\s+-\s+' IN rv_text WITH |{ lv_nl }- |.
+
+  endmethod.
+
+
+  method NORMALIZE_PART_KEY.
+
+    DATA lv_title TYPE string.
+    DATA lv_name TYPE string.
+
+    lv_title = i_title.
+    CONDENSE lv_title.
+    rv_key = lv_title.
+    TRANSLATE rv_key TO UPPER CASE.
+
+    FIND FIRST OCCURRENCE OF REGEX '^METHOD\s+(.+)$' IN rv_key SUBMATCHES lv_name.
+    IF sy-subrc = 0.
+      rv_key = |METHOD:{ lv_name }|.
+      RETURN.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX '^PUBLIC\s+SECTION' IN rv_key.
+    IF sy-subrc = 0.
+      rv_key = 'SECTION:PUBLIC'.
+      RETURN.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX '^PRIVATE\s+SECTION' IN rv_key.
+    IF sy-subrc = 0.
+      rv_key = 'SECTION:PRIVATE'.
+      RETURN.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF REGEX '^PROTECTED\s+SECTION' IN rv_key.
+    IF sy-subrc = 0.
+      rv_key = 'SECTION:PROTECTED'.
+      RETURN.
+    ENDIF.
+
+    rv_key = |PART:{ rv_key }|.
 
   endmethod.
 
@@ -422,6 +629,96 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     rv_html = cl_abap_char_utilities=>newline
            && |<div class="source_title">{ escape_html( i_title ) }</div>|
            && code_block_to_html( i_source ).
+
+  endmethod.
+
+
+  method SPLIT_CLASS_PARTS.
+
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_part TYPE ty_diff_part.
+    DATA lv_title TYPE string.
+    DATA lv_line TYPE string.
+    DATA lv_header_prefix TYPE string.
+    DATA lv_section TYPE string.
+    DATA lv_method TYPE string.
+
+    SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO lv_line.
+      FIND FIRST OCCURRENCE OF REGEX '^---\s+(.+)---\s*$'
+        IN lv_line SUBMATCHES lv_title.
+      IF sy-subrc = 0.
+        REPLACE FIRST OCCURRENCE OF REGEX '\s+\([^)]+\)\s*$' IN lv_title WITH ''.
+        CONDENSE lv_title.
+
+        append_diff_part(
+          EXPORTING
+            is_part = ls_part
+          CHANGING
+            ct_parts = rt_parts ).
+
+        CLEAR ls_part.
+        ls_part-title = lv_title.
+        ls_part-key = normalize_part_key( lv_title ).
+        CONTINUE.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX '^\s*(PUBLIC|PROTECTED|PRIVATE)\s+SECTION\s*\.'
+        IN lv_line IGNORING CASE SUBMATCHES lv_section.
+      IF sy-subrc = 0.
+        append_diff_part(
+          EXPORTING
+            is_part = ls_part
+          CHANGING
+            ct_parts = rt_parts ).
+
+        TRANSLATE lv_section TO LOWER CASE.
+        CONCATENATE lv_section 'section' INTO lv_title SEPARATED BY space.
+        CLEAR ls_part.
+        ls_part-title = lv_title.
+        ls_part-key = normalize_part_key( lv_title ).
+      ELSE.
+        FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_]+)\s*\.'
+          IN lv_line IGNORING CASE SUBMATCHES lv_method.
+        IF sy-subrc = 0.
+          append_diff_part(
+            EXPORTING
+              is_part = ls_part
+            CHANGING
+              ct_parts = rt_parts ).
+
+          TRANSLATE lv_method TO UPPER CASE.
+          CONCATENATE 'Method' lv_method INTO lv_title SEPARATED BY space.
+          CLEAR ls_part.
+          ls_part-title = lv_title.
+          ls_part-key = normalize_part_key( lv_title ).
+        ENDIF.
+      ENDIF.
+
+      IF ls_part-key IS INITIAL.
+        lv_header_prefix = lv_line.
+        CONDENSE lv_header_prefix.
+        IF lv_header_prefix IS INITIAL
+        OR lv_header_prefix CP 'Source for class *:'.
+          CONTINUE.
+        ENDIF.
+
+        ls_part-title = 'Class header'.
+        ls_part-key = 'SECTION:CLASS_HEADER'.
+      ENDIF.
+
+      IF ls_part-text IS NOT INITIAL.
+        ls_part-text = ls_part-text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      ls_part-text = ls_part-text && lv_line.
+    ENDLOOP.
+
+    append_diff_part(
+      EXPORTING
+        is_part = ls_part
+      CHANGING
+        ct_parts = rt_parts ).
 
   endmethod.
 
