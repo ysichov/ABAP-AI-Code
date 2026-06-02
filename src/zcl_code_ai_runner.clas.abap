@@ -247,18 +247,29 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         READ TABLE lt_compare_parts INTO DATA(ls_compare_part)
           WITH KEY part_key = ls_part-part_key.
-        IF sy-subrc = 0
+        DATA(lv_has_compare) = xsdbool( sy-subrc = 0 ).
+        IF lv_has_compare = abap_true
         AND ls_compare_part-source = ls_part-source.
           lv_content = lv_content
                     && cl_abap_char_utilities=>newline
                     && |NO CHANGES|.
         ELSE.
-          IF sy-subrc = 0.
+          DATA lv_current_context TYPE string.
+          DATA lv_proposed_context TYPE string.
+          zcl_code_answer_tools=>extract_changed_context(
+            EXPORTING
+              i_current_source  = ls_compare_part-source
+              i_proposed_source = ls_part-source
+            IMPORTING
+              e_current_source  = lv_current_context
+              e_proposed_source = lv_proposed_context ).
+
+          IF lv_has_compare = abap_true.
             lv_content = lv_content
                       && cl_abap_char_utilities=>newline
                       && |CURRENT SOURCE:|
                       && cl_abap_char_utilities=>newline
-                      && ls_compare_part-source
+                      && lv_current_context
                       && cl_abap_char_utilities=>newline
                       && cl_abap_char_utilities=>newline.
           ENDIF.
@@ -267,7 +278,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                     && cl_abap_char_utilities=>newline
                     && |PROPOSED SOURCE:|
                     && cl_abap_char_utilities=>newline
-                    && ls_part-source.
+                    && lv_proposed_context.
         ENDIF.
 
         mo_messages->add_message(

@@ -22,6 +22,13 @@ public section.
       !I_SOURCE type STRING
     returning
       value(RT_PARTS) type TT_CLASS_PARTS .
+  class-methods EXTRACT_CHANGED_CONTEXT
+    importing
+      !I_CURRENT_SOURCE type STRING
+      !I_PROPOSED_SOURCE type STRING
+    exporting
+      !E_CURRENT_SOURCE type STRING
+      !E_PROPOSED_SOURCE type STRING .
 protected section.
 private section.
   class-methods APPEND_CLASS_PART
@@ -34,6 +41,13 @@ private section.
       !I_TITLE type STRING
     returning
       value(RV_KEY) type STRING .
+  class-methods SLICE_SOURCE
+    importing
+      !IT_LINES type STRING_TABLE
+      !I_FROM type I
+      !I_TO type I
+    returning
+      value(RV_SOURCE) type STRING .
 ENDCLASS.
 
 
@@ -108,6 +122,79 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
     rv_code = substring( val = lv_after len = lv_end ).
     SHIFT rv_code LEFT DELETING LEADING cl_abap_char_utilities=>newline.
+
+  endmethod.
+
+
+  method EXTRACT_CHANGED_CONTEXT.
+
+    DATA lt_current TYPE string_table.
+    DATA lt_proposed TYPE string_table.
+    DATA lv_first TYPE i.
+    DATA lv_current_last TYPE i.
+    DATA lv_proposed_last TYPE i.
+    DATA lv_current_start TYPE i.
+    DATA lv_proposed_start TYPE i.
+    DATA lv_current_end TYPE i.
+    DATA lv_proposed_end TYPE i.
+    DATA lv_min_lines TYPE i.
+
+    e_current_source = i_current_source.
+    e_proposed_source = i_proposed_source.
+
+    IF i_current_source = i_proposed_source.
+      RETURN.
+    ENDIF.
+
+    SPLIT i_current_source AT cl_abap_char_utilities=>newline INTO TABLE lt_current.
+    SPLIT i_proposed_source AT cl_abap_char_utilities=>newline INTO TABLE lt_proposed.
+
+    lv_min_lines = nmin( val1 = lines( lt_current ) val2 = lines( lt_proposed ) ).
+    lv_first = 1.
+    WHILE lv_first <= lv_min_lines.
+      IF lt_current[ lv_first ] <> lt_proposed[ lv_first ].
+        EXIT.
+      ENDIF.
+      lv_first = lv_first + 1.
+    ENDWHILE.
+
+    lv_current_last = lines( lt_current ).
+    lv_proposed_last = lines( lt_proposed ).
+    WHILE lv_current_last >= lv_first
+      AND lv_proposed_last >= lv_first.
+      IF lt_current[ lv_current_last ] <> lt_proposed[ lv_proposed_last ].
+        EXIT.
+      ENDIF.
+      lv_current_last = lv_current_last - 1.
+      lv_proposed_last = lv_proposed_last - 1.
+    ENDWHILE.
+
+    lv_current_start = lv_first - 3.
+    lv_proposed_start = lv_first - 3.
+    IF lv_current_start < 1.
+      lv_current_start = 1.
+    ENDIF.
+    IF lv_proposed_start < 1.
+      lv_proposed_start = 1.
+    ENDIF.
+
+    lv_current_end = lv_current_last + 3.
+    lv_proposed_end = lv_proposed_last + 3.
+    IF lv_current_end > lines( lt_current ).
+      lv_current_end = lines( lt_current ).
+    ENDIF.
+    IF lv_proposed_end > lines( lt_proposed ).
+      lv_proposed_end = lines( lt_proposed ).
+    ENDIF.
+
+    e_current_source = slice_source(
+      it_lines = lt_current
+      i_from   = lv_current_start
+      i_to     = lv_current_end ).
+    e_proposed_source = slice_source(
+      it_lines = lt_proposed
+      i_from   = lv_proposed_start
+      i_to     = lv_proposed_end ).
 
   endmethod.
 
@@ -251,6 +338,36 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     ENDIF.
 
     rv_key = |PART:{ rv_key }|.
+
+  endmethod.
+
+
+  method SLICE_SOURCE.
+
+    DATA lv_index TYPE i.
+    DATA lv_to TYPE i.
+
+    IF it_lines IS INITIAL
+    OR i_to < i_from.
+      RETURN.
+    ENDIF.
+
+    lv_index = i_from.
+    lv_to = i_to.
+    IF lv_index < 1.
+      lv_index = 1.
+    ENDIF.
+    IF lv_to > lines( it_lines ).
+      lv_to = lines( it_lines ).
+    ENDIF.
+
+    WHILE lv_index <= lv_to.
+      IF rv_source IS NOT INITIAL.
+        rv_source = rv_source && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_source = rv_source && it_lines[ lv_index ].
+      lv_index = lv_index + 1.
+    ENDWHILE.
 
   endmethod.
 ENDCLASS.
