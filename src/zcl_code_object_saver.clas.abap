@@ -61,6 +61,13 @@ CLASS zcl_code_object_saver DEFINITION
       IMPORTING
         i_package TYPE devclass.
 
+    CLASS-METHODS update_program_dir
+      IMPORTING
+        i_program    TYPE progname
+        is_progdir   TYPE ty_progdir
+      RETURNING
+        VALUE(rv_message) TYPE string.
+
     CLASS-METHODS verify_inactive_source
       IMPORTING
         i_program TYPE progname
@@ -320,6 +327,20 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
+        DATA(lv_progdir_error) = update_program_dir(
+          i_program  = lv_program
+          is_progdir = ls_progdir ).
+        IF lv_progdir_error IS NOT INITIAL.
+          rv_message = lv_progdir_error.
+          mv_last_log = mv_last_log
+                     && cl_abap_char_utilities=>newline
+                     && rv_message.
+          RETURN.
+        ENDIF.
+        mv_last_log = mv_last_log
+                   && cl_abap_char_utilities=>newline
+                   && |UPDATE_PROGDIR executed for inactive version of { lv_program }.|.
+
       CATCH cx_root INTO DATA(lx_error).
         lv_error_text = lx_error->get_text( ).
         CONCATENATE 'Error saving program' lv_program ':'
@@ -413,6 +434,50 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
   METHOD set_default_package.
 
     EXPORT current_devclass FROM i_package TO MEMORY ID 'EUK'.
+
+  ENDMETHOD.
+
+
+  METHOD update_program_dir.
+
+    DATA ls_progdir TYPE progdir.
+    DATA lv_t100_message TYPE string.
+
+    CALL FUNCTION 'READ_PROGDIR'
+      EXPORTING
+        i_progname = i_program
+        i_state    = 'I'
+      IMPORTING
+        e_progdir  = ls_progdir
+      EXCEPTIONS
+        not_exists = 1
+        OTHERS     = 2.
+    IF sy-subrc <> 0.
+      CONCATENATE 'Error reading inactive program directory for' i_program
+             INTO rv_message SEPARATED BY space.
+      RETURN.
+    ENDIF.
+
+    ls_progdir-subc = is_progdir-subc.
+    ls_progdir-fixpt = is_progdir-fixpt.
+    ls_progdir-uccheck = is_progdir-uccheck.
+
+    CALL FUNCTION 'UPDATE_PROGDIR'
+      EXPORTING
+        i_progdir    = ls_progdir
+        i_progname   = ls_progdir-name
+        i_state      = ls_progdir-state
+      EXCEPTIONS
+        not_executed = 1
+        OTHERS       = 2.
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+        INTO lv_t100_message.
+      CONCATENATE 'Error updating inactive program directory for' i_program ':'
+                  lv_t100_message
+             INTO rv_message SEPARATED BY space.
+    ENDIF.
 
   ENDMETHOD.
 

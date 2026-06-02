@@ -335,6 +335,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       IF confirm_save_approved_diff( ) = abap_true.
         mv_diff_save_stub_logged = abap_true.
         save_approved_diff( ).
+        RETURN.
       ENDIF.
     ENDIF.
 
