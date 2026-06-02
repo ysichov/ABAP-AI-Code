@@ -395,6 +395,19 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      DATA(lv_old_header) = ls_part-title.
+      DATA(lv_new_header) = ls_part-title.
+      IF ls_old_part-text IS INITIAL.
+        lv_old_header = |{ ls_part-title } (before insert)|.
+        lv_new_header = |{ ls_part-title } (inserted)|.
+      ELSEIF ls_new_part-text IS INITIAL.
+        lv_old_header = |{ ls_part-title } (deleted)|.
+        lv_new_header = |{ ls_part-title } (after delete)|.
+      ELSE.
+        lv_old_header = |{ ls_part-title } (before change)|.
+        lv_new_header = |{ ls_part-title } (changed)|.
+      ENDIF.
+
       DATA lv_old_context TYPE string.
       DATA lv_new_context TYPE string.
       zcl_code_answer_tools=>extract_changed_context(
@@ -404,12 +417,6 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         IMPORTING
           e_current_source  = lv_old_context
           e_proposed_source = lv_new_context ).
-      DATA(lv_object_header) = |{ i_object_type } { i_object_name }|.
-      CONDENSE lv_object_header.
-      DATA(lv_part_header) = COND string(
-        WHEN lv_object_header IS NOT INITIAL
-        THEN |{ lv_object_header } / { ls_part-title }|
-        ELSE ls_part-title ).
 
       IF e_old_code IS NOT INITIAL.
         e_old_code = e_old_code
@@ -421,11 +428,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ENDIF.
 
       e_old_code = e_old_code
-                && |=== Changed { lv_part_header } ===|
+                && |=== { lv_old_header } ===|
                 && cl_abap_char_utilities=>newline
                 && lv_old_context.
       e_new_code = e_new_code
-                && |=== Changed { lv_part_header } ===|
+                && |=== { lv_new_header } ===|
                 && cl_abap_char_utilities=>newline
                 && lv_new_context.
     ENDLOOP.

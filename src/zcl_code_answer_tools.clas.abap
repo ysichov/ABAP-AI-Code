@@ -48,11 +48,90 @@ private section.
       !I_TO type I
     returning
       value(RV_SOURCE) type STRING .
+  class-methods APPEND_CHANGED_WINDOW
+    importing
+      !IT_CURRENT type STRING_TABLE
+      !IT_PROPOSED type STRING_TABLE
+      !I_CURRENT_FROM type I
+      !I_CURRENT_TO type I
+      !I_PROPOSED_FROM type I
+      !I_PROPOSED_TO type I
+    changing
+      !CV_CURRENT_SOURCE type STRING
+      !CV_PROPOSED_SOURCE type STRING .
 ENDCLASS.
 
 
 
 CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
+
+
+  method APPEND_CHANGED_WINDOW.
+
+    DATA lv_current_from TYPE i.
+    DATA lv_current_to TYPE i.
+    DATA lv_proposed_from TYPE i.
+    DATA lv_proposed_to TYPE i.
+    DATA lv_current_context_from TYPE i.
+    DATA lv_current_context_to TYPE i.
+    DATA lv_proposed_context_from TYPE i.
+    DATA lv_proposed_context_to TYPE i.
+    DATA lv_current_slice TYPE string.
+    DATA lv_proposed_slice TYPE string.
+
+    lv_current_from = i_current_from.
+    lv_current_to = i_current_to.
+    lv_proposed_from = i_proposed_from.
+    lv_proposed_to = i_proposed_to.
+
+    IF lv_current_to < lv_current_from.
+      lv_current_context_from = lv_current_from - 3.
+      lv_current_context_to = lv_current_from + 2.
+    ELSE.
+      lv_current_context_from = lv_current_from - 3.
+      lv_current_context_to = lv_current_to + 3.
+    ENDIF.
+
+    IF lv_proposed_to < lv_proposed_from.
+      lv_proposed_context_from = lv_proposed_from - 3.
+      lv_proposed_context_to = lv_proposed_from + 2.
+    ELSE.
+      lv_proposed_context_from = lv_proposed_from - 3.
+      lv_proposed_context_to = lv_proposed_to + 3.
+    ENDIF.
+
+    lv_current_slice = slice_source(
+      it_lines = it_current
+      i_from   = lv_current_context_from
+      i_to     = lv_current_context_to ).
+    lv_proposed_slice = slice_source(
+      it_lines = it_proposed
+      i_from   = lv_proposed_context_from
+      i_to     = lv_proposed_context_to ).
+
+    IF cv_current_source IS NOT INITIAL
+    OR cv_proposed_source IS NOT INITIAL.
+      cv_current_source = cv_current_source
+                       && cl_abap_char_utilities=>newline
+                       && |...|.
+      cv_proposed_source = cv_proposed_source
+                        && cl_abap_char_utilities=>newline
+                        && |...|.
+    ENDIF.
+
+    IF cv_current_source IS NOT INITIAL
+    AND lv_current_slice IS NOT INITIAL.
+      cv_current_source = cv_current_source && cl_abap_char_utilities=>newline.
+    ENDIF.
+    cv_current_source = cv_current_source && lv_current_slice.
+
+    IF cv_proposed_source IS NOT INITIAL
+    AND lv_proposed_slice IS NOT INITIAL.
+      cv_proposed_source = cv_proposed_source && cl_abap_char_utilities=>newline.
+    ENDIF.
+    cv_proposed_source = cv_proposed_source && lv_proposed_slice.
+
+  endmethod.
 
 
   method APPEND_CLASS_PART.
@@ -130,14 +209,14 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
     DATA lt_current TYPE string_table.
     DATA lt_proposed TYPE string_table.
-    DATA lv_first TYPE i.
-    DATA lv_current_last TYPE i.
-    DATA lv_proposed_last TYPE i.
-    DATA lv_current_start TYPE i.
-    DATA lv_proposed_start TYPE i.
-    DATA lv_current_end TYPE i.
-    DATA lv_proposed_end TYPE i.
-    DATA lv_min_lines TYPE i.
+    DATA lv_current_idx TYPE i.
+    DATA lv_proposed_idx TYPE i.
+    DATA lv_current_anchor TYPE i.
+    DATA lv_proposed_anchor TYPE i.
+    DATA lv_found TYPE abap_bool.
+    DATA lv_search_to TYPE i.
+    DATA lv_current_search TYPE i.
+    DATA lv_proposed_search TYPE i.
 
     e_current_source = i_current_source.
     e_proposed_source = i_proposed_source.
@@ -149,52 +228,76 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     SPLIT i_current_source AT cl_abap_char_utilities=>newline INTO TABLE lt_current.
     SPLIT i_proposed_source AT cl_abap_char_utilities=>newline INTO TABLE lt_proposed.
 
-    lv_min_lines = nmin( val1 = lines( lt_current ) val2 = lines( lt_proposed ) ).
-    lv_first = 1.
-    WHILE lv_first <= lv_min_lines.
-      IF lt_current[ lv_first ] <> lt_proposed[ lv_first ].
-        EXIT.
+    CLEAR: e_current_source,
+           e_proposed_source.
+
+    lv_current_idx = 1.
+    lv_proposed_idx = 1.
+
+    WHILE lv_current_idx <= lines( lt_current )
+       OR lv_proposed_idx <= lines( lt_proposed ).
+
+      IF lv_current_idx <= lines( lt_current )
+      AND lv_proposed_idx <= lines( lt_proposed )
+      AND lt_current[ lv_current_idx ] = lt_proposed[ lv_proposed_idx ].
+        lv_current_idx = lv_current_idx + 1.
+        lv_proposed_idx = lv_proposed_idx + 1.
+        CONTINUE.
       ENDIF.
-      lv_first = lv_first + 1.
-    ENDWHILE.
 
-    lv_current_last = lines( lt_current ).
-    lv_proposed_last = lines( lt_proposed ).
-    WHILE lv_current_last >= lv_first
-      AND lv_proposed_last >= lv_first.
-      IF lt_current[ lv_current_last ] <> lt_proposed[ lv_proposed_last ].
-        EXIT.
+      CLEAR: lv_found,
+             lv_current_anchor,
+             lv_proposed_anchor.
+
+      IF lv_current_idx <= lines( lt_current ).
+        lv_search_to = nmin( val1 = lv_proposed_idx + 30 val2 = lines( lt_proposed ) ).
+        lv_proposed_search = lv_proposed_idx + 1.
+        WHILE lv_proposed_search <= lv_search_to.
+          IF lt_proposed[ lv_proposed_search ] = lt_current[ lv_current_idx ].
+            lv_current_anchor = lv_current_idx.
+            lv_proposed_anchor = lv_proposed_search.
+            lv_found = abap_true.
+            EXIT.
+          ENDIF.
+          lv_proposed_search = lv_proposed_search + 1.
+        ENDWHILE.
       ENDIF.
-      lv_current_last = lv_current_last - 1.
-      lv_proposed_last = lv_proposed_last - 1.
+
+      IF lv_found = abap_false
+      AND lv_proposed_idx <= lines( lt_proposed ).
+        lv_search_to = nmin( val1 = lv_current_idx + 30 val2 = lines( lt_current ) ).
+        lv_current_search = lv_current_idx + 1.
+        WHILE lv_current_search <= lv_search_to.
+          IF lt_current[ lv_current_search ] = lt_proposed[ lv_proposed_idx ].
+            lv_current_anchor = lv_current_search.
+            lv_proposed_anchor = lv_proposed_idx.
+            lv_found = abap_true.
+            EXIT.
+          ENDIF.
+          lv_current_search = lv_current_search + 1.
+        ENDWHILE.
+      ENDIF.
+
+      IF lv_found = abap_false.
+        lv_current_anchor = lines( lt_current ) + 1.
+        lv_proposed_anchor = lines( lt_proposed ) + 1.
+      ENDIF.
+
+      append_changed_window(
+        EXPORTING
+          it_current       = lt_current
+          it_proposed      = lt_proposed
+          i_current_from   = lv_current_idx
+          i_current_to     = lv_current_anchor - 1
+          i_proposed_from  = lv_proposed_idx
+          i_proposed_to    = lv_proposed_anchor - 1
+        CHANGING
+          cv_current_source  = e_current_source
+          cv_proposed_source = e_proposed_source ).
+
+      lv_current_idx = lv_current_anchor.
+      lv_proposed_idx = lv_proposed_anchor.
     ENDWHILE.
-
-    lv_current_start = lv_first - 3.
-    lv_proposed_start = lv_first - 3.
-    IF lv_current_start < 1.
-      lv_current_start = 1.
-    ENDIF.
-    IF lv_proposed_start < 1.
-      lv_proposed_start = 1.
-    ENDIF.
-
-    lv_current_end = lv_current_last + 3.
-    lv_proposed_end = lv_proposed_last + 3.
-    IF lv_current_end > lines( lt_current ).
-      lv_current_end = lines( lt_current ).
-    ENDIF.
-    IF lv_proposed_end > lines( lt_proposed ).
-      lv_proposed_end = lines( lt_proposed ).
-    ENDIF.
-
-    e_current_source = slice_source(
-      it_lines = lt_current
-      i_from   = lv_current_start
-      i_to     = lv_current_end ).
-    e_proposed_source = slice_source(
-      it_lines = lt_proposed
-      i_from   = lv_proposed_start
-      i_to     = lv_proposed_end ).
 
   endmethod.
 
