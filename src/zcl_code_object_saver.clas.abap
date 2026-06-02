@@ -276,13 +276,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lv_syntax_error) = syntax_check( lt_source ).
-    IF lv_syntax_error IS NOT INITIAL.
-      rv_message = lv_syntax_error.
-      mv_last_log = rv_message.
-      RETURN.
-    ENDIF.
-
     DATA(lv_exists) = program_exists( lv_program ).
     lv_package = i_package.
     TRANSLATE lv_package TO UPPER CASE.
@@ -468,6 +461,20 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                  && rv_message.
       RETURN.
     ENDIF.
+
+    DATA(lv_syntax_error) = syntax_check( lt_source ).
+    IF lv_syntax_error IS NOT INITIAL.
+      REPLACE FIRST OCCURRENCE OF 'Syntax error before save:'
+        IN lv_syntax_error WITH 'Syntax error after save:'.
+      rv_message = lv_syntax_error.
+      mv_last_log = mv_last_log
+                 && cl_abap_char_utilities=>newline
+                 && rv_message.
+      RETURN.
+    ENDIF.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |Syntax check after save passed for { lv_program }.|.
 
     DATA(lv_activation_message) = activate_program( lv_program ).
     IF lv_activation_message IS NOT INITIAL.

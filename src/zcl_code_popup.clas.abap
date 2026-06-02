@@ -426,6 +426,19 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     OR lv_save_message_upper CS 'ERROR UPDATING'
     OR lv_save_message_upper CS 'ERROR ACTIVATING'
     OR lv_save_message_upper CS 'WAS WRITTEN, BUT'.
+      CLEAR: mv_diff_base_html,
+             mv_diff_key,
+             mt_diff_approved,
+             mt_diff_declined,
+             mt_diff_decline_notes,
+             mt_diff_hunk_actions,
+             mt_diff_hunk_threads,
+             mv_diff_save_stub_logged.
+      display_text(
+        |Saved inactive version has errors. Asking AI to fix them before showing code review again.|
+        && cl_abap_char_utilities=>newline
+        && cl_abap_char_utilities=>newline
+        && lv_save_message ).
       request_save_fix( lv_save_message ).
       RETURN.
     ENDIF.
