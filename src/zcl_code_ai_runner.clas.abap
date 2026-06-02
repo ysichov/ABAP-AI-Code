@@ -67,6 +67,13 @@ private section.
       !CT_DONE_COMMANDS type TT_STRINGS
     returning
       value(RV_CONTEXT) type STRING .
+  methods LOG_CLASS_EXTRACT
+    importing
+      !I_SOURCE type STRING
+      !I_OBJECT_NAME type STRING
+      !I_PHASE type STRING
+    returning
+      value(RV_SOURCE) type STRING .
 ENDCLASS.
 
 
@@ -205,6 +212,41 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       OR i_prompt CS 'ошиб'
       OR i_prompt CS 'Синтакс'
       OR i_prompt CS 'синтакс' ).
+
+  endmethod.
+
+
+  method LOG_CLASS_EXTRACT.
+
+    DATA(lt_parts) = zcl_code_answer_tools=>extract_class_parts( i_source ).
+
+    rv_source = i_source.
+    IF lt_parts IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    CLEAR rv_source.
+
+    LOOP AT lt_parts INTO DATA(ls_part).
+      IF rv_source IS NOT INITIAL.
+        rv_source = rv_source
+                  && cl_abap_char_utilities=>newline
+                  && cl_abap_char_utilities=>newline.
+      ENDIF.
+
+      rv_source = rv_source
+                && |--- { ls_part-title } ---|
+                && cl_abap_char_utilities=>newline
+                && ls_part-source.
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_class_extract
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|
+                     && cl_abap_char_utilities=>newline
+                     && ls_part-source ).
+    ENDLOOP.
 
   endmethod.
 
@@ -705,6 +747,21 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = lv_extracted_code ).
 
+          DATA(lv_diff_old_code) = mo_messages->get_resolved_code( ).
+          DATA(lv_diff_new_code) = lv_extracted_code.
+          DATA(lv_code_change_type_upper) = lv_code_change_type.
+          TRANSLATE lv_code_change_type_upper TO UPPER CASE.
+          IF lv_code_change_type_upper CP 'CLAS*'.
+            lv_diff_old_code = log_class_extract(
+              i_source      = lv_diff_old_code
+              i_object_name = lv_code_change_name
+              i_phase       = 'CURRENT' ).
+            lv_diff_new_code = log_class_extract(
+              i_source      = lv_diff_new_code
+              i_object_name = lv_code_change_name
+              i_phase       = 'PROPOSED' ).
+          ENDIF.
+
           mo_messages->add_message(
             i_role        = 'user'
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
@@ -718,8 +775,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
 
           rs_result-has_diff = abap_true.
-          rs_result-diff_old_code = mo_messages->get_resolved_code( ).
-          rs_result-diff_new_code = lv_extracted_code.
+          rs_result-diff_old_code = lv_diff_old_code.
+          rs_result-diff_new_code = lv_diff_new_code.
           rs_result-diff_object_type = lv_code_change_type.
           rs_result-diff_object_name = lv_code_change_name.
         ENDIF.
@@ -782,6 +839,19 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = lv_create_extracted_code ).
+
+          DATA(lv_create_type_upper) = ls_create_object_command-object_type.
+          TRANSLATE lv_create_type_upper TO UPPER CASE.
+          IF lv_create_type_upper CP 'CLAS*'.
+            lv_create_context = log_class_extract(
+              i_source      = lv_create_context
+              i_object_name = ls_create_object_command-object_name
+              i_phase       = 'CURRENT' ).
+            lv_create_extracted_code = log_class_extract(
+              i_source      = lv_create_extracted_code
+              i_object_name = ls_create_object_command-object_name
+              i_phase       = 'PROPOSED' ).
+          ENDIF.
         ELSE.
           mo_messages->add_message(
             i_role        = 'user'
@@ -821,6 +891,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
             i_prompt_type = 'AGENT_RESPONSE'
             i_content     = |CODE_DIFF command stub. Object exists, diff path selected before overwrite: { ls_create_object_command-object_type } { ls_create_object_command-object_name } { ls_create_object_command-relevant_prompt }| ).
+
+          IF lv_create_extracted_code IS NOT INITIAL.
+            rs_result-has_diff = abap_true.
+            rs_result-diff_old_code = lv_create_context.
+            rs_result-diff_new_code = lv_create_extracted_code.
+            rs_result-diff_object_type = ls_create_object_command-object_type.
+            rs_result-diff_object_name = ls_create_object_command-object_name.
+          ENDIF.
 
         ELSE.
           mo_messages->add_message(

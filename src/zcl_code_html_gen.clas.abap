@@ -34,7 +34,7 @@ private section.
 
   types:
     BEGIN OF ty_diff_part,
-      key   TYPE string,
+      part_key TYPE string,
       title TYPE string,
       text  TYPE string,
     END OF ty_diff_part .
@@ -289,12 +289,12 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
   method APPEND_DIFF_PART.
 
-    IF is_part-key IS INITIAL.
+    IF is_part-part_key IS INITIAL.
       RETURN.
     ENDIF.
 
     READ TABLE ct_parts ASSIGNING FIELD-SYMBOL(<ls_part>)
-      WITH KEY key = is_part-key.
+      WITH KEY part_key = is_part-part_key.
     IF sy-subrc = 0.
       IF <ls_part>-text IS NOT INITIAL
       AND is_part-text IS NOT INITIAL.
@@ -337,23 +337,23 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    READ TABLE lt_old_parts INTO ls_old_part WITH KEY key = 'SECTION:CLASS_HEADER'.
+    READ TABLE lt_old_parts INTO ls_old_part WITH KEY part_key = 'SECTION:CLASS_HEADER'.
     IF sy-subrc = 0.
       append_diff_part(
         EXPORTING
           is_part = VALUE ty_diff_part(
-            key   = ls_old_part-key
+            part_key = ls_old_part-part_key
             title = ls_old_part-title )
         CHANGING
           ct_parts = lt_all_parts ).
     ENDIF.
 
-    READ TABLE lt_new_parts INTO ls_new_part WITH KEY key = 'SECTION:CLASS_HEADER'.
+    READ TABLE lt_new_parts INTO ls_new_part WITH KEY part_key = 'SECTION:CLASS_HEADER'.
     IF sy-subrc = 0.
       append_diff_part(
         EXPORTING
           is_part = VALUE ty_diff_part(
-            key   = ls_new_part-key
+            part_key = ls_new_part-part_key
             title = ls_new_part-title )
         CHANGING
           ct_parts = lt_all_parts ).
@@ -363,7 +363,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       append_diff_part(
         EXPORTING
           is_part = VALUE ty_diff_part(
-            key   = ls_old_part-key
+            part_key = ls_old_part-part_key
             title = ls_old_part-title )
         CHANGING
           ct_parts = lt_all_parts ).
@@ -373,7 +373,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       append_diff_part(
         EXPORTING
           is_part = VALUE ty_diff_part(
-            key   = ls_new_part-key
+            part_key = ls_new_part-part_key
             title = ls_new_part-title )
         CHANGING
           ct_parts = lt_all_parts ).
@@ -386,8 +386,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       CLEAR: ls_old_part,
              ls_new_part.
 
-      READ TABLE lt_old_parts INTO ls_old_part WITH KEY key = ls_part-key.
-      READ TABLE lt_new_parts INTO ls_new_part WITH KEY key = ls_part-key.
+      READ TABLE lt_old_parts INTO ls_old_part WITH KEY part_key = ls_part-part_key.
+      READ TABLE lt_new_parts INTO ls_new_part WITH KEY part_key = ls_part-part_key.
 
       IF e_old_code IS NOT INITIAL.
         e_old_code = e_old_code
@@ -660,7 +660,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
         CLEAR ls_part.
         ls_part-title = lv_title.
-        ls_part-key = normalize_part_key( lv_title ).
+        ls_part-part_key = normalize_part_key( lv_title ).
         CONTINUE.
       ENDIF.
 
@@ -677,7 +677,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         CONCATENATE lv_section 'section' INTO lv_title SEPARATED BY space.
         CLEAR ls_part.
         ls_part-title = lv_title.
-        ls_part-key = normalize_part_key( lv_title ).
+        ls_part-part_key = normalize_part_key( lv_title ).
       ELSE.
         FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_]+)\s*\.'
           IN lv_line IGNORING CASE SUBMATCHES lv_method.
@@ -692,11 +692,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           CONCATENATE 'Method' lv_method INTO lv_title SEPARATED BY space.
           CLEAR ls_part.
           ls_part-title = lv_title.
-          ls_part-key = normalize_part_key( lv_title ).
+          ls_part-part_key = normalize_part_key( lv_title ).
         ENDIF.
       ENDIF.
 
-      IF ls_part-key IS INITIAL.
+      IF ls_part-part_key IS INITIAL.
         lv_header_prefix = lv_line.
         CONDENSE lv_header_prefix.
         IF lv_header_prefix IS INITIAL
@@ -705,7 +705,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ENDIF.
 
         ls_part-title = 'Class header'.
-        ls_part-key = 'SECTION:CLASS_HEADER'.
+        ls_part-part_key = 'SECTION:CLASS_HEADER'.
       ENDIF.
 
       IF ls_part-text IS NOT INITIAL.

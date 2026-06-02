@@ -15,6 +15,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_create_obj        TYPE string VALUE 'CREATE_OBJECT',
       c_agent_save              TYPE string VALUE 'AGENT_SAVE',
       c_agent_code_extract      TYPE string VALUE 'CODE_EXTRACT',
+      c_agent_class_extract     TYPE string VALUE 'CLASS_EXTRACT',
       c_agent_code_diff         TYPE string VALUE 'CODE_DIFF',
       c_agent_code_reader       TYPE string VALUE 'CODE_READER'.
 
@@ -205,6 +206,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = |AGENT_SAVE is a command, not an LLM agent.|.
       WHEN c_agent_code_extract.
         rv_prompt = |CODE_EXTRACT is a command, not an LLM agent.|.
+      WHEN c_agent_class_extract.
+        rv_prompt = |CLASS_EXTRACT is a command, not an LLM agent.|.
       WHEN c_agent_code_diff.
         rv_prompt = |CODE_DIFF is a command, not an LLM agent.|.
       WHEN c_agent_code_reader.
