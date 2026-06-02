@@ -43,6 +43,13 @@ CLASS zcl_code_object_saver DEFINITION
       RETURNING
         VALUE(rv_exists) TYPE abap_bool.
 
+    CLASS-METHODS verify_inactive_source
+      IMPORTING
+        i_program TYPE progname
+        it_source TYPE tt_source
+      RETURNING
+        VALUE(rv_message) TYPE string.
+
     CLASS-METHODS get_program_dir
       IMPORTING
         i_program TYPE progname
@@ -183,7 +190,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
         zcl_abapgit_factory=>get_sap_report( )->update_progdir(
           is_progdir = ls_progdir
-          iv_package = lv_package ).
+          iv_package = lv_package
+          iv_state   = 'I' ).
 
         zcl_abapgit_objects_activation=>add(
           iv_type = 'REPS'
@@ -193,10 +201,20 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
+    COMMIT WORK AND WAIT.
+
+    DATA(lv_verify_message) = verify_inactive_source(
+      i_program = lv_program
+      it_source = lt_source ).
+    IF lv_verify_message IS NOT INITIAL.
+      rv_message = lv_verify_message.
+      RETURN.
+    ENDIF.
+
     rv_message = COND string(
       WHEN lv_exists = abap_true
-      THEN |Program { lv_program } was saved.|
-      ELSE |Program { lv_program } was created in package { lv_package }.| ).
+      THEN |Program { lv_program } was saved as inactive version.|
+      ELSE |Program { lv_program } was created in package { lv_package } as inactive version.| ).
 
   ENDMETHOD.
 
@@ -230,6 +248,23 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     IF sy-subrc <> 0.
       rv_message = |Syntax error before save: line { lv_line }, word { lv_word }: { lv_message }|.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD verify_inactive_source.
+
+    DATA lt_saved TYPE tt_source.
+
+    READ REPORT i_program INTO lt_saved STATE 'I'.
+    IF sy-subrc <> 0.
+      rv_message = |Program { i_program } was written, but inactive source cannot be read back.|.
+      RETURN.
+    ENDIF.
+
+    IF lt_saved <> it_source.
+      rv_message = |Program { i_program } was written, but inactive source differs from proposed source.|.
     ENDIF.
 
   ENDMETHOD.
