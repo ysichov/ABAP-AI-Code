@@ -40,6 +40,8 @@ private section.
   data MV_DIFF_NEW_CODE type STRING .
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
   data MV_SAVE_FIX_ATTEMPTS type I .
+  data MV_RUN_PROGRAM type PROGNAME .
+  data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
   data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
   data MT_DIFF_DECLINED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
@@ -84,6 +86,8 @@ private section.
     returning
       value(RV_CONFIRMED) type ABAP_BOOL .
   methods SAVE_APPROVED_DIFF .
+  methods SHOW_RUN_PROGRAM_BUTTON .
+  methods RUN_PROGRAM .
   methods REQUEST_SAVE_FIX
     importing
       !I_SAVE_LOG type STRING .
@@ -420,9 +424,15 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     OR lv_save_message_upper CS 'ERROR SAVING'
     OR lv_save_message_upper CS 'ERROR CREATING'
     OR lv_save_message_upper CS 'ERROR UPDATING'
+    OR lv_save_message_upper CS 'ERROR ACTIVATING'
     OR lv_save_message_upper CS 'WAS WRITTEN, BUT'.
       request_save_fix( lv_save_message ).
       RETURN.
+    ENDIF.
+
+    IF lv_save_message_upper CS 'ACTIVATED'.
+      MV_RUN_PROGRAM = CONV progname( mv_diff_object_name ).
+      SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
 
     MESSAGE lv_save_message TYPE 'S'.
@@ -561,6 +571,40 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
   endmethod.
 
 
+  METHOD SHOW_RUN_PROGRAM_BUTTON.
+
+    IF mo_toolbar IS NOT BOUND
+    OR mv_run_program IS INITIAL
+    OR mv_run_button_added = abap_true.
+      RETURN.
+    ENDIF.
+
+    DATA lt_buttons TYPE ttb_button.
+    APPEND VALUE #( function  = 'RUN_PROGRAM'
+                    icon      = CONV #( icon_execute_object )
+                    butn_type = cntb_btype_button
+                    text      = 'RUN program'
+                    quickinfo = |Run { mv_run_program } via selection screen| ) TO lt_buttons.
+    mo_toolbar->add_button_group( lt_buttons ).
+    mv_run_button_added = abap_true.
+
+    CALL METHOD cl_gui_cfw=>flush.
+
+  ENDMETHOD.
+
+
+  METHOD RUN_PROGRAM.
+
+    IF mv_run_program IS INITIAL.
+      MESSAGE 'No activated program to run yet' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    SUBMIT (mv_run_program) VIA SELECTION-SCREEN AND RETURN.
+
+  ENDMETHOD.
+
+
   method ON_TOOLBAR_CLICK.
 
     CASE fcode.
@@ -568,6 +612,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ask_ai( ).
       WHEN 'HISTORY'.
         show_history( ).
+      WHEN 'RUN_PROGRAM'.
+        run_program( ).
     ENDCASE.
 
   endmethod.

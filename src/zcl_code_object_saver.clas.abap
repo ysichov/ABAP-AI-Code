@@ -50,6 +50,18 @@ CLASS zcl_code_object_saver DEFINITION
       RETURNING
         VALUE(rv_exists) TYPE abap_bool.
 
+    CLASS-METHODS get_existing_package
+      IMPORTING
+        i_program TYPE progname
+      RETURNING
+        VALUE(rv_package) TYPE devclass.
+
+    CLASS-METHODS request_package_for_new_object
+      IMPORTING
+        i_program TYPE progname
+      RETURNING
+        VALUE(rv_package) TYPE devclass.
+
     CLASS-METHODS register_program
       IMPORTING
         i_program TYPE progname
@@ -127,6 +139,68 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       rs_progdir-subc = '1'.
     ELSE.
       rs_progdir-subc = 'I'.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_existing_package.
+
+    SELECT SINGLE devclass
+      FROM tadir
+      INTO rv_package
+      WHERE pgmid = 'R3TR'
+        AND object = 'PROG'
+        AND obj_name = i_program.
+    IF sy-subrc = 0.
+      RETURN.
+    ENDIF.
+
+    SELECT SINGLE devclass
+      FROM tadir
+      INTO rv_package
+      WHERE pgmid = 'R3TR'
+        AND object = 'REPS'
+        AND obj_name = i_program.
+
+  ENDMETHOD.
+
+
+  METHOD request_package_for_new_object.
+
+    DATA lt_fields TYPE STANDARD TABLE OF sval WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_field TYPE sval.
+    DATA lv_returncode TYPE c LENGTH 1.
+
+    ls_field-tabname = 'TADIR'.
+    ls_field-fieldname = 'DEVCLASS'.
+    ls_field-value = '$TMP'.
+    APPEND ls_field TO lt_fields.
+
+    CALL FUNCTION 'POPUP_GET_VALUES'
+      EXPORTING
+        popup_title     = |Package for new program { i_program }|
+      IMPORTING
+        returncode      = lv_returncode
+      TABLES
+        fields          = lt_fields
+      EXCEPTIONS
+        error_in_fields = 1
+        OTHERS          = 2.
+    IF sy-subrc <> 0
+    OR lv_returncode = 'A'.
+      RETURN.
+    ENDIF.
+
+    READ TABLE lt_fields INTO ls_field INDEX 1.
+    IF sy-subrc = 0.
+      rv_package = ls_field-value.
+      TRANSLATE rv_package TO UPPER CASE.
+      CONDENSE rv_package.
+      IF rv_package CS '<'
+      OR rv_package CS '>'.
+        CLEAR rv_package.
+      ENDIF.
     ENDIF.
 
   ENDMETHOD.
@@ -213,8 +287,28 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     lv_package = i_package.
     TRANSLATE lv_package TO UPPER CASE.
     CONDENSE lv_package.
+    IF lv_package CS '<'
+    OR lv_package CS '>'.
+      CLEAR lv_package.
+    ENDIF.
+
+    IF lv_exists = abap_true.
+      DATA(lv_existing_package) = get_existing_package( lv_program ).
+      IF lv_existing_package IS NOT INITIAL.
+        lv_package = lv_existing_package.
+      ENDIF.
+    ELSEIF lv_package IS INITIAL.
+      lv_package = request_package_for_new_object( lv_program ).
+    ENDIF.
+
     IF lv_package IS INITIAL.
-      lv_package = '$TMP'.
+      IF lv_exists = abap_true.
+        lv_package = '$TMP'.
+      ELSE.
+        rv_message = |Package is required for new program { lv_program }.|.
+        mv_last_log = rv_message.
+        RETURN.
+      ENDIF.
     ENDIF.
 
     ls_progdir = get_program_dir(
