@@ -72,6 +72,8 @@ private section.
       !I_SOURCE type STRING
       !I_OBJECT_NAME type STRING
       !I_PHASE type STRING
+      !I_LOG type ABAP_BOOL default ABAP_TRUE
+      !I_COMPARE_SOURCE type STRING optional
     returning
       value(RV_SOURCE) type STRING .
 ENDCLASS.
@@ -219,6 +221,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
   method LOG_CLASS_EXTRACT.
 
     DATA(lt_parts) = zcl_code_answer_tools=>extract_class_parts( i_source ).
+    DATA(lt_compare_parts) = zcl_code_answer_tools=>extract_class_parts( i_compare_source ).
 
     rv_source = i_source.
     IF lt_parts IS INITIAL.
@@ -239,13 +242,32 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 && cl_abap_char_utilities=>newline
                 && ls_part-source.
 
-      mo_messages->add_message(
-        i_role        = 'assistant'
-        i_agent       = zcl_ai_agents_prompts=>c_agent_class_extract
-        i_prompt_type = 'AGENT_RESPONSE'
-        i_content     = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|
-                     && cl_abap_char_utilities=>newline
-                     && ls_part-source ).
+      IF i_log = abap_true.
+        DATA(lv_content) = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|.
+
+        READ TABLE lt_compare_parts INTO DATA(ls_compare_part)
+          WITH KEY part_key = ls_part-part_key.
+        IF sy-subrc = 0.
+          lv_content = lv_content
+                    && cl_abap_char_utilities=>newline
+                    && |CURRENT SOURCE:|
+                    && cl_abap_char_utilities=>newline
+                    && ls_compare_part-source
+                    && cl_abap_char_utilities=>newline
+                    && cl_abap_char_utilities=>newline.
+        ENDIF.
+
+        lv_content = lv_content
+                  && |PROPOSED SOURCE:|
+                  && cl_abap_char_utilities=>newline
+                  && ls_part-source.
+
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_class_extract
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = lv_content ).
+      ENDIF.
     ENDLOOP.
 
   endmethod.
@@ -755,11 +777,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             lv_diff_old_code = log_class_extract(
               i_source      = lv_diff_old_code
               i_object_name = lv_code_change_name
-              i_phase       = 'CURRENT' ).
+              i_phase       = 'CURRENT'
+              i_log         = abap_false ).
             lv_diff_new_code = log_class_extract(
               i_source      = lv_diff_new_code
               i_object_name = lv_code_change_name
-              i_phase       = 'PROPOSED' ).
+              i_phase       = 'PROPOSED'
+              i_compare_source = lv_diff_old_code ).
           ENDIF.
 
           mo_messages->add_message(
@@ -846,11 +870,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             lv_create_context = log_class_extract(
               i_source      = lv_create_context
               i_object_name = ls_create_object_command-object_name
-              i_phase       = 'CURRENT' ).
+              i_phase       = 'CURRENT'
+              i_log         = abap_false ).
             lv_create_extracted_code = log_class_extract(
               i_source      = lv_create_extracted_code
               i_object_name = ls_create_object_command-object_name
-              i_phase       = 'PROPOSED' ).
+              i_phase       = 'PROPOSED'
+              i_compare_source = lv_create_context ).
           ENDIF.
         ELSE.
           mo_messages->add_message(

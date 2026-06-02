@@ -167,7 +167,7 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
           CLEAR lv_preamble.
         ENDIF.
       ELSE.
-        FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_]+)\s*\.'
+        FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_~/]+)\s*\.'
           IN lv_line IGNORING CASE SUBMATCHES lv_method.
         IF sy-subrc = 0.
           append_class_part(

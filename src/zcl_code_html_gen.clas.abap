@@ -679,7 +679,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ls_part-title = lv_title.
         ls_part-part_key = normalize_part_key( lv_title ).
       ELSE.
-        FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_]+)\s*\.'
+        FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_~/]+)\s*\.'
           IN lv_line IGNORING CASE SUBMATCHES lv_method.
         IF sy-subrc = 0.
           append_diff_part(
