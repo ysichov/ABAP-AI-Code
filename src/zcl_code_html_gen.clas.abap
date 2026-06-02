@@ -385,14 +385,6 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           i_plain       = abap_false
           i_code_review = abap_true ).
 
-        DATA(lv_part_body_html) = |<div style="font-weight:bold;color:#1f4e79;margin:10px 0 4px 0;">{ escape_html( ls_class_part-title ) }</div>|.
-        LOOP AT lt_hunk_html INTO DATA(lv_hunk_html).
-          lv_part_body_html = lv_part_body_html && lv_hunk_html.
-        ENDLOOP.
-        lv_part_html = html_with_body(
-          i_template_html = lv_part_html
-          i_body_html     = lv_part_body_html ).
-
         append_html_body(
           EXPORTING
             i_html = lv_part_html
