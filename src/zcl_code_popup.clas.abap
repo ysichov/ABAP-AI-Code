@@ -392,12 +392,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_prompt_type = 'COMMAND'
       i_content     = lv_save_command ).
 
-    mo_messages->add_message(
-      i_role        = 'user'
-      i_agent       = 'GIT_SAVE'
-      i_prompt_type = 'COMMAND'
-      i_content     = lv_save_command ).
-
     DATA(lv_save_message) = zcl_code_object_saver=>save(
       i_object_type = mv_diff_object_type
       i_object_name = mv_diff_object_name
@@ -407,12 +401,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     mo_messages->add_message(
       i_role        = 'assistant'
       i_agent       = 'SAVE_OBJECT'
-      i_prompt_type = 'AGENT_RESPONSE'
-      i_content     = lv_save_message ).
-
-    mo_messages->add_message(
-      i_role        = 'assistant'
-      i_agent       = 'GIT_SAVE'
       i_prompt_type = 'AGENT_RESPONSE'
       i_content     = lv_save_message ).
 
@@ -495,7 +483,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_content     = lv_fix_prompt ).
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-      EXPORTING percentage = 75 text = 'Asking AI to fix save error...'.
+      EXPORTING
+        percentage = 75
+        text       = |Fixing syntax/save error, attempt { mv_save_fix_attempts } of 5...|.
 
     DATA(lv_fix_answer_log) = mo_llm->ask( lv_fix_prompt ).
     DATA(lv_fixed_source) = zcl_code_answer_tools=>extract_code_from_answer( lv_fix_answer_log ).
@@ -537,6 +527,26 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
       CLEAR mv_diff_save_stub_logged.
       MESSAGE i_save_log TYPE 'S'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_fixed_syntax_error) = zcl_code_object_saver=>check_program_syntax( lv_fixed_source ).
+    IF lv_fixed_syntax_error IS NOT INITIAL.
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SAVE_FIX'
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = |SAVE_FIX returned source with syntax errors: { lv_fixed_syntax_error }| ).
+      sync_message_history( ).
+
+      IF mv_save_fix_attempts < 5.
+        mv_diff_new_code = lv_fixed_source.
+        request_save_fix( lv_fixed_syntax_error ).
+        RETURN.
+      ENDIF.
+
+      CLEAR mv_diff_save_stub_logged.
+      MESSAGE lv_fixed_syntax_error TYPE 'S'.
       RETURN.
     ENDIF.
 

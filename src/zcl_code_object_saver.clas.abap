@@ -12,6 +12,12 @@ CLASS zcl_code_object_saver DEFINITION
         i_package     TYPE string OPTIONAL
       RETURNING
         VALUE(rv_message) TYPE string.
+
+    CLASS-METHODS check_program_syntax
+      IMPORTING
+        i_source TYPE string
+      RETURNING
+        VALUE(rv_message) TYPE string.
   PRIVATE SECTION.
     TYPES:
       BEGIN OF ty_progdir,
@@ -238,13 +244,16 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         mv_last_log = rv_message.
     ENDCASE.
 
-    IF mv_last_log IS NOT INITIAL
-    AND mv_last_log <> rv_message.
-      rv_message = rv_message
-                && cl_abap_char_utilities=>newline
-                && cl_abap_char_utilities=>newline
-                && mv_last_log.
+    IF mv_last_log IS NOT INITIAL.
+      rv_message = mv_last_log.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD check_program_syntax.
+
+    rv_message = syntax_check( source_to_table( i_source ) ).
 
   ENDMETHOD.
 
