@@ -1,0 +1,11 @@
+{
+  "global": {
+    "version": "v755",
+    "files": "/src/**/*.*abap"
+  },
+  "syntax": {
+    "version": "v755"
+  },
+  "rules": {
+  }
+}

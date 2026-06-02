@@ -12,10 +12,6 @@ CLASS zcl_code_object_saver DEFINITION
         i_package     TYPE string OPTIONAL
       RETURNING
         VALUE(rv_message) TYPE string.
-    CLASS-METHODS get_last_log
-      RETURNING
-        VALUE(rv_log) TYPE string.
-
   PRIVATE SECTION.
     TYPES:
       BEGIN OF ty_progdir,
@@ -109,13 +105,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     ELSE.
       rs_progdir-subc = 'I'.
     ENDIF.
-
-  ENDMETHOD.
-
-
-  METHOD get_last_log.
-
-    rv_log = mv_last_log.
 
   ENDMETHOD.
 
@@ -409,14 +398,18 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     IF i_existed = abap_true
     AND lv_active_subrc = 0
     AND lt_active = it_source.
-      rv_message = |No SE38 delta for { i_program }: proposed source is identical to active source.|.
+      CONCATENATE 'No SE38 delta for' i_program
+                  ': proposed source is identical to active source.'
+             INTO rv_message SEPARATED BY space.
       RETURN.
     ENDIF.
 
     IF i_existed = abap_true
     AND lv_active_subrc = 0
     AND lt_active = lt_saved.
-      rv_message = |No SE38 delta for { i_program}: inactive source is still identical to active source.|.
+      CONCATENATE 'No SE38 delta for' i_program
+                  ': inactive source is still identical to active source.'
+             INTO rv_message SEPARATED BY space.
     ENDIF.
 
   ENDMETHOD.
