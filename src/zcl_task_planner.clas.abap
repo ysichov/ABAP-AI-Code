@@ -186,6 +186,8 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_text WITH lv_nl.
     REPLACE ALL OCCURRENCES OF REGEX '\s+(TASK\s*[0-9]+(\.[0-9]+)?(\s*-\s*ASK\s*[0-9]+|-ASK[0-9]+)?:)'
       IN lv_text WITH |{ lv_nl }$1|.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+\.[0-9]+:)'
+      IN lv_text WITH |{ lv_nl }$1|.
 
     DATA lt_lines TYPE tt_strings.
     SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
@@ -194,7 +196,17 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       CONDENSE lv_line.
       DATA(lv_line_upper) = lv_line.
       TRANSLATE lv_line_upper TO UPPER CASE.
-      CHECK lv_line_upper CP 'TASK*'.
+      DATA(lv_is_task_line) = abap_false.
+      IF lv_line_upper CP 'TASK*'.
+        lv_is_task_line = abap_true.
+      ELSE.
+        FIND FIRST OCCURRENCE OF REGEX '^[0-9]+\.[0-9]+:'
+          IN lv_line_upper.
+        IF sy-subrc = 0.
+          lv_is_task_line = abap_true.
+        ENDIF.
+      ENDIF.
+      CHECK lv_is_task_line = abap_true.
 
       IF lv_line_upper CS '-ASK'.
         APPEND lv_line TO rt_tasks.
@@ -214,6 +226,9 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       CONDENSE lv_task_text.
 
       DATA(lv_root_key) = lv_task_key.
+      REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s+' IN lv_root_key WITH 'TASK' IGNORING CASE.
+      REPLACE FIRST OCCURRENCE OF REGEX '^([0-9]+)\.[0-9]+$' IN lv_root_key WITH 'TASK$1'.
+      REPLACE FIRST OCCURRENCE OF REGEX '^([0-9]+)$' IN lv_root_key WITH 'TASK$1'.
       REPLACE FIRST OCCURRENCE OF REGEX '\.[0-9]+$' IN lv_root_key WITH ''.
       CONDENSE lv_root_key.
 
@@ -224,6 +239,8 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
         IF sy-subrc = 0.
           lv_existing_key = substring( val = lv_existing_key len = lv_existing_colon ).
         ENDIF.
+        REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s+' IN lv_existing_key WITH 'TASK' IGNORING CASE.
+        REPLACE FIRST OCCURRENCE OF REGEX '^([0-9]+)$' IN lv_existing_key WITH 'TASK$1'.
         CONDENSE lv_existing_key.
 
         IF lv_existing_key = lv_root_key.
