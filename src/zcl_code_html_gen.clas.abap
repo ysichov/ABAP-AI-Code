@@ -50,6 +50,18 @@ private section.
     END OF ty_diff_object .
   types:
     tt_diff_objects TYPE STANDARD TABLE OF ty_diff_object WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF ty_diff_summary,
+      title TYPE string,
+      status TYPE string,
+      added_lines TYPE i,
+      changed_lines TYPE i,
+      deleted_lines TYPE i,
+      old_lines TYPE i,
+      new_lines TYPE i,
+    END OF ty_diff_summary .
+  types:
+    tt_diff_summary TYPE STANDARD TABLE OF ty_diff_summary WITH NON-UNIQUE DEFAULT KEY .
 
   class-methods NORMALIZE_MARKDOWN
     importing
@@ -106,6 +118,7 @@ private section.
   class-methods BUILD_DIFF_SUMMARY_HTML
     importing
       !IT_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS
+      !IT_PART_SUMMARY type TT_DIFF_SUMMARY optional
       !I_USAGE_TEXT type STRING optional
     returning
       value(RV_HTML) type STRING .
@@ -202,6 +215,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lt_new TYPE abaptxt255_tab.
     DATA lt_hunk_html TYPE string_table.
     DATA lt_blame TYPE zif_ave_popup_types=>ty_blame_map.
+    DATA lt_part_summary TYPE tt_diff_summary.
     DATA lv_hunk_count TYPE i.
     DATA lv_hunk_ins TYPE i.
     DATA lv_hunk_mod TYPE i.
@@ -232,6 +246,13 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       DATA ls_class_old_part TYPE ty_diff_part.
       DATA ls_class_new_part TYPE ty_diff_part.
       DATA lv_part_index TYPE i.
+      DATA lv_old_found TYPE abap_bool.
+      DATA lv_new_found TYPE abap_bool.
+      DATA lv_is_created TYPE abap_bool.
+      DATA lv_part_status TYPE string.
+      DATA lv_part_added TYPE i.
+      DATA lv_part_changed TYPE i.
+      DATA lv_part_deleted TYPE i.
 
       APPEND VALUE ty_diff_object(
         object_type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' )
@@ -274,16 +295,33 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
                lv_hunk_count,
                lv_hunk_ins,
                lv_hunk_mod,
-               lv_hunk_del.
+               lv_hunk_del,
+               lv_old_found,
+               lv_new_found,
+               lv_is_created,
+               lv_part_status,
+               lv_part_added,
+               lv_part_changed,
+               lv_part_deleted.
 
         READ TABLE ls_current_object-parts INTO ls_class_old_part WITH KEY part_key = ls_class_part-part_key.
+        lv_old_found = xsdbool( sy-subrc = 0 ).
         READ TABLE ls_proposed_object-parts INTO ls_class_new_part WITH KEY part_key = ls_class_part-part_key.
+        lv_new_found = xsdbool( sy-subrc = 0 ).
         IF ls_class_old_part-text = ls_class_new_part-text.
           CONTINUE.
         ENDIF.
 
         lt_old = ls_class_old_part-text_lines.
         lt_new = ls_class_new_part-text_lines.
+        lv_is_created = xsdbool( lv_old_found = abap_false AND lv_new_found = abap_true ).
+        lv_part_status = 'Changed'.
+        IF lv_is_created = abap_true.
+          lv_part_status = 'Inserted'.
+        ELSEIF lv_old_found = abap_true
+           AND lv_new_found = abap_false.
+          lv_part_status = 'Deleted'.
+        ENDIF.
 
         DATA(lt_part_diff) = zcl_ave_popup_diff=>compute_diff(
           it_old  = lt_old
@@ -319,7 +357,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           iv_two_pane    = abap_true
           iv_plain       = abap_false
           iv_ignore_case = abap_false
-          iv_is_created  = abap_false
+          iv_is_created  = lv_is_created
           iv_context     = 3 ).
 
         zcl_ave_acr_hunk_info=>collect(
@@ -334,13 +372,23 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
             iv_versno_old      = '00000'
             iv_versno_new_text = 'LLM proposal'
             iv_versno_old_text = 'Current source'
-            iv_is_created      = abap_false
+            iv_is_created      = lv_is_created
           IMPORTING
             et_hunk_info       = lt_part_hunk_info
             ev_hunk_count      = lv_hunk_count
             ev_hunk_ins        = lv_hunk_ins
             ev_hunk_mod        = lv_hunk_mod
             ev_hunk_del        = lv_hunk_del ).
+
+        IF lv_hunk_count IS INITIAL
+        AND lv_part_status = 'Inserted'.
+          lv_hunk_count = 1.
+          lv_hunk_ins = lines( lt_new ).
+        ELSEIF lv_hunk_count IS INITIAL
+           AND lv_part_status = 'Deleted'.
+          lv_hunk_count = 1.
+          lv_hunk_del = lines( lt_old ).
+        ENDIF.
 
         IF lv_hunk_count IS INITIAL.
           CONTINUE.
@@ -363,7 +411,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           iv_two_pane    = abap_true
           iv_plain       = abap_false
           iv_ignore_case = abap_false
-          iv_is_created  = abap_false
+          iv_is_created  = lv_is_created
           iv_context     = 3 ).
 
         DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
@@ -395,6 +443,28 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           hunk_mod     = lv_hunk_mod
           hunk_del     = lv_hunk_del
           display_name = ls_part-display_name ) TO et_acr_stats.
+
+        lv_part_added = lv_hunk_ins.
+        lv_part_changed = lv_hunk_mod.
+        lv_part_deleted = lv_hunk_del.
+        IF lv_part_status = 'Inserted'.
+          lv_part_added = lines( lt_new ).
+          CLEAR: lv_part_changed,
+                 lv_part_deleted.
+        ELSEIF lv_part_status = 'Deleted'.
+          lv_part_deleted = lines( lt_old ).
+          CLEAR: lv_part_added,
+                 lv_part_changed.
+        ENDIF.
+
+        APPEND VALUE ty_diff_summary(
+          title         = ls_part-display_name
+          status        = lv_part_status
+          added_lines   = lv_part_added
+          changed_lines = lv_part_changed
+          deleted_lines = lv_part_deleted
+          old_lines     = lines( lt_old )
+          new_lines     = lines( lt_new ) ) TO lt_part_summary.
       ENDLOOP.
 
       IF e_html IS NOT INITIAL.
@@ -404,6 +474,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           EXPORTING
             i_html = build_diff_summary_html(
                        it_acr_stats = et_acr_stats
+                       it_part_summary = lt_part_summary
                        i_usage_text = i_usage_text )
           CHANGING
             cv_html = e_html ).
@@ -523,10 +594,37 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       hunk_del     = lv_hunk_del
       display_name = ls_part-display_name ) TO et_acr_stats.
 
+    DATA(lv_summary_status) = COND string(
+      WHEN i_old_code IS INITIAL AND i_new_code IS NOT INITIAL THEN 'Inserted'
+      WHEN i_old_code IS NOT INITIAL AND i_new_code IS INITIAL THEN 'Deleted'
+      ELSE 'Changed' ).
+    DATA(lv_summary_added) = lv_hunk_ins.
+    DATA(lv_summary_changed) = lv_hunk_mod.
+    DATA(lv_summary_deleted) = lv_hunk_del.
+    IF lv_summary_status = 'Inserted'.
+      lv_summary_added = lines( lt_new ).
+      CLEAR: lv_summary_changed,
+             lv_summary_deleted.
+    ELSEIF lv_summary_status = 'Deleted'.
+      lv_summary_deleted = lines( lt_old ).
+      CLEAR: lv_summary_added,
+             lv_summary_changed.
+    ENDIF.
+
+    APPEND VALUE ty_diff_summary(
+      title         = ls_part-display_name
+      status        = lv_summary_status
+      added_lines   = lv_summary_added
+      changed_lines = lv_summary_changed
+      deleted_lines = lv_summary_deleted
+      old_lines     = lines( lt_old )
+      new_lines     = lines( lt_new ) ) TO lt_part_summary.
+
     prepend_html_body(
       EXPORTING
         i_html = build_diff_summary_html(
                    it_acr_stats = et_acr_stats
+                   it_part_summary = lt_part_summary
                    i_usage_text = i_usage_text )
       CHANGING
         cv_html = e_html ).
@@ -764,20 +862,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
   method BUILD_DIFF_SUMMARY_HTML.
 
-    DATA lv_hunks TYPE i.
     DATA lv_added TYPE i.
     DATA lv_changed TYPE i.
     DATA lv_deleted TYPE i.
-    DATA lv_objects TYPE i.
     DATA lv_usage_text TYPE string.
-
-    LOOP AT it_acr_stats INTO DATA(ls_stats).
-      lv_objects = lv_objects + 1.
-      lv_hunks = lv_hunks + ls_stats-hunk_count.
-      lv_added = lv_added + ls_stats-hunk_ins.
-      lv_changed = lv_changed + ls_stats-hunk_mod.
-      lv_deleted = lv_deleted + ls_stats-hunk_del.
-    ENDLOOP.
+    DATA ls_stats TYPE zif_ave_acr_types=>ty_obj_stats.
 
     IF i_usage_text IS NOT INITIAL.
       FIND FIRST OCCURRENCE OF REGEX 'Tokens:\s*([^\r\n]+)' IN i_usage_text
@@ -789,21 +878,68 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
+    IF it_part_summary IS NOT INITIAL.
+      LOOP AT it_part_summary INTO DATA(ls_summary_total).
+        lv_added = lv_added + ls_summary_total-added_lines.
+        lv_changed = lv_changed + ls_summary_total-changed_lines.
+        lv_deleted = lv_deleted + ls_summary_total-deleted_lines.
+      ENDLOOP.
+    ELSE.
+      LOOP AT it_acr_stats INTO ls_stats.
+        lv_added = lv_added + ls_stats-hunk_ins.
+        lv_changed = lv_changed + ls_stats-hunk_mod.
+        lv_deleted = lv_deleted + ls_stats-hunk_del.
+      ENDLOOP.
+    ENDIF.
+
     rv_html = |<div style="font-family:Segoe UI,Arial,sans-serif;margin:8px 10px 12px 10px;">|
            && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;">|
+           && |<tr><td colspan="7" style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;color:#163a5f;">Tokens</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_usage_text ) }</td></tr>|
+           && |<tr><td colspan="7" style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;">Total</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">|
+           && |+{ lv_added } / ~{ lv_changed } / -{ lv_deleted }</td></tr>|
            && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
-           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Metric</th>|
-           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Value</th></tr>|
-           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Objects</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_objects }</td></tr>|
-           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Diff hunks</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_hunks }</td></tr>|
-           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Added lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#16803a;">{ lv_added }</td></tr>|
-           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Changed lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#9a6500;">{ lv_changed }</td></tr>|
-           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Deleted lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#a52525;">{ lv_deleted }</td></tr>|.
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Part</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Status</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Added</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Changed</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Deleted</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Old</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">New</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Lines</th></tr>|.
 
-    IF lv_usage_text IS NOT INITIAL.
+    LOOP AT it_part_summary INTO DATA(ls_summary).
+      DATA(lv_status_color) = COND string(
+        WHEN ls_summary-status = 'Inserted' THEN '#16803a'
+        WHEN ls_summary-status = 'Deleted' THEN '#a52525'
+        ELSE '#9a6500' ).
+      DATA(lv_line_total) = ls_summary-added_lines
+                          + ls_summary-changed_lines
+                          + ls_summary-deleted_lines.
       rv_html = rv_html
-             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Tokens</td>|
-             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_usage_text ) }</td></tr>|.
+             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">{ escape_html( ls_summary-title ) }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;color:{ lv_status_color };font-weight:bold;">{ escape_html( ls_summary-status ) }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#16803a;">{ ls_summary-added_lines }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#9a6500;">{ ls_summary-changed_lines }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#a52525;">{ ls_summary-deleted_lines }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ ls_summary-old_lines }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ ls_summary-new_lines }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_line_total }</td></tr>|.
+    ENDLOOP.
+
+    IF it_part_summary IS INITIAL.
+      LOOP AT it_acr_stats INTO ls_stats.
+        rv_html = rv_html
+               && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">{ escape_html( ls_stats-display_name ) }</td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;color:#9a6500;font-weight:bold;">Changed</td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#16803a;">{ ls_stats-hunk_ins }</td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#9a6500;">{ ls_stats-hunk_mod }</td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#a52525;">{ ls_stats-hunk_del }</td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;"></td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;"></td>|
+               && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ ls_stats-hunk_count }</td></tr>|.
+      ENDLOOP.
     ENDIF.
 
     rv_html = rv_html && |</table></div>|.
