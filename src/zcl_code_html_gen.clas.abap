@@ -75,6 +75,12 @@ private section.
       !I_HTML type STRING
     changing
       !CV_HTML type STRING .
+  class-methods HTML_WITH_BODY
+    importing
+      !I_TEMPLATE_HTML type STRING
+      !I_BODY_HTML type STRING
+    returning
+      value(RV_HTML) type STRING .
   class-methods RENDER_ABAP_BLOCKS
     importing
       !I_TEXT type STRING
@@ -234,38 +240,14 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        DATA lv_part_old_context TYPE string.
-        DATA lv_part_new_context TYPE string.
-        zcl_code_answer_tools=>extract_changed_context(
-          EXPORTING
-            i_current_source  = ls_class_old_part-text
-            i_proposed_source = ls_class_new_part-text
-          IMPORTING
-            e_current_source  = lv_part_old_context
-            e_proposed_source = lv_part_new_context ).
-
-        SPLIT lv_part_old_context AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
-        SPLIT lv_part_new_context AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+        SPLIT ls_class_old_part-text AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
+        SPLIT ls_class_new_part-text AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
 
         DATA(lt_part_diff) = zcl_ave_popup_diff=>compute_diff(
           it_old  = lt_old
           it_new  = lt_new
           i_title = |Computing AI code diff: { ls_class_part-title }| ).
         lt_part_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_diff ).
-
-        DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
-          it_diff       = lt_part_diff
-          i_title       = ls_class_part-title
-          i_meta        = 'LLM proposal vs current SAP source'
-          i_two_pane    = abap_false
-          i_compact     = abap_false
-          i_plain       = abap_false
-          i_code_review = abap_true ).
-        append_html_body(
-          EXPORTING
-            i_html = lv_part_html
-          CHANGING
-            cv_html = e_html ).
 
         DATA(lv_part_full_html) = zcl_ave_popup_html=>diff_to_html(
           it_diff       = lt_part_diff
@@ -316,6 +298,34 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
             ev_hunk_ins        = lv_hunk_ins
             ev_hunk_mod        = lv_hunk_mod
             ev_hunk_del        = lv_hunk_del ).
+
+        IF lv_hunk_count IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
+          it_diff       = lt_part_diff
+          i_title       = ls_class_part-title
+          i_meta        = 'LLM proposal vs current SAP source'
+          i_two_pane    = abap_false
+          i_compact     = abap_false
+          i_plain       = abap_false
+          i_code_review = abap_true ).
+
+        DATA(lv_part_body_html) = |<div style="font-weight:bold;color:#1f4e79;margin:10px 0 4px 0;">{ escape_html( ls_class_part-title ) }</div>|.
+        LOOP AT lt_hunk_html INTO DATA(lv_hunk_html).
+          lv_part_body_html = lv_part_body_html && lv_hunk_html.
+        ENDLOOP.
+        lv_part_html = html_with_body(
+          i_template_html = lv_part_html
+          i_body_html     = lv_part_body_html ).
+
+        append_html_body(
+          EXPORTING
+            i_html = lv_part_html
+          CHANGING
+            cv_html = e_html ).
+
         LOOP AT lt_part_hunk_info INTO DATA(ls_part_hunk_info).
           INSERT ls_part_hunk_info INTO TABLE et_hunk_info.
         ENDLOOP.
@@ -353,6 +363,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
             ct_acr_stats     = et_acr_stats ).
         RETURN.
       ENDIF.
+
+      RETURN.
     ENDIF.
 
     DATA lv_old_code TYPE string.
@@ -669,6 +681,44 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '<' IN rv_text WITH '&lt;'.
     REPLACE ALL OCCURRENCES OF '>' IN rv_text WITH '&gt;'.
     REPLACE ALL OCCURRENCES OF '"' IN rv_text WITH '&quot;'.
+
+  endmethod.
+
+
+  method HTML_WITH_BODY.
+
+    DATA lv_body_start TYPE i.
+    DATA lv_body_tag_end TYPE i.
+    DATA lv_body_end TYPE i.
+    DATA lv_after_body TYPE string.
+    DATA lv_prefix_end TYPE i.
+
+    rv_html = i_template_html.
+
+    FIND FIRST OCCURRENCE OF '<body' IN rv_html IGNORING CASE MATCH OFFSET lv_body_start.
+    IF sy-subrc <> 0.
+      rv_html = i_body_html.
+      RETURN.
+    ENDIF.
+
+    lv_after_body = substring( val = rv_html off = lv_body_start ).
+    FIND FIRST OCCURRENCE OF '>' IN lv_after_body MATCH OFFSET lv_body_tag_end.
+    IF sy-subrc <> 0.
+      rv_html = i_body_html.
+      RETURN.
+    ENDIF.
+
+    lv_prefix_end = lv_body_start + lv_body_tag_end + 1.
+    FIND FIRST OCCURRENCE OF '</body>' IN rv_html IGNORING CASE MATCH OFFSET lv_body_end.
+    IF sy-subrc <> 0.
+      rv_html = substring( val = rv_html len = lv_prefix_end )
+             && i_body_html.
+      RETURN.
+    ENDIF.
+
+    rv_html = substring( val = rv_html len = lv_prefix_end )
+           && i_body_html
+           && substring( val = rv_html off = lv_body_end ).
 
   endmethod.
 
