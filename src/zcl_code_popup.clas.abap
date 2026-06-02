@@ -79,6 +79,9 @@ private section.
     returning
       value(RV_HTML) type STRING .
   methods REFRESH_DIFF_HTML .
+  methods CONFIRM_SAVE_APPROVED_DIFF
+    returning
+      value(RV_CONFIRMED) type ABAP_BOOL .
   methods SAVE_APPROVED_DIFF .
 ENDCLASS.
 
@@ -323,13 +326,41 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     IF lv_all_approved = abap_true
        AND mv_diff_save_stub_logged = abap_false.
-      mv_diff_save_stub_logged = abap_true.
-      save_approved_diff( ).
+      IF confirm_save_approved_diff( ) = abap_true.
+        mv_diff_save_stub_logged = abap_true.
+        save_approved_diff( ).
+      ENDIF.
     ENDIF.
 
     refresh_diff_html( ).
 
   endmethod.
+
+
+  METHOD confirm_save_approved_diff.
+
+    DATA lv_answer TYPE c LENGTH 1.
+    DATA lv_question TYPE string.
+
+    lv_question = |All changes are approved. Save { mv_diff_object_type } { mv_diff_object_name } now?|.
+
+    CALL FUNCTION 'POPUP_TO_CONFIRM'
+      EXPORTING
+        titlebar              = 'Save approved changes'
+        text_question         = lv_question
+        text_button_1         = 'Yes'
+        text_button_2         = 'No'
+        default_button        = '1'
+        display_cancel_button = abap_true
+      IMPORTING
+        answer                = lv_answer
+      EXCEPTIONS
+        text_not_found        = 1
+        OTHERS                = 2.
+
+    rv_confirmed = xsdbool( sy-subrc = 0 AND lv_answer = '1' ).
+
+  ENDMETHOD.
 
 
   METHOD save_approved_diff.
