@@ -421,6 +421,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     DATA lv_message TYPE string.
     DATA lv_line TYPE i.
+    DATA lv_line_text TYPE string.
     DATA lv_word TYPE string.
 
     SYNTAX-CHECK FOR it_source
@@ -429,7 +430,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       WORD lv_word.
 
     IF sy-subrc <> 0.
-      CONCATENATE 'Syntax error before save: line' lv_line
+      lv_line_text = lv_line.
+      CONCATENATE 'Syntax error before save: line' lv_line_text
                   ', word' lv_word ':'
                   lv_message
              INTO rv_message SEPARATED BY space.
@@ -446,13 +448,17 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_saved_lines TYPE i.
     DATA lv_active_lines TYPE i.
     DATA lv_equal_text TYPE string.
+    DATA lv_subrc_text TYPE string.
+    DATA lv_lines_text TYPE string.
 
     READ REPORT i_program INTO lt_saved STATE 'I'.
+    lv_subrc_text = sy-subrc.
     DESCRIBE TABLE lt_saved LINES lv_saved_lines.
+    lv_lines_text = lv_saved_lines.
     CONCATENATE mv_last_log
                 cl_abap_char_utilities=>newline
-                'READ REPORT STATE I subrc:' sy-subrc
-                ', lines:' lv_saved_lines
+                'READ REPORT STATE I subrc:' lv_subrc_text
+                ', lines:' lv_lines_text
            INTO mv_last_log SEPARATED BY space.
     IF sy-subrc <> 0.
       CONCATENATE 'Program' i_program
@@ -475,11 +481,13 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     READ REPORT i_program INTO lt_active STATE 'A'.
     lv_active_subrc = sy-subrc.
+    lv_subrc_text = lv_active_subrc.
     DESCRIBE TABLE lt_active LINES lv_active_lines.
+    lv_lines_text = lv_active_lines.
     CONCATENATE mv_last_log
                 cl_abap_char_utilities=>newline
-                'READ REPORT STATE A subrc:' lv_active_subrc
-                ', lines:' lv_active_lines
+                'READ REPORT STATE A subrc:' lv_subrc_text
+                ', lines:' lv_lines_text
            INTO mv_last_log SEPARATED BY space.
     lv_equal_text = xsdbool( lt_active = it_source ).
     CONCATENATE mv_last_log
