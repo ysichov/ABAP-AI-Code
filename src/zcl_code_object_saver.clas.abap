@@ -127,6 +127,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     DATA lv_program TYPE progname.
     DATA lv_package TYPE devclass.
+    DATA lv_title TYPE rglif-title.
     DATA lt_source TYPE tt_source.
     DATA ls_progdir TYPE zif_abapgit_sap_report=>ty_progdir.
 
@@ -162,6 +163,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     ls_progdir = get_program_dir(
       i_program = lv_program
       i_source  = i_source ).
+    lv_title = lv_program.
 
     TRY.
         IF lv_exists = abap_false.
@@ -171,21 +173,63 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
             iv_package  = lv_package
             iv_language = sy-langu ).
 
-          zcl_abapgit_factory=>get_sap_report( )->insert_report(
-            iv_name         = lv_program
-            iv_package      = lv_package
-            it_source       = lt_source
-            iv_state        = 'I'
-            iv_version      = ls_progdir-uccheck
-            iv_program_type = ls_progdir-subc ).
+          TRY.
+              CALL FUNCTION 'RPY_PROGRAM_INSERT'
+                EXPORTING
+                  development_class = lv_package
+                  program_name      = lv_program
+                  program_type      = ls_progdir-subc
+                  title_string      = lv_title
+                  save_inactive     = 'I'
+                  suppress_dialog   = abap_true
+                  uccheck           = ls_progdir-uccheck
+                TABLES
+                  source_extended   = lt_source
+                EXCEPTIONS
+                  already_exists    = 1
+                  cancelled         = 2
+                  name_not_allowed  = 3
+                  permission_error  = 4
+                  OTHERS            = 5.
+            CATCH cx_sy_dyn_call_param_not_found.
+              CALL FUNCTION 'RPY_PROGRAM_INSERT'
+                EXPORTING
+                  development_class = lv_package
+                  program_name      = lv_program
+                  program_type      = ls_progdir-subc
+                  title_string      = lv_title
+                  save_inactive     = 'I'
+                  suppress_dialog   = abap_true
+                TABLES
+                  source_extended   = lt_source
+                EXCEPTIONS
+                  already_exists    = 1
+                  cancelled         = 2
+                  name_not_allowed  = 3
+                  permission_error  = 4
+                  OTHERS            = 5.
+          ENDTRY.
+          IF sy-subrc <> 0.
+            rv_message = |Error creating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            RETURN.
+          ENDIF.
         ELSE.
-          zcl_abapgit_factory=>get_sap_report( )->update_report(
-            iv_name         = lv_program
-            iv_package      = lv_package
-            it_source       = lt_source
-            iv_state        = 'I'
-            iv_version      = ls_progdir-uccheck
-            iv_program_type = ls_progdir-subc ).
+          CALL FUNCTION 'RPY_INCLUDE_UPDATE'
+            EXPORTING
+              include_name     = lv_program
+              title_string     = lv_title
+              save_inactive    = 'I'
+            TABLES
+              source_extended  = lt_source
+            EXCEPTIONS
+              not_found        = 1
+              cancelled        = 2
+              permission_error = 3
+              OTHERS           = 4.
+          IF sy-subrc <> 0.
+            rv_message = |Error updating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            RETURN.
+          ENDIF.
         ENDIF.
 
         zcl_abapgit_factory=>get_sap_report( )->update_progdir(
