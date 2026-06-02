@@ -866,6 +866,9 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_changed TYPE i.
     DATA lv_deleted TYPE i.
     DATA lv_usage_text TYPE string.
+    DATA lv_prompt_tokens TYPE string.
+    DATA lv_completion_tokens TYPE string.
+    DATA lv_cached_tokens TYPE string.
     DATA ls_stats TYPE zif_ave_acr_types=>ty_obj_stats.
 
     IF i_usage_text IS NOT INITIAL.
@@ -876,6 +879,12 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ELSE.
         lv_usage_text = i_usage_text.
       ENDIF.
+      FIND FIRST OCCURRENCE OF REGEX '(prompt|input)=([0-9]+)' IN lv_usage_text
+        IGNORING CASE SUBMATCHES DATA(lv_prompt_key) lv_prompt_tokens.
+      FIND FIRST OCCURRENCE OF REGEX '(completion|output)=([0-9]+)' IN lv_usage_text
+        IGNORING CASE SUBMATCHES DATA(lv_completion_key) lv_completion_tokens.
+      FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)' IN lv_usage_text
+        IGNORING CASE SUBMATCHES lv_cached_tokens.
     ENDIF.
 
     IF it_part_summary IS NOT INITIAL.
@@ -892,15 +901,40 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
 
-    rv_html = |<div style="font-family:Segoe UI,Arial,sans-serif;margin:8px 10px 12px 10px;">|
-           && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;">|
-           && |<tr><td colspan="7" style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;color:#163a5f;">Tokens</td>|
-           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_usage_text ) }</td></tr>|
+    rv_html = |<div style="font-family:Segoe UI,Arial,sans-serif;margin:18px 10px 12px 10px;">|.
+
+    IF lv_prompt_tokens IS NOT INITIAL
+    OR lv_completion_tokens IS NOT INITIAL
+    OR lv_cached_tokens IS NOT INITIAL.
+      rv_html = rv_html
+             && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;margin-bottom:8px;">|
+             && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:160px;">Tokens</th>|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Prompt</th>|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Completion</th>|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Cached</th></tr>|
+             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;font-weight:bold;">Usage</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_prompt_tokens ) }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_completion_tokens ) }</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_cached_tokens ) }</td></tr>|
+             && |</table>|.
+    ELSEIF lv_usage_text IS NOT INITIAL.
+      rv_html = rv_html
+             && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;margin-bottom:8px;">|
+             && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:160px;">Tokens</th>|
+             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Raw</th></tr>|
+             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;font-weight:bold;">Usage</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;">{ escape_html( lv_usage_text ) }</td></tr>|
+             && |</table>|.
+    ENDIF.
+
+    rv_html = rv_html
+           && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;width:100%;">|
            && |<tr><td colspan="7" style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;">Total</td>|
-           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">|
-           && |+{ lv_added } / ~{ lv_changed } / -{ lv_deleted }</td></tr>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">+{ lv_added } / ~{ lv_changed } / -{ lv_deleted }</td></tr>|
            && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
-           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Part</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:360px;">Part</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Status</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Added</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Changed</th>|
