@@ -172,21 +172,45 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       INTO lv_tadir_object
       WHERE pgmid = 'R3TR'
         AND obj_name = lv_program
-        AND object IN ('REPS', 'PROG').
+        AND object = 'PROG'.
+    IF sy-subrc <> 0.
+      SELECT SINGLE object
+        FROM tadir
+        INTO lv_tadir_object
+        WHERE pgmid = 'R3TR'
+          AND obj_name = lv_program
+          AND object = 'REPS'.
+    ENDIF.
 
     READ REPORT lv_program INTO lt_source.
     IF sy-subrc <> 0.
       READ REPORT lv_program INTO lt_source STATE 'I'.
       IF sy-subrc <> 0.
-        rv_text = |Source for program { lv_program } was not found or cannot be read.|.
-        IF lv_tadir_object IS NOT INITIAL.
-          rv_text = rv_text
-                 && cl_abap_char_utilities=>newline
-                 && |TADIR object type: { lv_tadir_object }.|.
+        CALL FUNCTION 'RPY_PROGRAM_READ'
+          EXPORTING
+            program_name     = lv_program
+            with_includelist = abap_false
+            with_lowercase   = abap_true
+          TABLES
+            source_extended  = lt_source
+          EXCEPTIONS
+            cancelled        = 1
+            not_found        = 2
+            permission_error = 3
+            OTHERS           = 4.
+        IF sy-subrc <> 0.
+          rv_text = |Source for program { lv_program } was not found or cannot be read.|.
+          IF lv_tadir_object IS NOT INITIAL.
+            rv_text = rv_text
+                   && cl_abap_char_utilities=>newline
+                   && |TADIR object type: { lv_tadir_object }.|.
+          ENDIF.
+          RETURN.
         ENDIF.
-        RETURN.
+        lv_source_state = 'repository'.
+      ELSE.
+        lv_source_state = 'inactive'.
       ENDIF.
-      lv_source_state = 'inactive'.
     ELSE.
       lv_source_state = 'active'.
     ENDIF.

@@ -388,6 +388,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_prompt_type = 'COMMAND'
       i_content     = lv_save_command ).
 
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = 'GIT_SAVE'
+      i_prompt_type = 'COMMAND'
+      i_content     = lv_save_command ).
+
     DATA(lv_save_message) = zcl_code_object_saver=>save(
       i_object_type = mv_diff_object_type
       i_object_name = mv_diff_object_name

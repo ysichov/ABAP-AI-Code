@@ -373,7 +373,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
     CASE is_request-object_type.
       WHEN 'REPS' OR 'PROG' OR 'PROGRAM' OR 'REPORT'.
-        rv_command = |{ '{' }READ TADIR: REPS { is_request-object_name }{ '}' }|.
+        rv_command = |{ '{' }READ TADIR: PROG { is_request-object_name }{ '}' }|.
       WHEN 'CLAS' OR 'CLASS'.
         rv_command = |{ '{' }READ: CLASS = { is_request-object_name }{ '}' }|.
       WHEN 'METH' OR 'METHOD'.

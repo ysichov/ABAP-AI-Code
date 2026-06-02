@@ -380,9 +380,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         ENDIF.
 
         DATA(ls_show_read_command) = VALUE zcl_ai_code_reader=>ty_read_command(
-          object_type = 'REPS'
+          object_type = 'PROG'
           object_name = lt_show_parts[ 1 ]
-          raw_command = |{ '{' }READ TADIR: REPS { lt_show_parts[ 1 ] }{ '}' }| ).
+          raw_command = |{ '{' }READ TADIR: PROG { lt_show_parts[ 1 ] }{ '}' }| ).
         APPEND ls_show_read_command TO lt_commands.
       ENDWHILE.
     ENDIF.
