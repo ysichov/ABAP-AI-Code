@@ -7,6 +7,9 @@ public section.
   methods CONSTRUCTOR
     importing
       !IT_MESSAGES type ZCL_AI_MESSAGES=>TT_MESSAGES .
+  methods REFRESH
+    importing
+      !IT_MESSAGES type ZCL_AI_MESSAGES=>TT_MESSAGES .
   methods SHOW .
 protected section.
 private section.
@@ -212,6 +215,26 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
     mt_messages = it_messages.
 
   endmethod.
+
+
+  METHOD refresh.
+
+    mt_messages = it_messages.
+    build_history( ).
+
+    IF mo_alv IS BOUND.
+      mo_alv->refresh_table_display( ).
+    ENDIF.
+
+    IF mt_history IS NOT INITIAL
+    AND mo_request IS BOUND
+    AND mo_answer IS BOUND.
+      show_row( lines( mt_history ) ).
+    ENDIF.
+
+    CALL METHOD cl_gui_cfw=>flush.
+
+  ENDMETHOD.
 
 
   method CREATE_ALV.

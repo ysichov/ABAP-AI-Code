@@ -21,8 +21,7 @@ CLASS zcl_code_object_saver DEFINITION
         fixpt   TYPE progdir-fixpt,
         uccheck TYPE progdir-uccheck,
       END OF ty_progdir.
-    TYPES ty_source_line TYPE c LENGTH 255.
-    TYPES tt_source      TYPE STANDARD TABLE OF ty_source_line WITH NON-UNIQUE DEFAULT KEY.
+    TYPES tt_source TYPE abaptxt255_tab.
     CLASS-DATA mv_last_log TYPE string.
 
     CLASS-METHODS save_program
@@ -50,6 +49,17 @@ CLASS zcl_code_object_saver DEFINITION
         i_program TYPE progname
       RETURNING
         VALUE(rv_exists) TYPE abap_bool.
+
+    CLASS-METHODS register_program
+      IMPORTING
+        i_program TYPE progname
+        i_package TYPE devclass
+      RETURNING
+        VALUE(rv_message) TYPE string.
+
+    CLASS-METHODS set_default_package
+      IMPORTING
+        i_package TYPE devclass.
 
     CLASS-METHODS verify_inactive_source
       IMPORTING
@@ -141,6 +151,14 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         mv_last_log = rv_message.
     ENDCASE.
 
+    IF mv_last_log IS NOT INITIAL
+    AND mv_last_log <> rv_message.
+      rv_message = rv_message
+                && cl_abap_char_utilities=>newline
+                && cl_abap_char_utilities=>newline
+                && mv_last_log.
+    ENDIF.
+
   ENDMETHOD.
 
 
@@ -149,6 +167,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_program TYPE progname.
     DATA lv_package TYPE devclass.
     DATA lv_title TYPE rglif-title.
+    DATA lv_t100_message TYPE string.
+    DATA lv_error_text TYPE string.
     DATA lt_source TYPE tt_source.
     DATA ls_progdir TYPE ty_progdir.
 
@@ -204,29 +224,26 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && i_source.
 
     TRY.
-        IF lv_exists = abap_false.
-          CALL FUNCTION 'RS_CORR_INSERT'
-            EXPORTING
-              object              = lv_program
-              object_class        = 'ABAP'
-              devclass            = lv_package
-              master_language     = sy-langu
-              mode                = 'INSERT'
-              global_lock         = abap_true
-              suppress_dialog     = abap_true
-            EXCEPTIONS
-              cancelled           = 1
-              permission_failure  = 2
-              unknown_objectclass = 3
-              OTHERS              = 4.
-          IF sy-subrc <> 0.
-            rv_message = |Error registering program { lv_program } in package { lv_package }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
-            mv_last_log = mv_last_log
-                       && cl_abap_char_utilities=>newline
-                       && rv_message.
-            RETURN.
-          ENDIF.
+        set_default_package( lv_package ).
+        mv_last_log = mv_last_log
+                   && cl_abap_char_utilities=>newline
+                   && |Default package exported to memory ID EUK: { lv_package }|.
 
+        DATA(lv_register_error) = register_program(
+          i_program = lv_program
+          i_package = lv_package ).
+        IF lv_register_error IS NOT INITIAL.
+          rv_message = lv_register_error.
+          mv_last_log = mv_last_log
+                     && cl_abap_char_utilities=>newline
+                     && rv_message.
+          RETURN.
+        ENDIF.
+        mv_last_log = mv_last_log
+                   && cl_abap_char_utilities=>newline
+                   && |RS_CORR_INSERT executed for ABAP { lv_program }.|.
+
+        IF lv_exists = abap_false.
           TRY.
               CALL FUNCTION 'RPY_PROGRAM_INSERT'
                 EXPORTING
@@ -264,13 +281,19 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                   OTHERS            = 5.
           ENDTRY.
           IF sy-subrc <> 0.
-            rv_message = |Error creating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+              INTO lv_t100_message.
+            CONCATENATE 'Error creating program' lv_program ':'
+                        lv_t100_message
+                   INTO rv_message SEPARATED BY space.
             mv_last_log = mv_last_log
                        && cl_abap_char_utilities=>newline
                        && rv_message.
             RETURN.
           ENDIF.
         ELSE.
+          set_default_package( lv_package ).
           CALL FUNCTION 'RPY_INCLUDE_UPDATE'
             EXPORTING
               include_name     = lv_program
@@ -284,7 +307,12 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
               permission_error = 3
               OTHERS           = 4.
           IF sy-subrc <> 0.
-            rv_message = |Error updating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+              INTO lv_t100_message.
+            CONCATENATE 'Error updating program' lv_program ':'
+                        lv_t100_message
+                   INTO rv_message SEPARATED BY space.
             mv_last_log = mv_last_log
                        && cl_abap_char_utilities=>newline
                        && rv_message.
@@ -293,7 +321,10 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         ENDIF.
 
       CATCH cx_root INTO DATA(lx_error).
-        rv_message = |Error saving program { lv_program }: { lx_error->get_text( ) }|.
+        lv_error_text = lx_error->get_text( ).
+        CONCATENATE 'Error saving program' lv_program ':'
+                    lv_error_text
+               INTO rv_message SEPARATED BY space.
         mv_last_log = mv_last_log
                    && cl_abap_char_utilities=>newline
                    && rv_message.
@@ -317,10 +348,14 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    rv_message = COND string(
-      WHEN lv_exists = abap_true
-      THEN |Program { lv_program } was saved as inactive version.|
-      ELSE |Program { lv_program } was created in package { lv_package } as inactive version.| ).
+    IF lv_exists = abap_true.
+      CONCATENATE 'Program' lv_program 'was saved as inactive version.'
+             INTO rv_message SEPARATED BY space.
+    ELSE.
+      CONCATENATE 'Program' lv_program 'was created in package' lv_package
+                  'as inactive version.'
+             INTO rv_message SEPARATED BY space.
+    ENDIF.
     mv_last_log = mv_last_log
                && cl_abap_char_utilities=>newline
                && rv_message.
@@ -332,7 +367,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
     DATA lv_line TYPE string.
-    DATA ls_source TYPE ty_source_line.
+    DATA ls_source LIKE LINE OF rt_source.
 
     SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
     LOOP AT lt_lines INTO lv_line.
@@ -340,6 +375,44 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       ls_source = lv_line.
       APPEND ls_source TO rt_source.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD register_program.
+
+    DATA lv_t100_message TYPE string.
+
+    CALL FUNCTION 'RS_CORR_INSERT'
+      EXPORTING
+        object              = i_program
+        object_class        = 'ABAP'
+        devclass            = i_package
+        master_language     = sy-langu
+        mode                = 'I'
+        global_lock         = abap_true
+        suppress_dialog     = abap_true
+      EXCEPTIONS
+        cancelled           = 1
+        permission_failure  = 2
+        unknown_objectclass = 3
+        OTHERS              = 4.
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+        INTO lv_t100_message.
+      CONCATENATE 'Error registering program' i_program
+                  'in package' i_package ':'
+                  lv_t100_message
+             INTO rv_message SEPARATED BY space.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD set_default_package.
+
+    EXPORT current_devclass FROM i_package TO MEMORY ID 'EUK'.
 
   ENDMETHOD.
 
@@ -356,7 +429,10 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       WORD lv_word.
 
     IF sy-subrc <> 0.
-      rv_message = |Syntax error before save: line { lv_line }, word { lv_word }: { lv_message }|.
+      CONCATENATE 'Syntax error before save: line' lv_line
+                  ', word' lv_word ':'
+                  lv_message
+             INTO rv_message SEPARATED BY space.
     ENDIF.
 
   ENDMETHOD.
@@ -367,33 +443,54 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lt_saved TYPE tt_source.
     DATA lt_active TYPE tt_source.
     DATA lv_active_subrc TYPE sy-subrc.
+    DATA lv_saved_lines TYPE i.
+    DATA lv_active_lines TYPE i.
+    DATA lv_equal_text TYPE string.
 
     READ REPORT i_program INTO lt_saved STATE 'I'.
-    mv_last_log = mv_last_log
-               && cl_abap_char_utilities=>newline
-               && |READ REPORT STATE I subrc: { sy-subrc }, lines: { lines( lt_saved ) }|.
+    DESCRIBE TABLE lt_saved LINES lv_saved_lines.
+    CONCATENATE mv_last_log
+                cl_abap_char_utilities=>newline
+                'READ REPORT STATE I subrc:' sy-subrc
+                ', lines:' lv_saved_lines
+           INTO mv_last_log SEPARATED BY space.
     IF sy-subrc <> 0.
-      rv_message = |Program { i_program } was written, but inactive source cannot be read back.|.
+      CONCATENATE 'Program' i_program
+                  'was written, but inactive source cannot be read back.'
+             INTO rv_message SEPARATED BY space.
       RETURN.
     ENDIF.
 
-    mv_last_log = mv_last_log
-               && cl_abap_char_utilities=>newline
-               && |Inactive source equals proposed source: { xsdbool( lt_saved = it_source ) }|.
+    lv_equal_text = xsdbool( lt_saved = it_source ).
+    CONCATENATE mv_last_log
+                cl_abap_char_utilities=>newline
+                'Inactive source equals proposed source:' lv_equal_text
+           INTO mv_last_log SEPARATED BY space.
     IF lt_saved <> it_source.
-      rv_message = |Program { i_program } was written, but inactive source differs from proposed source.|.
+      CONCATENATE 'Program' i_program
+                  'was written, but inactive source differs from proposed source.'
+             INTO rv_message SEPARATED BY space.
       RETURN.
     ENDIF.
 
     READ REPORT i_program INTO lt_active STATE 'A'.
     lv_active_subrc = sy-subrc.
-    mv_last_log = mv_last_log
-               && cl_abap_char_utilities=>newline
-               && |READ REPORT STATE A subrc: { lv_active_subrc }, lines: { lines( lt_active ) }|
-               && cl_abap_char_utilities=>newline
-               && |Active source equals proposed source: { xsdbool( lt_active = it_source ) }|
-               && cl_abap_char_utilities=>newline
-               && |Active source equals inactive source: { xsdbool( lt_active = lt_saved ) }|.
+    DESCRIBE TABLE lt_active LINES lv_active_lines.
+    CONCATENATE mv_last_log
+                cl_abap_char_utilities=>newline
+                'READ REPORT STATE A subrc:' lv_active_subrc
+                ', lines:' lv_active_lines
+           INTO mv_last_log SEPARATED BY space.
+    lv_equal_text = xsdbool( lt_active = it_source ).
+    CONCATENATE mv_last_log
+                cl_abap_char_utilities=>newline
+                'Active source equals proposed source:' lv_equal_text
+           INTO mv_last_log SEPARATED BY space.
+    lv_equal_text = xsdbool( lt_active = lt_saved ).
+    CONCATENATE mv_last_log
+                cl_abap_char_utilities=>newline
+                'Active source equals inactive source:' lv_equal_text
+           INTO mv_last_log SEPARATED BY space.
 
     IF i_existed = abap_true
     AND lv_active_subrc = 0

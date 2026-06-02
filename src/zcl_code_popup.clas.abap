@@ -417,6 +417,16 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+    IF mo_history IS BOUND.
+      TRY.
+          CALL METHOD mo_history->('REFRESH')
+            EXPORTING
+              it_messages = mt_message_history.
+        CATCH cx_sy_dyn_call_illegal_method
+              cx_sy_dyn_call_param_not_found.
+      ENDTRY.
+    ENDIF.
+
   ENDMETHOD.
 
 
