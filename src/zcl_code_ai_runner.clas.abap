@@ -124,7 +124,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_content     = lv_task_orchestrator_prompt ).
 
         DATA(lv_task_orchestrator_answer) = mo_llm->ask( lv_task_orchestrator_prompt ).
-        DATA(lv_task_orchestrator_answer_log) = lv_task_orchestrator_answer.
+        DATA(lv_task_answer_log) = lv_task_orchestrator_answer.
         lv_task_orchestrator_answer = zcl_ai_messages=>strip_log_info( lv_task_orchestrator_answer ).
 
         mo_messages->add_message(
@@ -132,7 +132,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
-          i_content     = lv_task_orchestrator_answer_log ).
+          i_content     = lv_task_answer_log ).
 
         IF rv_answer IS NOT INITIAL.
           rv_answer = rv_answer && cl_abap_char_utilities=>newline.
