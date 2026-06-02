@@ -67,6 +67,9 @@ private section.
   methods DISPLAY_TEXT
     importing
       !I_TEXT type STRING .
+  methods DISPLAY_STATUS
+    importing
+      !I_TEXT type STRING .
   methods DISPLAY_ANSWER
     importing
       !I_ANSWER type STRING
@@ -123,6 +126,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     ENDIF.
 
     mv_session_counter = mv_session_counter + 1.
+
+    display_status( |Asking AI...| ).
 
     DATA(lo_runner) = NEW zcl_code_ai_runner(
       io_llm     = mo_llm
@@ -253,6 +258,13 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     display_answer( i_answer = i_text ).
 
   endmethod.
+
+
+  METHOD display_status.
+
+    display_text( i_text ).
+
+  ENDMETHOD.
 
 
   method ON_ANSWER_SAPEVENT.
@@ -392,6 +404,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_prompt_type = 'COMMAND'
       i_content     = lv_save_command ).
 
+    display_status( |Saving approved changes for { mv_diff_object_type } { mv_diff_object_name }...| ).
+
     DATA(lv_save_message) = zcl_code_object_saver=>save(
       i_object_type = mv_diff_object_type
       i_object_name = mv_diff_object_name
@@ -436,6 +450,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
 
+    display_text( lv_save_message ).
     MESSAGE lv_save_message TYPE 'S'.
 
   ENDMETHOD.
@@ -482,10 +497,14 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = lv_fix_prompt ).
 
+    DATA(lv_fix_status) = |Fixing syntax/save error, attempt { mv_save_fix_attempts } of 5...|.
+
+    display_status( lv_fix_status ).
+
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING
         percentage = 75
-        text       = |Fixing syntax/save error, attempt { mv_save_fix_attempts } of 5...|.
+        text       = lv_fix_status.
 
     DATA(lv_fix_answer_log) = mo_llm->ask( lv_fix_prompt ).
     DATA(lv_fixed_source) = zcl_code_answer_tools=>extract_code_from_answer( lv_fix_answer_log ).

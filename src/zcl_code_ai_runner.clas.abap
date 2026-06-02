@@ -77,6 +77,13 @@ private section.
       !I_COMPARE_SOURCE type STRING optional
     returning
       value(RV_SOURCE) type STRING .
+  methods FIX_PROGRAM_SYNTAX
+    importing
+      !I_SOURCE type STRING
+      !I_OBJECT_TYPE type STRING
+      !I_OBJECT_NAME type STRING
+    returning
+      value(RV_SOURCE) type STRING .
   methods EXTRACT_PACKAGE
     importing
       !I_TEXT type STRING
@@ -241,6 +248,105 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         RETURN.
       ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD fix_program_syntax.
+
+    DATA lv_object_type TYPE string.
+    DATA lv_source TYPE string.
+    DATA lv_syntax_error TYPE string.
+    DATA lv_fix_prompt TYPE string.
+    DATA lv_fix_answer_log TYPE string.
+    DATA lv_fixed_source TYPE string.
+
+    lv_object_type = i_object_type.
+    TRANSLATE lv_object_type TO UPPER CASE.
+    rv_source = i_source.
+
+    IF NOT ( lv_object_type = 'PROG'
+          OR lv_object_type = 'REPS'
+          OR lv_object_type = 'PROGRAM'
+          OR lv_object_type = 'REPORT' ).
+      RETURN.
+    ENDIF.
+
+    lv_source = i_source.
+
+    DO 5 TIMES.
+      DATA(lv_attempt) = sy-index.
+      lv_syntax_error = zcl_code_object_saver=>check_program_syntax( lv_source ).
+      IF lv_syntax_error IS INITIAL.
+        rv_source = lv_source.
+        RETURN.
+      ENDIF.
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SYNTAX_FIX'
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = |Extracted code has syntax errors before review, attempt { lv_attempt } of 5: { lv_syntax_error }| ).
+
+      CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+        EXPORTING
+          percentage = 75
+          text       = |Fixing extracted code before review, attempt { lv_attempt } of 5...|.
+
+      lv_fix_prompt = |You are a Senior ABAP syntax-fix agent.|
+                   && cl_abap_char_utilities=>newline
+                   && |Return the complete corrected ABAP program source only in one abap fenced code block.|
+                   && cl_abap_char_utilities=>newline
+                   && |Do not explain. Keep the object name and intent. Fix the syntax error before code review.|
+                   && cl_abap_char_utilities=>newline
+                   && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long.|
+                   && cl_abap_char_utilities=>newline
+                   && cl_abap_char_utilities=>newline
+                   && |OBJECT: { i_object_type } { i_object_name }|
+                   && cl_abap_char_utilities=>newline
+                   && |SYNTAX ERROR:|
+                   && cl_abap_char_utilities=>newline
+                   && lv_syntax_error
+                   && cl_abap_char_utilities=>newline
+                   && cl_abap_char_utilities=>newline
+                   && |SOURCE TO FIX:|
+                   && cl_abap_char_utilities=>newline
+                   && |```abap|
+                   && cl_abap_char_utilities=>newline
+                   && lv_source
+                   && cl_abap_char_utilities=>newline
+                   && |```|.
+
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = 'SYNTAX_FIX'
+        i_prompt_type = 'AGENT_PROMPT'
+        i_content     = lv_fix_prompt ).
+
+      lv_fix_answer_log = mo_llm->ask( lv_fix_prompt ).
+      lv_fixed_source = zcl_code_answer_tools=>extract_code_from_answer( lv_fix_answer_log ).
+
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SYNTAX_FIX'
+        i_prompt_type = 'LLM_RESPONSE'
+        i_duration_seconds = mo_llm->get_last_seconds( )
+        i_content     = lv_fix_answer_log ).
+
+      IF lv_fixed_source IS INITIAL
+      OR lv_fixed_source = lv_source.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = 'SYNTAX_FIX'
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = |Syntax fix did not return changed source.| ).
+        CONTINUE.
+      ENDIF.
+
+      lv_source = lv_fixed_source.
+    ENDDO.
+
+    CLEAR rv_source.
 
   ENDMETHOD.
 
@@ -920,24 +1026,40 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
               i_compare_source = lv_diff_old_code ).
           ENDIF.
 
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
-            i_prompt_type = 'COMMAND'
-            i_content     = |Diff original code with extracted changed code| ).
+          lv_diff_new_code = fix_program_syntax(
+            i_source      = lv_diff_new_code
+            i_object_type = lv_code_change_type
+            i_object_name = lv_code_change_name ).
 
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+          IF lv_diff_new_code IS INITIAL.
+            lv_answer = |Extracted code still has syntax errors after 5 fix attempts. Code review is hidden until the code is fixed.|.
+            lv_answer_log = lv_answer.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = lv_answer ).
+          ELSE.
 
-          rs_result-has_diff = abap_true.
-          rs_result-diff_old_code = lv_diff_old_code.
-          rs_result-diff_new_code = lv_diff_new_code.
-          rs_result-diff_object_type = lv_code_change_type.
-          rs_result-diff_object_name = lv_code_change_name.
-          rs_result-diff_package = lv_diff_package.
+            mo_messages->add_message(
+              i_role        = 'user'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+              i_prompt_type = 'COMMAND'
+              i_content     = |Diff original code with extracted changed code| ).
+
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CODE_DIFF command stub. Diff original code with CODE_EXTRACT result.| ).
+
+            rs_result-has_diff = abap_true.
+            rs_result-diff_old_code = lv_diff_old_code.
+            rs_result-diff_new_code = lv_diff_new_code.
+            rs_result-diff_object_type = lv_code_change_type.
+            rs_result-diff_object_name = lv_code_change_name.
+            rs_result-diff_package = lv_diff_package.
+          ENDIF.
         ENDIF.
       ENDIF.
 
@@ -1012,6 +1134,21 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
               i_object_name = ls_create_object_command-object_name
               i_phase       = 'PROPOSED'
               i_compare_source = lv_create_context ).
+          ENDIF.
+
+          lv_create_extracted_code = fix_program_syntax(
+            i_source      = lv_create_extracted_code
+            i_object_type = ls_create_object_command-object_type
+            i_object_name = ls_create_object_command-object_name ).
+
+          IF lv_create_extracted_code IS INITIAL.
+            lv_answer = |Extracted code still has syntax errors after 5 fix attempts. Code review is hidden until the code is fixed.|.
+            lv_answer_log = lv_answer.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = lv_answer ).
           ENDIF.
         ELSE.
           mo_messages->add_message(
