@@ -83,6 +83,7 @@ private section.
     returning
       value(RV_CONFIRMED) type ABAP_BOOL .
   methods SAVE_APPROVED_DIFF .
+  methods SYNC_MESSAGE_HISTORY .
 ENDCLASS.
 
 
@@ -365,11 +366,21 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
   METHOD save_approved_diff.
 
+    DATA(lv_save_command) = |Save approved AI diff: { mv_diff_key }|
+                         && cl_abap_char_utilities=>newline
+                         && |Object: { mv_diff_object_type } { mv_diff_object_name }|
+                         && cl_abap_char_utilities=>newline
+                         && |Package: { mv_diff_package }|
+                         && cl_abap_char_utilities=>newline
+                         && |PROPOSED SOURCE:|
+                         && cl_abap_char_utilities=>newline
+                         && mv_diff_new_code.
+
     mo_messages->add_message(
       i_role        = 'user'
       i_agent       = 'SAVE_OBJECT'
       i_prompt_type = 'COMMAND'
-      i_content     = |Save approved AI diff: { mv_diff_key }| ).
+      i_content     = lv_save_command ).
 
     DATA(lv_save_message) = zcl_code_object_saver=>save(
       i_object_type = mv_diff_object_type
@@ -378,20 +389,41 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_package     = mv_diff_package ).
     DATA(lv_save_log) = zcl_code_object_saver=>get_last_log( ).
 
+    IF lv_save_log IS NOT INITIAL.
+      lv_save_message = lv_save_message
+                     && cl_abap_char_utilities=>newline
+                     && cl_abap_char_utilities=>newline
+                     && lv_save_log.
+    ENDIF.
+
     mo_messages->add_message(
       i_role        = 'assistant'
       i_agent       = 'SAVE_OBJECT'
       i_prompt_type = 'AGENT_RESPONSE'
       i_content     = lv_save_message ).
-    IF lv_save_log IS NOT INITIAL.
-      mo_messages->add_message(
-        i_role        = 'assistant'
-        i_agent       = 'SAVE_OBJECT'
-        i_prompt_type = 'DIAGNOSTICS'
-        i_content     = lv_save_log ).
-    ENDIF.
+
+    sync_message_history( ).
 
     MESSAGE lv_save_message TYPE 'S'.
+
+  ENDMETHOD.
+
+
+  METHOD sync_message_history.
+
+    IF mo_messages IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_messages) = mo_messages->get_messages( ).
+    LOOP AT lt_messages INTO DATA(ls_message).
+      READ TABLE mt_message_history TRANSPORTING NO FIELDS
+        WITH KEY session_id = ls_message-session_id
+                 message_id = ls_message-message_id.
+      IF sy-subrc <> 0.
+        APPEND ls_message TO mt_message_history.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
