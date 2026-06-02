@@ -78,6 +78,8 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     DATA lv_proposed_context_to TYPE i.
     DATA lv_current_slice TYPE string.
     DATA lv_proposed_slice TYPE string.
+    DATA lv_current_norm TYPE string.
+    DATA lv_proposed_norm TYPE string.
 
     lv_current_from = i_current_from.
     lv_current_to = i_current_to.
@@ -109,14 +111,13 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       i_from   = lv_proposed_context_from
       i_to     = lv_proposed_context_to ).
 
-    IF cv_current_source IS NOT INITIAL
-    OR cv_proposed_source IS NOT INITIAL.
-      cv_current_source = cv_current_source
-                       && cl_abap_char_utilities=>newline
-                       && |...|.
-      cv_proposed_source = cv_proposed_source
-                        && cl_abap_char_utilities=>newline
-                        && |...|.
+    lv_current_norm = lv_current_slice.
+    lv_proposed_norm = lv_proposed_slice.
+    CONDENSE lv_current_norm.
+    CONDENSE lv_proposed_norm.
+
+    IF lv_current_norm = lv_proposed_norm.
+      RETURN.
     ENDIF.
 
     IF cv_current_source IS NOT INITIAL
@@ -465,10 +466,18 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     ENDIF.
 
     WHILE lv_index <= lv_to.
+      DATA(lv_line) = it_lines[ lv_index ].
+      DATA(lv_line_check) = lv_line.
+      CONDENSE lv_line_check.
+      IF lv_line_check IS INITIAL.
+        lv_index = lv_index + 1.
+        CONTINUE.
+      ENDIF.
+
       IF rv_source IS NOT INITIAL.
         rv_source = rv_source && cl_abap_char_utilities=>newline.
       ENDIF.
-      rv_source = rv_source && it_lines[ lv_index ].
+      rv_source = rv_source && lv_line.
       lv_index = lv_index + 1.
     ENDWHILE.
 

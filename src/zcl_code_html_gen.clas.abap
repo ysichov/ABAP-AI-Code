@@ -296,7 +296,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
           i_two_pane    = abap_true
-          i_compact     = abap_false
+          i_compact     = abap_true
           i_plain       = abap_false
           i_code_review = abap_true ).
         lt_part_full_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
@@ -307,7 +307,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           iv_two_pane    = abap_true
           iv_plain       = abap_false
           iv_ignore_case = abap_false
-          iv_is_created  = abap_false ).
+          iv_is_created  = abap_false
+          iv_context     = 3 ).
 
         zcl_ave_acr_hunk_info=>collect(
           EXPORTING
@@ -333,55 +334,32 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        DATA lv_part_old_context TYPE string.
-        DATA lv_part_new_context TYPE string.
-        zcl_code_answer_tools=>extract_changed_context(
-          EXPORTING
-            i_current_source  = ls_class_old_part-text
-            i_proposed_source = ls_class_new_part-text
-          IMPORTING
-            e_current_source  = lv_part_old_context
-            e_proposed_source = lv_part_new_context ).
-
-        split_diff_text(
-          EXPORTING
-            i_current_source  = lv_part_old_context
-            i_proposed_source = lv_part_new_context
-          IMPORTING
-            et_current        = lt_old
-            et_proposed       = lt_new ).
-
-        DATA(lt_part_display_diff) = zcl_ave_popup_diff=>compute_diff(
-          it_old  = lt_old
-          it_new  = lt_new
-          i_title = |Rendering AI code diff: { ls_class_part-title }| ).
-        lt_part_display_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_display_diff ).
-
         DATA(lv_part_display_full_html) = zcl_ave_popup_html=>diff_to_html(
-          it_diff       = lt_part_display_diff
+          it_diff       = lt_part_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
           i_two_pane    = abap_true
-          i_compact     = abap_false
+          i_compact     = abap_true
           i_plain       = abap_false
           i_code_review = abap_true ).
 
         lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
-          it_diff        = lt_part_display_diff
+          it_diff        = lt_part_diff
           iv_full_html   = lv_part_display_full_html
           iv_title       = ls_class_part-title
           iv_meta        = 'LLM proposal vs current SAP source'
           iv_two_pane    = abap_true
           iv_plain       = abap_false
           iv_ignore_case = abap_false
-          iv_is_created  = abap_false ).
+          iv_is_created  = abap_false
+          iv_context     = 3 ).
 
         DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
-          it_diff       = lt_part_display_diff
+          it_diff       = lt_part_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
           i_two_pane    = abap_false
-          i_compact     = abap_false
+          i_compact     = abap_true
           i_plain       = abap_false
           i_code_review = abap_true ).
 
@@ -465,7 +443,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       i_title       = 'AI Code Change'
       i_meta        = 'LLM proposal vs current SAP source'
       i_two_pane    = abap_false
-      i_compact     = abap_false
+      i_compact     = abap_true
       i_plain       = abap_false
       i_code_review = abap_true ).
 
@@ -474,7 +452,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       i_title       = 'AI Code Change'
       i_meta        = 'LLM proposal vs current SAP source'
       i_two_pane    = abap_true
-      i_compact     = abap_false
+      i_compact     = abap_true
       i_plain       = abap_false
       i_code_review = abap_true ).
 
@@ -486,7 +464,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       iv_two_pane    = abap_true
       iv_plain       = abap_false
       iv_ignore_case = abap_false
-      iv_is_created  = abap_false ).
+      iv_is_created  = abap_false
+      iv_context     = 3 ).
 
     lv_author = 'AI_AGENT'.
     ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'PROG' ).
