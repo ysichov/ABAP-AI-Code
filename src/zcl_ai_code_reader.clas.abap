@@ -159,6 +159,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
 
   METHOD read_program.
     DATA lt_source TYPE tt_source.
+    DATA lt_source_extended TYPE abaptxt255_tab.
     DATA lv_program TYPE progname.
     DATA lv_tadir_object TYPE tadir-object.
     DATA lv_source_state TYPE string.
@@ -192,7 +193,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
             with_includelist = abap_false
             with_lowercase   = abap_true
           TABLES
-            source_extended  = lt_source
+            source_extended  = lt_source_extended
           EXCEPTIONS
             cancelled        = 1
             not_found        = 2
@@ -207,6 +208,10 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
           ENDIF.
           RETURN.
         ENDIF.
+        CLEAR lt_source.
+        LOOP AT lt_source_extended INTO DATA(lv_source_line).
+          APPEND CONV string( lv_source_line ) TO lt_source.
+        ENDLOOP.
         lv_source_state = 'repository'.
       ELSE.
         lv_source_state = 'inactive'.
