@@ -70,6 +70,11 @@ private section.
       !I_TITLE type STRING
     returning
       value(RV_KEY) type STRING .
+  class-methods APPEND_HTML_BODY
+    importing
+      !I_HTML type STRING
+    changing
+      !CV_HTML type STRING .
   class-methods RENDER_ABAP_BLOCKS
     importing
       !I_TEXT type STRING
@@ -180,6 +185,173 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            e_diff_key,
            et_hunk_info,
            et_acr_stats.
+
+    DATA(lv_object_type) = i_object_type.
+    TRANSLATE lv_object_type TO UPPER CASE.
+
+    IF lv_object_type CP 'CLAS*'.
+      DATA(lt_class_old_parts) = split_class_parts( i_old_code ).
+      DATA(lt_class_new_parts) = split_class_parts( i_new_code ).
+      DATA lt_class_all_parts TYPE tt_diff_parts.
+      DATA ls_class_old_part TYPE ty_diff_part.
+      DATA ls_class_new_part TYPE ty_diff_part.
+      DATA lv_part_index TYPE i.
+
+      LOOP AT lt_class_old_parts INTO ls_class_old_part.
+        append_diff_part(
+          EXPORTING
+            is_part = VALUE ty_diff_part(
+              part_key = ls_class_old_part-part_key
+              title    = ls_class_old_part-title )
+          CHANGING
+            ct_parts = lt_class_all_parts ).
+      ENDLOOP.
+
+      LOOP AT lt_class_new_parts INTO ls_class_new_part.
+        append_diff_part(
+          EXPORTING
+            is_part = VALUE ty_diff_part(
+              part_key = ls_class_new_part-part_key
+              title    = ls_class_new_part-title )
+          CHANGING
+            ct_parts = lt_class_all_parts ).
+      ENDLOOP.
+
+      LOOP AT lt_class_all_parts INTO DATA(ls_class_part).
+        CLEAR: ls_class_old_part,
+               ls_class_new_part,
+               lt_old,
+               lt_new,
+               lt_hunk_html,
+               lv_hunk_count,
+               lv_hunk_ins,
+               lv_hunk_mod,
+               lv_hunk_del.
+
+        READ TABLE lt_class_old_parts INTO ls_class_old_part WITH KEY part_key = ls_class_part-part_key.
+        READ TABLE lt_class_new_parts INTO ls_class_new_part WITH KEY part_key = ls_class_part-part_key.
+        IF ls_class_old_part-text = ls_class_new_part-text.
+          CONTINUE.
+        ENDIF.
+
+        DATA lv_part_old_context TYPE string.
+        DATA lv_part_new_context TYPE string.
+        zcl_code_answer_tools=>extract_changed_context(
+          EXPORTING
+            i_current_source  = ls_class_old_part-text
+            i_proposed_source = ls_class_new_part-text
+          IMPORTING
+            e_current_source  = lv_part_old_context
+            e_proposed_source = lv_part_new_context ).
+
+        SPLIT lv_part_old_context AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
+        SPLIT lv_part_new_context AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+
+        DATA(lt_part_diff) = zcl_ave_popup_diff=>compute_diff(
+          it_old  = lt_old
+          it_new  = lt_new
+          i_title = |Computing AI code diff: { ls_class_part-title }| ).
+        lt_part_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_diff ).
+
+        DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
+          it_diff       = lt_part_diff
+          i_title       = ls_class_part-title
+          i_meta        = 'LLM proposal vs current SAP source'
+          i_two_pane    = abap_false
+          i_compact     = abap_false
+          i_plain       = abap_false
+          i_code_review = abap_true ).
+        append_html_body(
+          EXPORTING
+            i_html = lv_part_html
+          CHANGING
+            cv_html = e_html ).
+
+        DATA(lv_part_full_html) = zcl_ave_popup_html=>diff_to_html(
+          it_diff       = lt_part_diff
+          i_title       = ls_class_part-title
+          i_meta        = 'LLM proposal vs current SAP source'
+          i_two_pane    = abap_true
+          i_compact     = abap_false
+          i_plain       = abap_false
+          i_code_review = abap_true ).
+
+        lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+          it_diff        = lt_part_diff
+          iv_full_html   = lv_part_full_html
+          iv_title       = ls_class_part-title
+          iv_meta        = 'LLM proposal vs current SAP source'
+          iv_two_pane    = abap_true
+          iv_plain       = abap_false
+          iv_ignore_case = abap_false
+          iv_is_created  = abap_false ).
+
+        lv_part_index = lv_part_index + 1.
+        lv_author = 'AI_AGENT'.
+        DATA(lv_base_object_name) = COND string(
+          WHEN i_object_name IS NOT INITIAL THEN i_object_name
+          ELSE 'AI_CODE_CHANGE' ).
+        ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' ).
+        ls_part-object_name = |{ lv_base_object_name }~{ lv_part_index }|.
+        ls_part-name = ls_part-object_name.
+        ls_part-display_name = ls_class_part-title.
+
+        DATA lt_part_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info.
+        zcl_ave_acr_hunk_info=>collect(
+          EXPORTING
+            is_part            = ls_part
+            it_diff            = lt_part_diff
+            it_hunk_html       = lt_hunk_html
+            it_blame           = lt_blame
+            iv_author          = lv_author
+            iv_display_name    = ls_part-display_name
+            iv_versno_new      = '00000'
+            iv_versno_old      = '00000'
+            iv_versno_new_text = 'LLM proposal'
+            iv_versno_old_text = 'Current source'
+            iv_is_created      = abap_false
+          IMPORTING
+            et_hunk_info       = lt_part_hunk_info
+            ev_hunk_count      = lv_hunk_count
+            ev_hunk_ins        = lv_hunk_ins
+            ev_hunk_mod        = lv_hunk_mod
+            ev_hunk_del        = lv_hunk_del ).
+        APPEND LINES OF lt_part_hunk_info TO et_hunk_info.
+
+        APPEND VALUE zif_ave_acr_types=>ty_obj_stats(
+          objtype      = ls_part-type
+          obj_name     = ls_part-object_name
+          author       = lv_author
+          author_name  = zcl_ave_popup_data=>get_user_name( lv_author )
+          hunk_count   = lv_hunk_count
+          hunk_ins     = lv_hunk_ins
+          hunk_mod     = lv_hunk_mod
+          hunk_del     = lv_hunk_del
+          display_name = ls_part-display_name ) TO et_acr_stats.
+      ENDLOOP.
+
+      IF e_html IS NOT INITIAL.
+        ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' ).
+        ls_part-object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' ).
+        e_base_html = e_html.
+        e_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
+
+        zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+          EXPORTING
+            iv_key           = e_diff_key
+            it_hunk_info     = et_hunk_info
+            it_approved      = lt_approved
+            it_declined      = lt_declined
+            it_decline_notes = lt_decline_notes
+            it_hunk_actions  = lt_hunk_actions
+            it_hunk_threads  = lt_hunk_threads
+            iv_ai_enabled    = abap_true
+          CHANGING
+            cv_html          = e_html
+            ct_acr_stats     = et_acr_stats ).
+        RETURN.
+      ENDIF.
+    ENDIF.
 
     DATA lv_old_code TYPE string.
     DATA lv_new_code TYPE string.
@@ -314,6 +486,47 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
   endmethod.
 
 
+  method APPEND_HTML_BODY.
+
+    DATA lv_body TYPE string.
+    DATA lv_after_body TYPE string.
+    DATA lv_body_start TYPE i.
+    DATA lv_body_end TYPE i.
+    DATA lv_body_tag_end TYPE i.
+    DATA lv_insert_pos TYPE i.
+
+    IF cv_html IS INITIAL.
+      cv_html = i_html.
+      RETURN.
+    ENDIF.
+
+    lv_body = i_html.
+    FIND FIRST OCCURRENCE OF '<body' IN lv_body IGNORING CASE MATCH OFFSET lv_body_start.
+    IF sy-subrc = 0.
+      lv_after_body = substring( val = lv_body off = lv_body_start ).
+      FIND FIRST OCCURRENCE OF '>' IN lv_after_body MATCH OFFSET lv_body_tag_end.
+      IF sy-subrc = 0.
+        lv_body = substring( val = lv_after_body off = lv_body_tag_end + 1 ).
+      ENDIF.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF '</body>' IN lv_body IGNORING CASE MATCH OFFSET lv_body_end.
+    IF sy-subrc = 0.
+      lv_body = substring( val = lv_body len = lv_body_end ).
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF '</body>' IN cv_html IGNORING CASE MATCH OFFSET lv_insert_pos.
+    IF sy-subrc = 0.
+      cv_html = substring( val = cv_html len = lv_insert_pos )
+             && lv_body
+             && substring( val = cv_html off = lv_insert_pos ).
+    ELSE.
+      cv_html = cv_html && lv_body.
+    ENDIF.
+
+  endmethod.
+
+
   method BUILD_COMPARABLE_DIFF_SOURCE.
 
     DATA lv_object_type TYPE string.
@@ -395,19 +608,6 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      DATA(lv_old_header) = ls_part-title.
-      DATA(lv_new_header) = ls_part-title.
-      IF ls_old_part-text IS INITIAL.
-        lv_old_header = |{ ls_part-title } (before insert)|.
-        lv_new_header = |{ ls_part-title } (inserted)|.
-      ELSEIF ls_new_part-text IS INITIAL.
-        lv_old_header = |{ ls_part-title } (deleted)|.
-        lv_new_header = |{ ls_part-title } (after delete)|.
-      ELSE.
-        lv_old_header = |{ ls_part-title } (before change)|.
-        lv_new_header = |{ ls_part-title } (changed)|.
-      ENDIF.
-
       DATA lv_old_context TYPE string.
       DATA lv_new_context TYPE string.
       zcl_code_answer_tools=>extract_changed_context(
@@ -428,12 +628,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ENDIF.
 
       e_old_code = e_old_code
-                && |=== { lv_old_header } ===|
-                && cl_abap_char_utilities=>newline
                 && lv_old_context.
       e_new_code = e_new_code
-                && |=== { lv_new_header } ===|
-                && cl_abap_char_utilities=>newline
                 && lv_new_context.
     ENDLOOP.
 
