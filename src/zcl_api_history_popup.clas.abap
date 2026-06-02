@@ -223,7 +223,19 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
     build_history( ).
 
     IF mo_alv IS BOUND.
-      mo_alv->refresh_table_display( ).
+      mo_alv->refresh_table_display(
+        EXCEPTIONS
+          finished = 1
+          OTHERS   = 2 ).
+      IF sy-subrc <> 0.
+        CLEAR: mo_alv,
+               mo_request,
+               mo_answer,
+               mo_details,
+               mo_split,
+               mo_dialog.
+        RETURN.
+      ENDIF.
     ENDIF.
 
     IF mt_history IS NOT INITIAL
@@ -232,7 +244,19 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
       show_row( lines( mt_history ) ).
     ENDIF.
 
-    CALL METHOD cl_gui_cfw=>flush.
+    CALL METHOD cl_gui_cfw=>flush
+      EXCEPTIONS
+        cntl_system_error = 1
+        cntl_error        = 2
+        OTHERS            = 3.
+    IF sy-subrc <> 0.
+      CLEAR: mo_alv,
+             mo_request,
+             mo_answer,
+             mo_details,
+             mo_split,
+             mo_dialog.
+    ENDIF.
 
   ENDMETHOD.
 
@@ -382,9 +406,26 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
 
   method ON_DIALOG_CLOSE.
 
-    mo_dialog->free( ).
-    CLEAR mo_dialog.
-    CALL METHOD cl_gui_cfw=>flush.
+    IF mo_dialog IS BOUND.
+      mo_dialog->free(
+        EXCEPTIONS
+          cntl_error        = 1
+          cntl_system_error = 2
+          OTHERS            = 3 ).
+    ENDIF.
+
+    CALL METHOD cl_gui_cfw=>flush
+      EXCEPTIONS
+        cntl_system_error = 1
+        cntl_error        = 2
+        OTHERS            = 3.
+
+    CLEAR: mo_alv,
+           mo_request,
+           mo_answer,
+           mo_details,
+           mo_split,
+           mo_dialog.
 
   endmethod.
 
