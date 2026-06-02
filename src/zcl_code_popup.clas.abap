@@ -39,6 +39,7 @@ private section.
   data MV_DIFF_PACKAGE type STRING .
   data MV_DIFF_NEW_CODE type STRING .
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
+  data MV_SAVE_FIX_ATTEMPTS type I .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
   data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
   data MT_DIFF_DECLINED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
@@ -194,7 +195,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
            mt_diff_decline_notes,
            mt_diff_hunk_actions,
            mt_diff_hunk_threads,
-           mv_diff_save_stub_logged.
+           mv_diff_save_stub_logged,
+           mv_save_fix_attempts.
 
   endmethod.
 
@@ -423,11 +425,15 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
   METHOD request_save_fix.
 
+    mv_save_fix_attempts = mv_save_fix_attempts + 1.
+
     DATA(lv_fix_prompt) = |You are a Senior ABAP syntax-fix agent.|
                        && cl_abap_char_utilities=>newline
                        && |The SAP save/syntax-check failed. Return the complete corrected ABAP source only in one abap fenced code block.|
                        && cl_abap_char_utilities=>newline
                        && |Do not explain. Do not return CHANGES:NO. Keep the object name and intent.|
+                       && cl_abap_char_utilities=>newline
+                       && |The corrected source must be different from SOURCE TO FIX and must address the SAP SAVE ERROR LOG.|
                        && cl_abap_char_utilities=>newline
                        && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long.|
                        && cl_abap_char_utilities=>newline
@@ -435,6 +441,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
                        && |OBJECT: { mv_diff_object_type } { mv_diff_object_name }|
                        && cl_abap_char_utilities=>newline
                        && |PACKAGE: { mv_diff_package }|
+                       && cl_abap_char_utilities=>newline
+                       && |FIX ATTEMPT: { mv_save_fix_attempts }|
                        && cl_abap_char_utilities=>newline
                        && cl_abap_char_utilities=>newline
                        && |SAP SAVE ERROR LOG:|
@@ -480,7 +488,24 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     sync_message_history( ).
 
-    IF lv_fixed_source IS INITIAL.
+    IF lv_fixed_source IS INITIAL
+    OR lv_fixed_source = mv_diff_new_code.
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SAVE_FIX'
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = COND string(
+                          WHEN lv_fixed_source IS INITIAL
+                          THEN |SAVE_FIX did not return corrected source.|
+                          ELSE |SAVE_FIX returned unchanged source; requesting another correction attempt.| ) ).
+      sync_message_history( ).
+
+      IF mv_save_fix_attempts < 5.
+        request_save_fix( i_save_log ).
+        RETURN.
+      ENDIF.
+
+      CLEAR mv_diff_save_stub_logged.
       MESSAGE i_save_log TYPE 'S'.
       RETURN.
     ENDIF.

@@ -160,18 +160,42 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
   METHOD read_program.
     DATA lt_source TYPE tt_source.
     DATA lv_program TYPE progname.
+    DATA lv_tadir_object TYPE tadir-object.
+    DATA lv_source_state TYPE string.
 
     lv_program = i_program.
     TRANSLATE lv_program TO UPPER CASE.
     CONDENSE lv_program.
 
+    SELECT SINGLE object
+      FROM tadir
+      INTO lv_tadir_object
+      WHERE pgmid = 'R3TR'
+        AND obj_name = lv_program
+        AND object IN ('REPS', 'PROG').
+
     READ REPORT lv_program INTO lt_source.
     IF sy-subrc <> 0.
-      rv_text = |Source for program { lv_program } was not found or cannot be read.|.
-      RETURN.
+      READ REPORT lv_program INTO lt_source STATE 'I'.
+      IF sy-subrc <> 0.
+        rv_text = |Source for program { lv_program } was not found or cannot be read.|.
+        IF lv_tadir_object IS NOT INITIAL.
+          rv_text = rv_text
+                 && cl_abap_char_utilities=>newline
+                 && |TADIR object type: { lv_tadir_object }.|.
+        ENDIF.
+        RETURN.
+      ENDIF.
+      lv_source_state = 'inactive'.
+    ELSE.
+      lv_source_state = 'active'.
     ENDIF.
 
-    rv_text = |Source for program { lv_program }:|
+    rv_text = |Source for program { lv_program } ({ lv_source_state }|.
+    IF lv_tadir_object IS NOT INITIAL.
+      rv_text = rv_text && |, TADIR { lv_tadir_object }|.
+    ENDIF.
+    rv_text = rv_text && |):|
            && cl_abap_char_utilities=>newline
            && format_source( lt_source ).
   ENDMETHOD.
