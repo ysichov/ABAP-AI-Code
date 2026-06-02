@@ -16,6 +16,8 @@ Use a compact task format, for example:
 TASK1: ...
 TASK2.1: ...
 
+Если есть тег  LLM_ANSWER ищи новые таски, просьбы, рекомендации  только в ответе LLM!!!
+
 If a task is unclear, add a clarification question for that task only when the answer is required.
 Use this format:
 TASK1-ASK1: question text
