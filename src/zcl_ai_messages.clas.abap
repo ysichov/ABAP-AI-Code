@@ -403,6 +403,10 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
              && |put every heading, list item, paragraph, and fenced code block on separate lines. |.
 
     rv_prompt = rv_prompt
+             && |Generate syntactically valid classic ABAP. |
+             && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long. |.
+
+    rv_prompt = rv_prompt
              && |For code change requests, return the complete changed ABAP source in an abap fenced code block. with remark CHANGES:YES at the end |
              && |For create object requests, return the complete new ABAP source in an abap fenced code block.  with remark CHANGES:YES at the end |
              && |For code change requests only: if you only provide recommendations and did not change the code, put CHANGES:NO at the very end of the answer. |

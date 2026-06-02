@@ -83,6 +83,9 @@ private section.
     returning
       value(RV_CONFIRMED) type ABAP_BOOL .
   methods SAVE_APPROVED_DIFF .
+  methods REQUEST_SAVE_FIX
+    importing
+      !I_SAVE_LOG type STRING .
   methods SYNC_MESSAGE_HISTORY .
 ENDCLASS.
 
@@ -394,9 +397,106 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_prompt_type = 'AGENT_RESPONSE'
       i_content     = lv_save_message ).
 
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = 'GIT_SAVE'
+      i_prompt_type = 'AGENT_RESPONSE'
+      i_content     = lv_save_message ).
+
     sync_message_history( ).
 
+    DATA(lv_save_message_upper) = lv_save_message.
+    TRANSLATE lv_save_message_upper TO UPPER CASE.
+    IF lv_save_message_upper CS 'SYNTAX ERROR'
+    OR lv_save_message_upper CS 'ERROR SAVING'
+    OR lv_save_message_upper CS 'ERROR CREATING'
+    OR lv_save_message_upper CS 'ERROR UPDATING'
+    OR lv_save_message_upper CS 'WAS WRITTEN, BUT'.
+      request_save_fix( lv_save_message ).
+      RETURN.
+    ENDIF.
+
     MESSAGE lv_save_message TYPE 'S'.
+
+  ENDMETHOD.
+
+
+  METHOD request_save_fix.
+
+    DATA(lv_fix_prompt) = |You are a Senior ABAP syntax-fix agent.|
+                       && cl_abap_char_utilities=>newline
+                       && |The SAP save/syntax-check failed. Return the complete corrected ABAP source only in one abap fenced code block.|
+                       && cl_abap_char_utilities=>newline
+                       && |Do not explain. Do not return CHANGES:NO. Keep the object name and intent.|
+                       && cl_abap_char_utilities=>newline
+                       && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long.|
+                       && cl_abap_char_utilities=>newline
+                       && cl_abap_char_utilities=>newline
+                       && |OBJECT: { mv_diff_object_type } { mv_diff_object_name }|
+                       && cl_abap_char_utilities=>newline
+                       && |PACKAGE: { mv_diff_package }|
+                       && cl_abap_char_utilities=>newline
+                       && cl_abap_char_utilities=>newline
+                       && |SAP SAVE ERROR LOG:|
+                       && cl_abap_char_utilities=>newline
+                       && i_save_log
+                       && cl_abap_char_utilities=>newline
+                       && cl_abap_char_utilities=>newline
+                       && |SOURCE TO FIX:|
+                       && cl_abap_char_utilities=>newline
+                       && |```abap|
+                       && cl_abap_char_utilities=>newline
+                       && mv_diff_new_code
+                       && cl_abap_char_utilities=>newline
+                       && |```|.
+
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = 'SAVE_FIX'
+      i_prompt_type = 'AGENT_PROMPT'
+      i_content     = lv_fix_prompt ).
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 75 text = 'Asking AI to fix save error...'.
+
+    DATA(lv_fix_answer_log) = mo_llm->ask( lv_fix_prompt ).
+    DATA(lv_fixed_source) = zcl_code_answer_tools=>extract_code_from_answer( lv_fix_answer_log ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = 'SAVE_FIX'
+      i_prompt_type = 'LLM_RESPONSE'
+      i_duration_seconds = mo_llm->get_last_seconds( )
+      i_content     = lv_fix_answer_log ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = 'SAVE_FIX'
+      i_prompt_type = 'AGENT_RESPONSE'
+      i_content     = COND string(
+                        WHEN lv_fixed_source IS INITIAL
+                        THEN |No corrected source was extracted from SAVE_FIX response.|
+                        ELSE lv_fixed_source ) ).
+
+    sync_message_history( ).
+
+    IF lv_fixed_source IS INITIAL.
+      MESSAGE i_save_log TYPE 'S'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_html) = diff_to_html(
+      i_old_code    = mv_diff_new_code
+      i_new_code    = lv_fixed_source
+      i_object_type = mv_diff_object_type
+      i_object_name = mv_diff_object_name
+      i_package     = mv_diff_package
+      i_usage_text  = |SAVE_FIX proposal after SAP save error.| ).
+
+    CLEAR mv_diff_save_stub_logged.
+    display_answer( lv_html ).
+
+    MESSAGE 'AI proposed a save-error fix. Review and approve before saving.' TYPE 'S'.
 
   ENDMETHOD.
 
