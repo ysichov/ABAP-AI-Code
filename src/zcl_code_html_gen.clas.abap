@@ -37,9 +37,18 @@ private section.
       part_key TYPE string,
       title TYPE string,
       text  TYPE string,
+      text_lines TYPE abaptxt255_tab,
     END OF ty_diff_part .
   types:
     tt_diff_parts TYPE STANDARD TABLE OF ty_diff_part WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF ty_diff_object,
+      object_type TYPE string,
+      object_name TYPE string,
+      parts TYPE tt_diff_parts,
+    END OF ty_diff_object .
+  types:
+    tt_diff_objects TYPE STANDARD TABLE OF ty_diff_object WITH NON-UNIQUE DEFAULT KEY .
 
   class-methods NORMALIZE_MARKDOWN
     importing
@@ -75,6 +84,13 @@ private section.
       !I_HTML type STRING
     changing
       !CV_HTML type STRING .
+  class-methods SPLIT_DIFF_TEXT
+    importing
+      !I_CURRENT_SOURCE type STRING
+      !I_PROPOSED_SOURCE type STRING
+    exporting
+      !ET_CURRENT type ABAPTXT255_TAB
+      !ET_PROPOSED type ABAPTXT255_TAB .
   class-methods HTML_WITH_BODY
     importing
       !I_TEMPLATE_HTML type STRING
@@ -196,14 +212,28 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     TRANSLATE lv_object_type TO UPPER CASE.
 
     IF lv_object_type CP 'CLAS*'.
-      DATA(lt_class_old_parts) = split_class_parts( i_old_code ).
-      DATA(lt_class_new_parts) = split_class_parts( i_new_code ).
+      DATA lt_current_objects TYPE tt_diff_objects.
+      DATA lt_proposed_objects TYPE tt_diff_objects.
+      DATA ls_current_object TYPE ty_diff_object.
+      DATA ls_proposed_object TYPE ty_diff_object.
       DATA lt_class_all_parts TYPE tt_diff_parts.
       DATA ls_class_old_part TYPE ty_diff_part.
       DATA ls_class_new_part TYPE ty_diff_part.
       DATA lv_part_index TYPE i.
 
-      LOOP AT lt_class_old_parts INTO ls_class_old_part.
+      APPEND VALUE ty_diff_object(
+        object_type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' )
+        object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' )
+        parts       = split_class_parts( i_old_code ) ) TO lt_current_objects.
+      APPEND VALUE ty_diff_object(
+        object_type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' )
+        object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' )
+        parts       = split_class_parts( i_new_code ) ) TO lt_proposed_objects.
+
+      READ TABLE lt_current_objects INTO ls_current_object INDEX 1.
+      READ TABLE lt_proposed_objects INTO ls_proposed_object INDEX 1.
+
+      LOOP AT ls_current_object-parts INTO ls_class_old_part.
         append_diff_part(
           EXPORTING
             is_part = VALUE ty_diff_part(
@@ -213,7 +243,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
             ct_parts = lt_class_all_parts ).
       ENDLOOP.
 
-      LOOP AT lt_class_new_parts INTO ls_class_new_part.
+      LOOP AT ls_proposed_object-parts INTO ls_class_new_part.
         append_diff_part(
           EXPORTING
             is_part = VALUE ty_diff_part(
@@ -234,39 +264,20 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
                lv_hunk_mod,
                lv_hunk_del.
 
-        READ TABLE lt_class_old_parts INTO ls_class_old_part WITH KEY part_key = ls_class_part-part_key.
-        READ TABLE lt_class_new_parts INTO ls_class_new_part WITH KEY part_key = ls_class_part-part_key.
+        READ TABLE ls_current_object-parts INTO ls_class_old_part WITH KEY part_key = ls_class_part-part_key.
+        READ TABLE ls_proposed_object-parts INTO ls_class_new_part WITH KEY part_key = ls_class_part-part_key.
         IF ls_class_old_part-text = ls_class_new_part-text.
           CONTINUE.
         ENDIF.
 
-        SPLIT ls_class_old_part-text AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
-        SPLIT ls_class_new_part-text AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+        lt_old = ls_class_old_part-text_lines.
+        lt_new = ls_class_new_part-text_lines.
 
         DATA(lt_part_diff) = zcl_ave_popup_diff=>compute_diff(
           it_old  = lt_old
           it_new  = lt_new
           i_title = |Computing AI code diff: { ls_class_part-title }| ).
         lt_part_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_diff ).
-
-        DATA(lv_part_full_html) = zcl_ave_popup_html=>diff_to_html(
-          it_diff       = lt_part_diff
-          i_title       = ls_class_part-title
-          i_meta        = 'LLM proposal vs current SAP source'
-          i_two_pane    = abap_true
-          i_compact     = abap_false
-          i_plain       = abap_false
-          i_code_review = abap_true ).
-
-        lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
-          it_diff        = lt_part_diff
-          iv_full_html   = lv_part_full_html
-          iv_title       = ls_class_part-title
-          iv_meta        = 'LLM proposal vs current SAP source'
-          iv_two_pane    = abap_true
-          iv_plain       = abap_false
-          iv_ignore_case = abap_false
-          iv_is_created  = abap_false ).
 
         lv_part_index = lv_part_index + 1.
         lv_author = 'AI_AGENT'.
@@ -279,11 +290,30 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ls_part-display_name = ls_class_part-title.
 
         DATA lt_part_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info.
+        DATA lt_part_full_hunk_html TYPE string_table.
+        DATA(lv_part_full_html) = zcl_ave_popup_html=>diff_to_html(
+          it_diff       = lt_part_diff
+          i_title       = ls_class_part-title
+          i_meta        = 'LLM proposal vs current SAP source'
+          i_two_pane    = abap_true
+          i_compact     = abap_false
+          i_plain       = abap_false
+          i_code_review = abap_true ).
+        lt_part_full_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+          it_diff        = lt_part_diff
+          iv_full_html   = lv_part_full_html
+          iv_title       = ls_class_part-title
+          iv_meta        = 'LLM proposal vs current SAP source'
+          iv_two_pane    = abap_true
+          iv_plain       = abap_false
+          iv_ignore_case = abap_false
+          iv_is_created  = abap_false ).
+
         zcl_ave_acr_hunk_info=>collect(
           EXPORTING
             is_part            = ls_part
             it_diff            = lt_part_diff
-            it_hunk_html       = lt_hunk_html
+            it_hunk_html       = lt_part_full_hunk_html
             it_blame           = lt_blame
             iv_author          = lv_author
             iv_display_name    = ls_part-display_name
@@ -303,8 +333,51 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        DATA lv_part_old_context TYPE string.
+        DATA lv_part_new_context TYPE string.
+        zcl_code_answer_tools=>extract_changed_context(
+          EXPORTING
+            i_current_source  = ls_class_old_part-text
+            i_proposed_source = ls_class_new_part-text
+          IMPORTING
+            e_current_source  = lv_part_old_context
+            e_proposed_source = lv_part_new_context ).
+
+        split_diff_text(
+          EXPORTING
+            i_current_source  = lv_part_old_context
+            i_proposed_source = lv_part_new_context
+          IMPORTING
+            et_current        = lt_old
+            et_proposed       = lt_new ).
+
+        DATA(lt_part_display_diff) = zcl_ave_popup_diff=>compute_diff(
+          it_old  = lt_old
+          it_new  = lt_new
+          i_title = |Rendering AI code diff: { ls_class_part-title }| ).
+        lt_part_display_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_display_diff ).
+
+        DATA(lv_part_display_full_html) = zcl_ave_popup_html=>diff_to_html(
+          it_diff       = lt_part_display_diff
+          i_title       = ls_class_part-title
+          i_meta        = 'LLM proposal vs current SAP source'
+          i_two_pane    = abap_true
+          i_compact     = abap_false
+          i_plain       = abap_false
+          i_code_review = abap_true ).
+
+        lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+          it_diff        = lt_part_display_diff
+          iv_full_html   = lv_part_display_full_html
+          iv_title       = ls_class_part-title
+          iv_meta        = 'LLM proposal vs current SAP source'
+          iv_two_pane    = abap_true
+          iv_plain       = abap_false
+          iv_ignore_case = abap_false
+          iv_is_created  = abap_false ).
+
         DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
-          it_diff       = lt_part_diff
+          it_diff       = lt_part_display_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
           i_two_pane    = abap_false
@@ -380,8 +453,13 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         e_old_code    = lv_old_code
         e_new_code    = lv_new_code ).
 
-    SPLIT lv_old_code AT cl_abap_char_utilities=>newline INTO TABLE lt_old.
-    SPLIT lv_new_code AT cl_abap_char_utilities=>newline INTO TABLE lt_new.
+    split_diff_text(
+      EXPORTING
+        i_current_source  = lv_old_code
+        i_proposed_source = lv_new_code
+      IMPORTING
+        et_current        = lt_old
+        et_proposed       = lt_new ).
 
     DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff(
       it_old = lt_old
@@ -491,6 +569,9 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
                        && is_part-text.
       ELSEIF is_part-text IS NOT INITIAL.
         <ls_part>-text = is_part-text.
+      ENDIF.
+      IF is_part-text_lines IS NOT INITIAL.
+        APPEND LINES OF is_part-text_lines TO <ls_part>-text_lines.
       ENDIF.
       RETURN.
     ENDIF.
@@ -910,6 +991,17 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
   endmethod.
 
 
+  method SPLIT_DIFF_TEXT.
+
+    CLEAR: et_current,
+           et_proposed.
+
+    SPLIT i_current_source AT cl_abap_char_utilities=>newline INTO TABLE et_current.
+    SPLIT i_proposed_source AT cl_abap_char_utilities=>newline INTO TABLE et_proposed.
+
+  endmethod.
+
+
   method SPLIT_CLASS_PARTS.
 
     DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
@@ -989,6 +1081,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ls_part-text = ls_part-text && cl_abap_char_utilities=>newline.
       ENDIF.
       ls_part-text = ls_part-text && lv_line.
+      APPEND lv_line TO ls_part-text_lines.
     ENDLOOP.
 
     append_diff_part(

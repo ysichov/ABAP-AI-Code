@@ -85,19 +85,19 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     lv_proposed_to = i_proposed_to.
 
     IF lv_current_to < lv_current_from.
-      lv_current_context_from = lv_current_from - 3.
-      lv_current_context_to = lv_current_from + 2.
+      lv_current_context_from = lv_current_from.
+      lv_current_context_to = lv_current_from - 1.
     ELSE.
-      lv_current_context_from = lv_current_from - 3.
-      lv_current_context_to = lv_current_to + 3.
+      lv_current_context_from = lv_current_from.
+      lv_current_context_to = lv_current_to.
     ENDIF.
 
     IF lv_proposed_to < lv_proposed_from.
-      lv_proposed_context_from = lv_proposed_from - 3.
-      lv_proposed_context_to = lv_proposed_from + 2.
+      lv_proposed_context_from = lv_proposed_from.
+      lv_proposed_context_to = lv_proposed_from - 1.
     ELSE.
-      lv_proposed_context_from = lv_proposed_from - 3.
-      lv_proposed_context_to = lv_proposed_to + 3.
+      lv_proposed_context_from = lv_proposed_from.
+      lv_proposed_context_to = lv_proposed_to.
     ENDIF.
 
     lv_current_slice = slice_source(
