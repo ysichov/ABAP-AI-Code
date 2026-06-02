@@ -72,6 +72,10 @@ CLASS zcl_ai_messages DEFINITION
     METHODS get_agent_error
       RETURNING VALUE(rv_error) TYPE string.
 
+    METHODS get_total_token_usage
+      IMPORTING i_extra_text TYPE string OPTIONAL
+      RETURNING VALUE(rv_usage) TYPE string.
+
     METHODS needs_code_context
       RETURNING VALUE(rv_needed) TYPE abap_bool.
 
@@ -139,6 +143,104 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       prompt_type = i_prompt_type
       duration_seconds = i_duration_seconds
       content     = i_content ) TO mt_messages.
+  ENDMETHOD.
+
+
+  METHOD get_total_token_usage.
+
+    DATA lv_prompt_tokens TYPE i.
+    DATA lv_completion_tokens TYPE i.
+    DATA lv_total_tokens TYPE i.
+    DATA lv_cached_tokens TYPE i.
+    DATA lv_prompt_text TYPE string.
+    DATA lv_completion_text TYPE string.
+    DATA lv_total_text TYPE string.
+    DATA lv_cached_text TYPE string.
+
+    LOOP AT mt_messages INTO DATA(ls_message).
+      CLEAR: lv_prompt_text,
+             lv_completion_text,
+             lv_total_text,
+             lv_cached_text.
+
+      FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)'
+        IN ls_message-content SUBMATCHES lv_prompt_text.
+      IF lv_prompt_text IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)'
+          IN ls_message-content SUBMATCHES lv_prompt_text.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)'
+        IN ls_message-content SUBMATCHES lv_completion_text.
+      IF lv_completion_text IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)'
+          IN ls_message-content SUBMATCHES lv_completion_text.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX 'total=([0-9]+)'
+        IN ls_message-content SUBMATCHES lv_total_text.
+
+      FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)'
+        IN ls_message-content SUBMATCHES lv_cached_text.
+
+      IF lv_prompt_text IS NOT INITIAL.
+        lv_prompt_tokens = lv_prompt_tokens + lv_prompt_text.
+      ENDIF.
+      IF lv_completion_text IS NOT INITIAL.
+        lv_completion_tokens = lv_completion_tokens + lv_completion_text.
+      ENDIF.
+      IF lv_total_text IS NOT INITIAL.
+        lv_total_tokens = lv_total_tokens + lv_total_text.
+      ENDIF.
+      IF lv_cached_text IS NOT INITIAL.
+        lv_cached_tokens = lv_cached_tokens + lv_cached_text.
+      ENDIF.
+    ENDLOOP.
+
+    IF i_extra_text IS NOT INITIAL.
+      CLEAR: lv_prompt_text,
+             lv_completion_text,
+             lv_total_text,
+             lv_cached_text.
+
+      FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)'
+        IN i_extra_text SUBMATCHES lv_prompt_text.
+      IF lv_prompt_text IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)'
+          IN i_extra_text SUBMATCHES lv_prompt_text.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)'
+        IN i_extra_text SUBMATCHES lv_completion_text.
+      IF lv_completion_text IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)'
+          IN i_extra_text SUBMATCHES lv_completion_text.
+      ENDIF.
+
+      FIND FIRST OCCURRENCE OF REGEX 'total=([0-9]+)'
+        IN i_extra_text SUBMATCHES lv_total_text.
+
+      FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)'
+        IN i_extra_text SUBMATCHES lv_cached_text.
+
+      IF lv_prompt_text IS NOT INITIAL.
+        lv_prompt_tokens = lv_prompt_tokens + lv_prompt_text.
+      ENDIF.
+      IF lv_completion_text IS NOT INITIAL.
+        lv_completion_tokens = lv_completion_tokens + lv_completion_text.
+      ENDIF.
+      IF lv_total_text IS NOT INITIAL.
+        lv_total_tokens = lv_total_tokens + lv_total_text.
+      ENDIF.
+      IF lv_cached_text IS NOT INITIAL.
+        lv_cached_tokens = lv_cached_tokens + lv_cached_text.
+      ENDIF.
+    ENDIF.
+
+    IF lv_total_tokens IS NOT INITIAL.
+      rv_usage = |Total tokens: input={ lv_prompt_tokens } output={ lv_completion_tokens } total={ lv_total_tokens } cached={ lv_cached_tokens }|.
+    ENDIF.
+
   ENDMETHOD.
 
 

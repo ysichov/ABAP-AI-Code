@@ -850,6 +850,16 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         lv_answer_log = lv_answer.
         lv_answer = zcl_ai_messages=>strip_log_info( lv_answer ).
+        DATA(lv_total_usage) = mo_messages->get_total_token_usage( lv_answer_log ).
+        IF lv_total_usage IS NOT INITIAL.
+          lv_answer = lv_answer
+                   && cl_abap_char_utilities=>newline
+                   && cl_abap_char_utilities=>newline
+                   && |---|
+                   && cl_abap_char_utilities=>newline
+                   && lv_total_usage.
+          lv_answer_log = lv_answer.
+        ENDIF.
 
         lv_resolved_code = mo_messages->get_resolved_code( ).
       ENDIF.
