@@ -171,7 +171,7 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       i_duration_seconds = mo_llm->get_last_seconds( )
       i_content     = lv_task_answer ).
 
-    rt_tasks = split_task_list( lv_task_answer ).
+    rt_tasks = split_task_list( zcl_ai_messages=>strip_log_info( lv_task_answer ) ).
     rt_tasks = enrich_tasks_with_answers( rt_tasks ).
     rt_tasks = strip_task_labels( rt_tasks ).
 

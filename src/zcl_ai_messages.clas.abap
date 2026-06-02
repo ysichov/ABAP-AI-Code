@@ -79,6 +79,10 @@ CLASS zcl_ai_messages DEFINITION
       IMPORTING i_orchestrator_answer TYPE string
       RETURNING VALUE(rv_has_text)    TYPE abap_bool.
 
+    CLASS-METHODS strip_log_info
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
+
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
 
@@ -511,18 +515,25 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
 
   METHOD has_text_after_agent_commands.
-    DATA(lv_text) = i_orchestrator_answer.
+    DATA(lv_text) = strip_log_info( i_orchestrator_answer ).
 
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:[^}]*\}' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*READ[^}]*\}' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*SHOW[^}]*\}' IN lv_text WITH ''.
-    REPLACE ALL OCCURRENCES OF REGEX '---[\s\r\n]*Tokens:.*$' IN lv_text WITH ''.
-    REPLACE ALL OCCURRENCES OF REGEX 'Tokens:.*$' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '^[\s\r\n-]+$' IN lv_text WITH ''.
     REPLACE ALL OCCURRENCES OF REGEX '---' IN lv_text WITH ''.
     CONDENSE lv_text.
 
     rv_has_text = xsdbool( lv_text IS NOT INITIAL ).
+  ENDMETHOD.
+
+
+  METHOD strip_log_info.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF REGEX '[\r\n]+---[\s\r\n]*Tokens:.*$' IN rv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '[\r\n]+Tokens:.*$' IN rv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '^\s+' IN rv_text WITH ''.
+    REPLACE ALL OCCURRENCES OF REGEX '\s+$' IN rv_text WITH ''.
   ENDMETHOD.
 
 

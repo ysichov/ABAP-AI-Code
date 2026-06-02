@@ -90,13 +90,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     IF it_tasks IS INITIAL.
       DATA(lv_orchestrator_prompt) = mo_messages->build_orchestrator_request( ).
       rv_answer = mo_llm->ask( lv_orchestrator_prompt ).
+      DATA(lv_orchestrator_answer_log) = rv_answer.
+      rv_answer = zcl_ai_messages=>strip_log_info( rv_answer ).
 
       mo_messages->add_message(
         i_role        = 'assistant'
         i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
         i_prompt_type = 'LLM_RESPONSE'
         i_duration_seconds = mo_llm->get_last_seconds( )
-        i_content     = rv_answer ).
+        i_content     = lv_orchestrator_answer_log ).
     ELSE.
       DATA(lv_task_count) = lines( it_tasks ).
       LOOP AT it_tasks INTO DATA(lv_task).
@@ -122,13 +124,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_content     = lv_task_orchestrator_prompt ).
 
         DATA(lv_task_orchestrator_answer) = mo_llm->ask( lv_task_orchestrator_prompt ).
+        DATA(lv_task_orchestrator_answer_log) = lv_task_orchestrator_answer.
+        lv_task_orchestrator_answer = zcl_ai_messages=>strip_log_info( lv_task_orchestrator_answer ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
-          i_content     = lv_task_orchestrator_answer ).
+          i_content     = lv_task_orchestrator_answer_log ).
 
         IF rv_answer IS NOT INITIAL.
           rv_answer = rv_answer && cl_abap_char_utilities=>newline.
@@ -168,7 +172,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = lv_language_prompt ).
 
-    rv_language = mo_llm->ask( lv_language_prompt ).
+    DATA(lv_language_answer_log) = mo_llm->ask( lv_language_prompt ).
+    rv_language = zcl_ai_messages=>strip_log_info( lv_language_answer_log ).
     CONDENSE rv_language.
 
     mo_messages->add_message(
@@ -176,7 +181,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_agent       = zcl_ai_agents_prompts=>c_agent_language_detector
       i_prompt_type = 'LLM_RESPONSE'
       i_duration_seconds = mo_llm->get_last_seconds( )
-      i_content     = rv_language ).
+      i_content     = lv_language_answer_log ).
 
   endmethod.
 
@@ -532,13 +537,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
         DATA(lv_agent_answer) = mo_llm->ask( lv_agent_prompt ).
+        DATA(lv_agent_answer_log) = lv_agent_answer.
+        lv_agent_answer = zcl_ai_messages=>strip_log_info( lv_agent_answer ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = ls_agent_request-agent
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
-          i_content     = lv_agent_answer ).
+          i_content     = lv_agent_answer_log ).
 
         IF mo_messages->has_text_after_agent_commands( lv_agent_answer ) = abap_true.
           lv_has_agent_followup_text = abap_true.
@@ -583,13 +590,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
         DATA(lv_review_answer) = mo_llm->ask( lv_review_prompt ).
+        DATA(lv_review_answer_log) = lv_review_answer.
+        lv_review_answer = zcl_ai_messages=>strip_log_info( lv_review_answer ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
-          i_content     = lv_review_answer ).
+          i_content     = lv_review_answer_log ).
       ENDIF.
 
       DATA(lv_only_code_search) = abap_true.
@@ -652,6 +661,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         lv_answer_log = lv_answer.
+        lv_answer = zcl_ai_messages=>strip_log_info( lv_answer ).
 
         lv_resolved_code = mo_messages->get_resolved_code( ).
       ENDIF.
