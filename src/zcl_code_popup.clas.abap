@@ -387,14 +387,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_object_name = mv_diff_object_name
       i_source      = mv_diff_new_code
       i_package     = mv_diff_package ).
-    DATA(lv_save_log) = zcl_code_object_saver=>get_last_log( ).
-
-    IF lv_save_log IS NOT INITIAL.
-      lv_save_message = lv_save_message
-                     && cl_abap_char_utilities=>newline
-                     && cl_abap_char_utilities=>newline
-                     && lv_save_log.
-    ENDIF.
 
     mo_messages->add_message(
       i_role        = 'assistant'

@@ -17,6 +17,14 @@ CLASS zcl_code_object_saver DEFINITION
         VALUE(rv_log) TYPE string.
 
   PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_progdir,
+        name    TYPE progdir-name,
+        state   TYPE progdir-state,
+        subc    TYPE progdir-subc,
+        fixpt   TYPE progdir-fixpt,
+        uccheck TYPE progdir-uccheck,
+      END OF ty_progdir.
     TYPES ty_source_line TYPE c LENGTH 255.
     TYPES tt_source      TYPE STANDARD TABLE OF ty_source_line WITH NON-UNIQUE DEFAULT KEY.
     CLASS-DATA mv_last_log TYPE string.
@@ -60,7 +68,7 @@ CLASS zcl_code_object_saver DEFINITION
         i_program TYPE progname
         i_source  TYPE string
       RETURNING
-        VALUE(rs_progdir) TYPE zif_abapgit_sap_report=>ty_progdir.
+        VALUE(rs_progdir) TYPE ty_progdir.
 ENDCLASS.
 
 
@@ -70,11 +78,20 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
   METHOD get_program_dir.
 
-    TRY.
-        rs_progdir = zcl_abapgit_factory=>get_sap_report( )->read_progdir( i_program ).
-      CATCH cx_root.
-        CLEAR rs_progdir.
-    ENDTRY.
+    DATA ls_sapdir TYPE progdir.
+
+    CALL FUNCTION 'READ_PROGDIR'
+      EXPORTING
+        i_progname = i_program
+        i_state    = 'A'
+      IMPORTING
+        e_progdir  = ls_sapdir
+      EXCEPTIONS
+        not_exists = 1
+        OTHERS     = 2.
+    IF sy-subrc = 0.
+      MOVE-CORRESPONDING ls_sapdir TO rs_progdir.
+    ENDIF.
 
     IF rs_progdir-name IS NOT INITIAL.
       RETURN.
@@ -144,7 +161,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_package TYPE devclass.
     DATA lv_title TYPE rglif-title.
     DATA lt_source TYPE tt_source.
-    DATA ls_progdir TYPE zif_abapgit_sap_report=>ty_progdir.
+    DATA ls_progdir TYPE ty_progdir.
 
     lv_program = i_program.
     TRANSLATE lv_program TO UPPER CASE.
@@ -199,11 +216,27 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     TRY.
         IF lv_exists = abap_false.
-          zcl_abapgit_factory=>get_cts_api( )->insert_transport_object(
-            iv_object   = 'ABAP'
-            iv_obj_name = lv_program
-            iv_package  = lv_package
-            iv_language = sy-langu ).
+          CALL FUNCTION 'RS_CORR_INSERT'
+            EXPORTING
+              object              = lv_program
+              object_class        = 'ABAP'
+              devclass            = lv_package
+              master_language     = sy-langu
+              mode                = 'INSERT'
+              global_lock         = abap_true
+              suppress_dialog     = abap_true
+            EXCEPTIONS
+              cancelled           = 1
+              permission_failure  = 2
+              unknown_objectclass = 3
+              OTHERS              = 4.
+          IF sy-subrc <> 0.
+            rv_message = |Error registering program { lv_program } in package { lv_package }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            mv_last_log = mv_last_log
+                       && cl_abap_char_utilities=>newline
+                       && rv_message.
+            RETURN.
+          ENDIF.
 
           TRY.
               CALL FUNCTION 'RPY_PROGRAM_INSERT'
@@ -270,14 +303,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        zcl_abapgit_factory=>get_sap_report( )->update_progdir(
-          is_progdir = ls_progdir
-          iv_package = lv_package
-          iv_state   = 'I' ).
-
-        zcl_abapgit_objects_activation=>add(
-          iv_type = 'REPS'
-          iv_name = lv_program ).
       CATCH cx_root INTO DATA(lx_error).
         rv_message = |Error saving program { lv_program }: { lx_error->get_text( ) }|.
         mv_last_log = mv_last_log
