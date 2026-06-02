@@ -51,6 +51,7 @@ private section.
       !I_OLD_CODE type STRING
       !I_NEW_CODE type STRING
       !I_OBJECT_TYPE type STRING optional
+      !I_OBJECT_NAME type STRING optional
     exporting
       !E_OLD_CODE type STRING
       !E_NEW_CODE type STRING .
@@ -188,6 +189,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         i_old_code    = i_old_code
         i_new_code    = i_new_code
         i_object_type = i_object_type
+        i_object_name = i_object_name
       IMPORTING
         e_old_code    = lv_old_code
         e_new_code    = lv_new_code ).
