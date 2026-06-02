@@ -316,7 +316,9 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
             ev_hunk_ins        = lv_hunk_ins
             ev_hunk_mod        = lv_hunk_mod
             ev_hunk_del        = lv_hunk_del ).
-        APPEND LINES OF lt_part_hunk_info TO et_hunk_info.
+        LOOP AT lt_part_hunk_info INTO DATA(ls_part_hunk_info).
+          INSERT ls_part_hunk_info INTO TABLE et_hunk_info.
+        ENDLOOP.
 
         APPEND VALUE zif_ave_acr_types=>ty_obj_stats(
           objtype      = ls_part-type
