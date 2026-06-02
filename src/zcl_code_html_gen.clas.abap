@@ -910,24 +910,16 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     OR lv_cached_tokens IS NOT INITIAL.
       rv_html = rv_html
              && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;margin-bottom:8px;">|
-             && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:160px;">Tokens</th>|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Prompt</th>|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Completion</th>|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Cached</th></tr>|
-             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;font-weight:bold;">Usage</td>|
-             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_prompt_tokens ) }</td>|
-             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_completion_tokens ) }</td>|
-             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_cached_tokens ) }</td></tr>|
+             && |<tr><td style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;color:#163a5f;min-width:160px;">Token Usage</td>|
+             && |<td style="padding:5px 9px;border:1px solid #c8d7e8;">Input: { escape_html( lv_prompt_tokens ) }</td>|
+             && |<td style="padding:5px 9px;border:1px solid #c8d7e8;">Output: { escape_html( lv_completion_tokens ) }</td>|
+             && |<td style="padding:5px 9px;border:1px solid #c8d7e8;">Cached: { escape_html( lv_cached_tokens ) }</td></tr>|
              && |</table>|.
     ELSEIF lv_usage_text IS NOT INITIAL.
       rv_html = rv_html
              && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;margin-bottom:8px;">|
-             && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:160px;">Tokens</th>|
-             && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Raw</th></tr>|
-             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;font-weight:bold;">Usage</td>|
-             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;">{ escape_html( lv_usage_text ) }</td></tr>|
+             && |<tr><td style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;color:#163a5f;min-width:160px;">Token Usage</td>|
+             && |<td style="padding:5px 9px;border:1px solid #c8d7e8;">{ escape_html( lv_usage_text ) }</td></tr>|
              && |</table>|.
     ENDIF.
 
