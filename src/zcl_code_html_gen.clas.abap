@@ -865,6 +865,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_added TYPE i.
     DATA lv_changed TYPE i.
     DATA lv_deleted TYPE i.
+    DATA lv_total_lines TYPE i.
     DATA lv_usage_text TYPE string.
     DATA lv_prompt_tokens TYPE string.
     DATA lv_completion_tokens TYPE string.
@@ -900,6 +901,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         lv_deleted = lv_deleted + ls_stats-hunk_del.
       ENDLOOP.
     ENDIF.
+    lv_total_lines = lv_added + lv_changed + lv_deleted.
 
     rv_html = |<div style="font-family:Segoe UI,Arial,sans-serif;margin:18px 10px 12px 10px;">|.
 
@@ -931,10 +933,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
     rv_html = rv_html
            && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;width:100%;">|
-           && |<tr><td colspan="7" style="padding:5px 9px;border:1px solid #c8d7e8;font-weight:bold;">Total</td>|
-           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">+{ lv_added } / ~{ lv_changed } / -{ lv_deleted }</td></tr>|
            && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
-           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:360px;">Part</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;min-width:360px;">Object</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Status</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Added</th>|
            && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Changed</th>|
@@ -976,7 +976,17 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
 
-    rv_html = rv_html && |</table></div>|.
+    rv_html = rv_html
+           && |<tr style="font-weight:bold;background:#fbfdff;">|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;">Total</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;"></td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;color:#16803a;">{ lv_added }</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;color:#9a6500;">{ lv_changed }</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;color:#a52525;">{ lv_deleted }</td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;"></td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;"></td>|
+           && |<td style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_total_lines }</td></tr>|
+           && |</table></div>|.
 
   endmethod.
 
