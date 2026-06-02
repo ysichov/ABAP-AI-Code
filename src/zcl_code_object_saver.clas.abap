@@ -76,6 +76,12 @@ CLASS zcl_code_object_saver DEFINITION
       RETURNING
         VALUE(rv_message) TYPE string.
 
+    CLASS-METHODS activate_program
+      IMPORTING
+        i_program TYPE progname
+      RETURNING
+        VALUE(rv_message) TYPE string.
+
     CLASS-METHODS get_program_dir
       IMPORTING
         i_program TYPE progname
@@ -369,17 +375,85 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    DATA(lv_activation_message) = activate_program( lv_program ).
+    IF lv_activation_message IS NOT INITIAL.
+      rv_message = lv_activation_message.
+      mv_last_log = mv_last_log
+                 && cl_abap_char_utilities=>newline
+                 && rv_message.
+      RETURN.
+    ENDIF.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |RS_WORKING_OBJECTS_ACTIVATE executed for { lv_program }.|.
+
     IF lv_exists = abap_true.
-      CONCATENATE 'Program' lv_program 'was saved as inactive version.'
+      CONCATENATE 'Program' lv_program 'was saved and activated.'
              INTO rv_message SEPARATED BY space.
     ELSE.
       CONCATENATE 'Program' lv_program 'was created in package' lv_package
-                  'as inactive version.'
+                  'and activated.'
              INTO rv_message SEPARATED BY space.
     ENDIF.
     mv_last_log = mv_last_log
                && cl_abap_char_utilities=>newline
                && rv_message.
+
+  ENDMETHOD.
+
+
+  METHOD activate_program.
+
+    DATA lt_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_object TYPE dwinactiv.
+    DATA lv_t100_message TYPE string.
+    DATA lv_subrc_text TYPE string.
+
+    ls_object-object = 'REPS'.
+    ls_object-obj_name = i_program.
+    APPEND ls_object TO lt_objects.
+
+    TRY.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+            ui_decoupled           = abap_true
+          TABLES
+            objects                = lt_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+      CATCH cx_sy_dyn_call_param_not_found.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+          TABLES
+            objects                = lt_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+    ENDTRY.
+
+    IF sy-subrc <> 0.
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+          INTO lv_t100_message.
+      ELSE.
+        lv_subrc_text = sy-subrc.
+        CONCATENATE 'subrc' lv_subrc_text
+               INTO lv_t100_message SEPARATED BY space.
+      ENDIF.
+      CONCATENATE 'Error activating program' i_program ':'
+                  lv_t100_message
+             INTO rv_message SEPARATED BY space.
+    ENDIF.
 
   ENDMETHOD.
 
