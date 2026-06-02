@@ -82,6 +82,13 @@ private section.
       !I_TEXT type STRING
     returning
       value(RV_PACKAGE) type STRING .
+  methods HAS_CREATE_OBJECT_REQUEST
+    importing
+      !IT_AGENT_REQUESTS type ZCL_AI_MESSAGES=>TT_AGENT_REQUESTS
+      !I_OBJECT_TYPE type STRING
+      !I_OBJECT_NAME type STRING
+    returning
+      value(RV_FOUND) type ABAP_BOOL .
 ENDCLASS.
 
 
@@ -209,6 +216,31 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       TRANSLATE rv_package TO UPPER CASE.
       CONDENSE rv_package.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD has_create_object_request.
+
+    DATA(lv_object_type) = i_object_type.
+    DATA(lv_object_name) = i_object_name.
+    TRANSLATE lv_object_type TO UPPER CASE.
+    TRANSLATE lv_object_name TO UPPER CASE.
+
+    LOOP AT it_agent_requests INTO DATA(ls_agent_request).
+      CHECK ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.
+
+      DATA(lv_create_type) = ls_agent_request-object_type.
+      DATA(lv_create_name) = ls_agent_request-object_name.
+      TRANSLATE lv_create_type TO UPPER CASE.
+      TRANSLATE lv_create_name TO UPPER CASE.
+
+      IF lv_create_type = lv_object_type
+      AND lv_create_name = lv_object_name.
+        rv_found = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -512,7 +544,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             lv_code_change_type = ls_agent_request-object_type.
             lv_code_change_name = ls_agent_request-object_name.
           ENDIF.
-          DATA(lv_change_read_command) = mo_messages->build_read_command( ls_agent_request ).
+          DATA(lv_change_is_new_object) = has_create_object_request(
+            it_agent_requests = lt_agent_requests
+            i_object_type     = ls_agent_request-object_type
+            i_object_name     = ls_agent_request-object_name ).
+
+          DATA(lv_change_read_command) = COND string(
+            WHEN lv_change_is_new_object = abap_false
+            THEN mo_messages->build_read_command( ls_agent_request )
+            ELSE '' ).
           IF lv_change_read_command IS NOT INITIAL.
             CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
               EXPORTING percentage = lv_percentage
@@ -523,6 +563,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 i_text           = lv_change_read_command
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
+          ELSEIF lv_change_is_new_object = abap_true.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_change
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CODE_CHANGE for new object will be generated without reading current SAP source: { ls_agent_request-object_type } { ls_agent_request-object_name }| ).
           ENDIF.
           lv_has_agent_followup_text = abap_true.
           CONTINUE.
@@ -554,7 +600,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           ENDIF.
 
           IF lv_review_has_object_group = abap_true.
-            DATA(lv_group_review_read_command) = mo_messages->build_read_command( ls_agent_request ).
+            DATA(lv_group_review_is_new_object) = has_create_object_request(
+              it_agent_requests = lt_agent_requests
+              i_object_type     = ls_agent_request-object_type
+              i_object_name     = ls_agent_request-object_name ).
+
+            DATA(lv_group_review_read_command) = COND string(
+              WHEN lv_group_review_is_new_object = abap_false
+              THEN mo_messages->build_read_command( ls_agent_request )
+              ELSE '' ).
             IF lv_group_review_read_command IS NOT INITIAL.
               CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
                 EXPORTING percentage = lv_percentage
@@ -565,6 +619,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                   i_text           = lv_group_review_read_command
                 CHANGING
                   ct_done_commands = lt_done_read_commands ).
+            ELSEIF lv_group_review_is_new_object = abap_true.
+              mo_messages->add_message(
+                i_role        = 'assistant'
+                i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
+                i_prompt_type = 'AGENT_RESPONSE'
+                i_content     = |CODE_REVIEW for new object will review the proposed code after generation: { ls_agent_request-object_type } { ls_agent_request-object_name }| ).
             ENDIF.
 
             lv_has_agent_followup_text = abap_true.
@@ -592,7 +652,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           lv_has_code_diff = abap_true.
           APPEND ls_agent_request TO lt_code_diff_commands.
 
-          DATA(lv_diff_read_command) = mo_messages->build_read_command( ls_agent_request ).
+          DATA(lv_diff_is_new_object) = has_create_object_request(
+            it_agent_requests = lt_agent_requests
+            i_object_type     = ls_agent_request-object_type
+            i_object_name     = ls_agent_request-object_name ).
+
+          DATA(lv_diff_read_command) = COND string(
+            WHEN lv_diff_is_new_object = abap_false
+            THEN mo_messages->build_read_command( ls_agent_request )
+            ELSE '' ).
           IF lv_diff_read_command IS NOT INITIAL.
             CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
               EXPORTING percentage = lv_percentage
@@ -603,6 +671,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 i_text           = lv_diff_read_command
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
+          ELSEIF lv_diff_is_new_object = abap_true.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_code_diff
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = |CODE_DIFF for new object will use empty current source after code extraction: { ls_agent_request-object_type } { ls_agent_request-object_name }| ).
           ENDIF.
 
           CONTINUE.
