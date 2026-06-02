@@ -416,6 +416,53 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_review.
+          DATA(lv_review_object_type) = ls_agent_request-object_type.
+          DATA(lv_review_object_name) = ls_agent_request-object_name.
+          TRANSLATE lv_review_object_type TO UPPER CASE.
+          TRANSLATE lv_review_object_name TO UPPER CASE.
+          DATA(lv_review_has_object_group) = abap_false.
+
+          IF lv_review_object_type IS NOT INITIAL
+          AND lv_review_object_name IS NOT INITIAL.
+            LOOP AT lt_agent_requests INTO DATA(ls_peer_request).
+              CHECK ls_peer_request-agent <> zcl_ai_agents_prompts=>c_agent_code_review.
+
+              DATA(lv_peer_object_type) = ls_peer_request-object_type.
+              DATA(lv_peer_object_name) = ls_peer_request-object_name.
+              TRANSLATE lv_peer_object_type TO UPPER CASE.
+              TRANSLATE lv_peer_object_name TO UPPER CASE.
+
+              IF lv_peer_object_type = lv_review_object_type
+              AND lv_peer_object_name = lv_review_object_name.
+                lv_review_has_object_group = abap_true.
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+
+          IF lv_review_has_object_group = abap_true.
+            DATA(lv_group_review_read_command) = mo_messages->build_read_command( ls_agent_request ).
+            IF lv_group_review_read_command IS NOT INITIAL.
+              CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+                EXPORTING percentage = lv_percentage
+                          text       = |Reading code { ls_agent_request-object_name }...|.
+
+              lv_ignored_context = resolve_and_log_read_commands(
+                EXPORTING
+                  i_text           = lv_group_review_read_command
+                CHANGING
+                  ct_done_commands = lt_done_read_commands ).
+            ENDIF.
+
+            lv_has_agent_followup_text = abap_true.
+            IF lv_final_prompt_tasks IS NOT INITIAL.
+              lv_final_prompt_tasks = lv_final_prompt_tasks && cl_abap_char_utilities=>newline.
+            ENDIF.
+            lv_final_prompt_tasks = lv_final_prompt_tasks
+                                  && |Review code for { ls_agent_request-object_type } { ls_agent_request-object_name }.|.
+            CONTINUE.
+          ENDIF.
+
           IF lv_user_requested_review = abap_true.
             APPEND ls_agent_request TO lt_batched_code_review.
           ELSE.

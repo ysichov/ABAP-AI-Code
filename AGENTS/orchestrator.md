@@ -12,6 +12,8 @@ BUT if user asks more than show PLEASE INCLUDE user prompt!!!
 For example user asks tell me about or describe - don't miss prompt in this case!!!! Insert FULL PROMPT!!!
 {AGENT:CODE_SEARCH object_type object_name  + USER PROMPT}
 
+GROUP TASKS by object name. If you have several tasks for object_name make it as one task separated by comma.
+
 IF user didn't write type of object - think that it is a program. If object name starts with ZCL - this is a Class.
 
 CODE_SEARCH is a runtime command, not an LLM agent.
