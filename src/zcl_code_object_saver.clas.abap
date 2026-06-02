@@ -12,10 +12,14 @@ CLASS zcl_code_object_saver DEFINITION
         i_package     TYPE string OPTIONAL
       RETURNING
         VALUE(rv_message) TYPE string.
+    CLASS-METHODS get_last_log
+      RETURNING
+        VALUE(rv_log) TYPE string.
 
   PRIVATE SECTION.
     TYPES ty_source_line TYPE c LENGTH 255.
     TYPES tt_source      TYPE STANDARD TABLE OF ty_source_line WITH NON-UNIQUE DEFAULT KEY.
+    CLASS-DATA mv_last_log TYPE string.
 
     CLASS-METHODS save_program
       IMPORTING
@@ -47,6 +51,7 @@ CLASS zcl_code_object_saver DEFINITION
       IMPORTING
         i_program TYPE progname
         it_source TYPE tt_source
+        i_existed TYPE abap_bool
       RETURNING
         VALUE(rv_message) TYPE string.
 
@@ -91,6 +96,13 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_last_log.
+
+    rv_log = mv_last_log.
+
+  ENDMETHOD.
+
+
   METHOD program_exists.
 
     DATA lv_progname TYPE reposrc-progname.
@@ -107,6 +119,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
   METHOD save.
 
+    CLEAR mv_last_log.
+
     DATA(lv_object_type) = i_object_type.
     TRANSLATE lv_object_type TO UPPER CASE.
 
@@ -118,6 +132,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           i_package = i_package ).
       WHEN OTHERS.
         rv_message = |Saving { i_object_type } { i_object_name } is not implemented yet.|.
+        mv_last_log = rv_message.
     ENDCASE.
 
   ENDMETHOD.
@@ -137,18 +152,21 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     IF lv_program IS INITIAL.
       rv_message = 'Program name is empty.'.
+      mv_last_log = rv_message.
       RETURN.
     ENDIF.
 
     lt_source = source_to_table( i_source ).
     IF lt_source IS INITIAL.
       rv_message = |No source code to save for program { lv_program }.|.
+      mv_last_log = rv_message.
       RETURN.
     ENDIF.
 
     DATA(lv_syntax_error) = syntax_check( lt_source ).
     IF lv_syntax_error IS NOT INITIAL.
       rv_message = lv_syntax_error.
+      mv_last_log = rv_message.
       RETURN.
     ENDIF.
 
@@ -164,6 +182,20 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       i_program = lv_program
       i_source  = i_source ).
     lv_title = lv_program.
+
+    mv_last_log = |SAVE_OBJECT diagnostics|
+               && cl_abap_char_utilities=>newline
+               && |Object: PROG { lv_program }|
+               && cl_abap_char_utilities=>newline
+               && |Package: { lv_package }|
+               && cl_abap_char_utilities=>newline
+               && |Object existed before save: { lv_exists }|
+               && cl_abap_char_utilities=>newline
+               && |Proposed source lines: { lines( lt_source ) }|
+               && cl_abap_char_utilities=>newline
+               && |PROPOSED SOURCE:|
+               && cl_abap_char_utilities=>newline
+               && i_source.
 
     TRY.
         IF lv_exists = abap_false.
@@ -211,6 +243,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           ENDTRY.
           IF sy-subrc <> 0.
             rv_message = |Error creating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            mv_last_log = mv_last_log
+                       && cl_abap_char_utilities=>newline
+                       && rv_message.
             RETURN.
           ENDIF.
         ELSE.
@@ -228,6 +263,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
               OTHERS           = 4.
           IF sy-subrc <> 0.
             rv_message = |Error updating program { lv_program }: { sy-msgid } { sy-msgno } { sy-msgv1 } { sy-msgv2 }|.
+            mv_last_log = mv_last_log
+                       && cl_abap_char_utilities=>newline
+                       && rv_message.
             RETURN.
           ENDIF.
         ENDIF.
@@ -242,16 +280,26 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           iv_name = lv_program ).
       CATCH cx_root INTO DATA(lx_error).
         rv_message = |Error saving program { lv_program }: { lx_error->get_text( ) }|.
+        mv_last_log = mv_last_log
+                   && cl_abap_char_utilities=>newline
+                   && rv_message.
         RETURN.
     ENDTRY.
 
     COMMIT WORK AND WAIT.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |COMMIT WORK AND WAIT executed.|.
 
     DATA(lv_verify_message) = verify_inactive_source(
       i_program = lv_program
-      it_source = lt_source ).
+      it_source = lt_source
+      i_existed = lv_exists ).
     IF lv_verify_message IS NOT INITIAL.
       rv_message = lv_verify_message.
+      mv_last_log = mv_last_log
+                 && cl_abap_char_utilities=>newline
+                 && rv_message.
       RETURN.
     ENDIF.
 
@@ -259,6 +307,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       WHEN lv_exists = abap_true
       THEN |Program { lv_program } was saved as inactive version.|
       ELSE |Program { lv_program } was created in package { lv_package } as inactive version.| ).
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && rv_message.
 
   ENDMETHOD.
 
@@ -300,15 +351,47 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
   METHOD verify_inactive_source.
 
     DATA lt_saved TYPE tt_source.
+    DATA lt_active TYPE tt_source.
+    DATA lv_active_subrc TYPE sy-subrc.
 
     READ REPORT i_program INTO lt_saved STATE 'I'.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |READ REPORT STATE I subrc: { sy-subrc }, lines: { lines( lt_saved ) }|.
     IF sy-subrc <> 0.
       rv_message = |Program { i_program } was written, but inactive source cannot be read back.|.
       RETURN.
     ENDIF.
 
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |Inactive source equals proposed source: { xsdbool( lt_saved = it_source ) }|.
     IF lt_saved <> it_source.
       rv_message = |Program { i_program } was written, but inactive source differs from proposed source.|.
+      RETURN.
+    ENDIF.
+
+    READ REPORT i_program INTO lt_active STATE 'A'.
+    lv_active_subrc = sy-subrc.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |READ REPORT STATE A subrc: { lv_active_subrc }, lines: { lines( lt_active ) }|
+               && cl_abap_char_utilities=>newline
+               && |Active source equals proposed source: { xsdbool( lt_active = it_source ) }|
+               && cl_abap_char_utilities=>newline
+               && |Active source equals inactive source: { xsdbool( lt_active = lt_saved ) }|.
+
+    IF i_existed = abap_true
+    AND lv_active_subrc = 0
+    AND lt_active = it_source.
+      rv_message = |No SE38 delta for { i_program }: proposed source is identical to active source.|.
+      RETURN.
+    ENDIF.
+
+    IF i_existed = abap_true
+    AND lv_active_subrc = 0
+    AND lt_active = lt_saved.
+      rv_message = |No SE38 delta for { i_program}: inactive source is still identical to active source.|.
     ENDIF.
 
   ENDMETHOD.
