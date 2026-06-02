@@ -195,7 +195,47 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       DATA(lv_line_upper) = lv_line.
       TRANSLATE lv_line_upper TO UPPER CASE.
       CHECK lv_line_upper CP 'TASK*'.
-      APPEND lv_line TO rt_tasks.
+
+      IF lv_line_upper CS '-ASK'.
+        APPEND lv_line TO rt_tasks.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_colon_pos) = 0.
+      FIND FIRST OCCURRENCE OF ':' IN lv_line MATCH OFFSET lv_colon_pos.
+      IF sy-subrc <> 0.
+        APPEND lv_line TO rt_tasks.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_task_key) = substring( val = lv_line len = lv_colon_pos ).
+      DATA(lv_task_text) = substring( val = lv_line off = lv_colon_pos + 1 ).
+      CONDENSE lv_task_key.
+      CONDENSE lv_task_text.
+
+      DATA(lv_root_key) = lv_task_key.
+      REPLACE FIRST OCCURRENCE OF REGEX '\.[0-9]+$' IN lv_root_key WITH ''.
+      CONDENSE lv_root_key.
+
+      DATA(lv_merged) = abap_false.
+      LOOP AT rt_tasks ASSIGNING FIELD-SYMBOL(<task_line>).
+        DATA(lv_existing_key) = <task_line>.
+        FIND FIRST OCCURRENCE OF ':' IN lv_existing_key MATCH OFFSET DATA(lv_existing_colon).
+        IF sy-subrc = 0.
+          lv_existing_key = substring( val = lv_existing_key len = lv_existing_colon ).
+        ENDIF.
+        CONDENSE lv_existing_key.
+
+        IF lv_existing_key = lv_root_key.
+          <task_line> = <task_line> && |; { lv_task_text }|.
+          lv_merged = abap_true.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+
+      IF lv_merged = abap_false.
+        APPEND |{ lv_root_key }: { lv_task_text }| TO rt_tasks.
+      ENDIF.
     ENDLOOP.
 
   endmethod.
