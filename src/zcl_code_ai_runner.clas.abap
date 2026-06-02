@@ -16,6 +16,7 @@ public section.
       diff_new_code TYPE string,
       diff_object_type TYPE string,
       diff_object_name TYPE string,
+      diff_package TYPE string,
     END OF ty_result .
 
   methods CONSTRUCTOR
@@ -76,6 +77,11 @@ private section.
       !I_COMPARE_SOURCE type STRING optional
     returning
       value(RV_SOURCE) type STRING .
+  methods EXTRACT_PACKAGE
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_PACKAGE) type STRING .
 ENDCLASS.
 
 
@@ -193,6 +199,18 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_content     = lv_language_answer_log ).
 
   endmethod.
+
+
+  METHOD extract_package.
+
+    FIND FIRST OCCURRENCE OF REGEX '\bPACKAGE\s+([^\s\}]+)'
+      IN i_text IGNORING CASE SUBMATCHES rv_package.
+    IF sy-subrc = 0.
+      TRANSLATE rv_package TO UPPER CASE.
+      CONDENSE rv_package.
+    ENDIF.
+
+  ENDMETHOD.
 
 
   method IS_REVIEW_REQUESTED.
@@ -437,6 +455,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       DATA lv_code_change_name TYPE string.
       DATA lv_create_object_type TYPE string.
       DATA lv_create_object_name TYPE string.
+      DATA lv_diff_package TYPE string.
       DATA lv_final_prompt_tasks TYPE string.
 
       IF lv_orchestrator_upper CS '{SHOW'.
@@ -596,11 +615,17 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             lv_create_object_type = ls_agent_request-object_type.
             lv_create_object_name = ls_agent_request-object_name.
           ENDIF.
+          IF lv_diff_package IS INITIAL.
+            lv_diff_package = extract_package( ls_agent_request-relevant_prompt ).
+          ENDIF.
           APPEND ls_agent_request TO lt_create_object_commands.
           CONTINUE.
         ENDIF.
 
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_save.
+          IF lv_diff_package IS INITIAL.
+            lv_diff_package = extract_package( ls_agent_request-relevant_prompt ).
+          ENDIF.
           APPEND ls_agent_request TO lt_save_commands.
           CONTINUE.
         ENDIF.
@@ -828,6 +853,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           rs_result-diff_new_code = lv_diff_new_code.
           rs_result-diff_object_type = lv_code_change_type.
           rs_result-diff_object_name = lv_code_change_name.
+          rs_result-diff_package = lv_diff_package.
         ENDIF.
       ENDIF.
 
@@ -949,6 +975,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             rs_result-diff_new_code = lv_create_extracted_code.
             rs_result-diff_object_type = ls_create_object_command-object_type.
             rs_result-diff_object_name = ls_create_object_command-object_name.
+            rs_result-diff_package = lv_diff_package.
           ENDIF.
 
         ELSE.
@@ -982,6 +1009,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             rs_result-diff_new_code = lv_create_extracted_code.
             rs_result-diff_object_type = ls_create_object_command-object_type.
             rs_result-diff_object_name = ls_create_object_command-object_name.
+            rs_result-diff_package = lv_diff_package.
           ELSE.
             mo_messages->add_message(
               i_role        = 'assistant'

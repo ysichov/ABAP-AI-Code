@@ -34,6 +34,10 @@ private section.
   data MO_ANSWER type ref to CL_GUI_HTML_VIEWER .
   data MV_DIFF_BASE_HTML type STRING .
   data MV_DIFF_KEY type STRING .
+  data MV_DIFF_OBJECT_TYPE type STRING .
+  data MV_DIFF_OBJECT_NAME type STRING .
+  data MV_DIFF_PACKAGE type STRING .
+  data MV_DIFF_NEW_CODE type STRING .
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
   data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
@@ -70,10 +74,12 @@ private section.
       !I_NEW_CODE type STRING
       !I_OBJECT_TYPE type STRING optional
       !I_OBJECT_NAME type STRING optional
+      !I_PACKAGE type STRING optional
       !I_USAGE_TEXT type STRING optional
     returning
       value(RV_HTML) type STRING .
   methods REFRESH_DIFF_HTML .
+  methods SAVE_APPROVED_DIFF .
 ENDCLASS.
 
 
@@ -126,6 +132,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         i_new_code    = ls_result-diff_new_code
         i_object_type = ls_result-diff_object_type
         i_object_name = ls_result-diff_object_name
+        i_package     = ls_result-diff_package
         i_usage_text  = ls_result-answer_log ).
     ENDIF.
 
@@ -169,6 +176,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         e_diff_key    = mv_diff_key
         et_hunk_info  = mt_diff_hunk_info
         et_acr_stats  = mt_diff_acr_stats ).
+
+    mv_diff_object_type = i_object_type.
+    mv_diff_object_name = i_object_name.
+    mv_diff_package = i_package.
+    mv_diff_new_code = i_new_code.
 
     CLEAR: mt_diff_approved,
            mt_diff_declined,
@@ -312,21 +324,37 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     IF lv_all_approved = abap_true
        AND mv_diff_save_stub_logged = abap_false.
       mv_diff_save_stub_logged = abap_true.
-      mo_messages->add_message(
-        i_role        = 'user'
-        i_agent       = 'SAVE_OBJECT'
-        i_prompt_type = 'COMMAND'
-        i_content     = |SAVE_OBJECT command stub after all AI diff approvals: { mv_diff_key }| ).
-      mo_messages->add_message(
-        i_role        = 'assistant'
-        i_agent       = 'SAVE_OBJECT'
-        i_prompt_type = 'AGENT_RESPONSE'
-        i_content     = |SAVE_OBJECT command stub. All hunks approved for { mv_diff_key }.| ).
+      save_approved_diff( ).
     ENDIF.
 
     refresh_diff_html( ).
 
   endmethod.
+
+
+  METHOD save_approved_diff.
+
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = 'SAVE_OBJECT'
+      i_prompt_type = 'COMMAND'
+      i_content     = |Save approved AI diff: { mv_diff_key }| ).
+
+    DATA(lv_save_message) = zcl_code_object_saver=>save(
+      i_object_type = mv_diff_object_type
+      i_object_name = mv_diff_object_name
+      i_source      = mv_diff_new_code
+      i_package     = mv_diff_package ).
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = 'SAVE_OBJECT'
+      i_prompt_type = 'AGENT_RESPONSE'
+      i_content     = lv_save_message ).
+
+    MESSAGE lv_save_message TYPE 'S'.
+
+  ENDMETHOD.
 
 
   method ON_DIALOG_CLOSE.
