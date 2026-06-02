@@ -23,6 +23,7 @@ public section.
       !I_NEW_CODE type STRING
       !I_OBJECT_TYPE type STRING optional
       !I_OBJECT_NAME type STRING optional
+      !I_USAGE_TEXT type STRING optional
     exporting
       !E_HTML type STRING
       !E_BASE_HTML type STRING
@@ -84,6 +85,11 @@ private section.
       !I_HTML type STRING
     changing
       !CV_HTML type STRING .
+  class-methods PREPEND_HTML_BODY
+    importing
+      !I_HTML type STRING
+    changing
+      !CV_HTML type STRING .
   class-methods SPLIT_DIFF_TEXT
     importing
       !I_CURRENT_SOURCE type STRING
@@ -95,6 +101,12 @@ private section.
     importing
       !I_TEMPLATE_HTML type STRING
       !I_BODY_HTML type STRING
+    returning
+      value(RV_HTML) type STRING .
+  class-methods BUILD_DIFF_SUMMARY_HTML
+    importing
+      !IT_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS
+      !I_USAGE_TEXT type STRING optional
     returning
       value(RV_HTML) type STRING .
   class-methods RENDER_ABAP_BLOCKS
@@ -388,6 +400,13 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       IF e_html IS NOT INITIAL.
         ls_part-type = COND #( WHEN i_object_type IS NOT INITIAL THEN i_object_type ELSE 'CLAS' ).
         ls_part-object_name = COND #( WHEN i_object_name IS NOT INITIAL THEN i_object_name ELSE 'AI_CODE_CHANGE' ).
+        prepend_html_body(
+          EXPORTING
+            i_html = build_diff_summary_html(
+                       it_acr_stats = et_acr_stats
+                       i_usage_text = i_usage_text )
+          CHANGING
+            cv_html = e_html ).
         e_base_html = e_html.
         e_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
 
@@ -504,6 +523,13 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       hunk_del     = lv_hunk_del
       display_name = ls_part-display_name ) TO et_acr_stats.
 
+    prepend_html_body(
+      EXPORTING
+        i_html = build_diff_summary_html(
+                   it_acr_stats = et_acr_stats
+                   i_usage_text = i_usage_text )
+      CHANGING
+        cv_html = e_html ).
     e_base_html = e_html.
     e_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
 
@@ -589,6 +615,40 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     ELSE.
       cv_html = cv_html && lv_body.
     ENDIF.
+
+  endmethod.
+
+
+  method PREPEND_HTML_BODY.
+
+    DATA lv_body_start TYPE i.
+    DATA lv_body_tag_end TYPE i.
+    DATA lv_after_body TYPE string.
+    DATA lv_insert_pos TYPE i.
+
+    IF i_html IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    IF cv_html IS INITIAL.
+      cv_html = i_html.
+      RETURN.
+    ENDIF.
+
+    FIND FIRST OCCURRENCE OF '<body' IN cv_html IGNORING CASE MATCH OFFSET lv_body_start.
+    IF sy-subrc = 0.
+      lv_after_body = substring( val = cv_html off = lv_body_start ).
+      FIND FIRST OCCURRENCE OF '>' IN lv_after_body MATCH OFFSET lv_body_tag_end.
+      IF sy-subrc = 0.
+        lv_insert_pos = lv_body_start + lv_body_tag_end + 1.
+        cv_html = substring( val = cv_html len = lv_insert_pos )
+               && i_html
+               && substring( val = cv_html off = lv_insert_pos ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    cv_html = i_html && cv_html.
 
   endmethod.
 
@@ -698,6 +758,55 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       e_new_code = e_new_code
                 && lv_new_context.
     ENDLOOP.
+
+  endmethod.
+
+
+  method BUILD_DIFF_SUMMARY_HTML.
+
+    DATA lv_hunks TYPE i.
+    DATA lv_added TYPE i.
+    DATA lv_changed TYPE i.
+    DATA lv_deleted TYPE i.
+    DATA lv_objects TYPE i.
+    DATA lv_usage_text TYPE string.
+
+    LOOP AT it_acr_stats INTO DATA(ls_stats).
+      lv_objects = lv_objects + 1.
+      lv_hunks = lv_hunks + ls_stats-hunk_count.
+      lv_added = lv_added + ls_stats-hunk_ins.
+      lv_changed = lv_changed + ls_stats-hunk_mod.
+      lv_deleted = lv_deleted + ls_stats-hunk_del.
+    ENDLOOP.
+
+    IF i_usage_text IS NOT INITIAL.
+      FIND FIRST OCCURRENCE OF REGEX 'Tokens:\s*([^\r\n]+)' IN i_usage_text
+        SUBMATCHES lv_usage_text.
+      IF lv_usage_text IS NOT INITIAL.
+        lv_usage_text = |Tokens: { lv_usage_text }|.
+      ELSE.
+        lv_usage_text = i_usage_text.
+      ENDIF.
+    ENDIF.
+
+    rv_html = |<div style="font-family:Segoe UI,Arial,sans-serif;margin:8px 10px 12px 10px;">|
+           && |<table style="border-collapse:collapse;font-size:12px;background:#f8fbff;border:1px solid #c8d7e8;">|
+           && |<tr style="background:#e7f0fb;color:#163a5f;font-weight:bold;">|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:left;">Metric</th>|
+           && |<th style="padding:5px 9px;border:1px solid #c8d7e8;text-align:right;">Value</th></tr>|
+           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Objects</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_objects }</td></tr>|
+           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Diff hunks</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ lv_hunks }</td></tr>|
+           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Added lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#16803a;">{ lv_added }</td></tr>|
+           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Changed lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#9a6500;">{ lv_changed }</td></tr>|
+           && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Deleted lines</td><td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;color:#a52525;">{ lv_deleted }</td></tr>|.
+
+    IF lv_usage_text IS NOT INITIAL.
+      rv_html = rv_html
+             && |<tr><td style="padding:4px 9px;border:1px solid #c8d7e8;">Tokens</td>|
+             && |<td style="padding:4px 9px;border:1px solid #c8d7e8;text-align:right;">{ escape_html( lv_usage_text ) }</td></tr>|.
+    ENDIF.
+
+    rv_html = rv_html && |</table></div>|.
 
   endmethod.
 

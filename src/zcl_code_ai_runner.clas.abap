@@ -243,6 +243,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 && ls_part-source.
 
       IF i_log = abap_true.
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_class_extract
+          i_prompt_type = 'COMMAND'
+          i_content     = ls_part-title ).
+
         DATA(lv_content) = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|.
 
         READ TABLE lt_compare_parts INTO DATA(ls_compare_part)

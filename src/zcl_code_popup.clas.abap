@@ -70,6 +70,7 @@ private section.
       !I_NEW_CODE type STRING
       !I_OBJECT_TYPE type STRING optional
       !I_OBJECT_NAME type STRING optional
+      !I_USAGE_TEXT type STRING optional
     returning
       value(RV_HTML) type STRING .
   methods REFRESH_DIFF_HTML .
@@ -124,7 +125,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         i_old_code    = ls_result-diff_old_code
         i_new_code    = ls_result-diff_new_code
         i_object_type = ls_result-diff_object_type
-        i_object_name = ls_result-diff_object_name ).
+        i_object_name = ls_result-diff_object_name
+        i_usage_text  = ls_result-answer_log ).
     ENDIF.
 
     REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*$'
@@ -160,6 +162,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         i_new_code    = i_new_code
         i_object_type = i_object_type
         i_object_name = i_object_name
+        i_usage_text  = i_usage_text
       IMPORTING
         e_html        = rv_html
         e_base_html   = mv_diff_base_html
