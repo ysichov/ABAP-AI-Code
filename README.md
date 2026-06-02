@@ -3,7 +3,8 @@
 
 This is just an attempt to create my own replacement for Claude Code/Codex/Any other code agentic AI helper to boost ABAP development inside the SAP system and written in ABAP + some HTML UI.
 
-Dependencies: The ABAP Code Reviewer sHould be installed first - https://github.com/ysichov/AVE
+Dependencies: The ABAP Code Reviewer should be installed first - https://github.com/ysichov/AVE
+and https://github.com/abapGit/abapGit to create/change code.
 
 And lets start Combobulating ) - https://www.loom.com/share/75eb12e3a8394fe8a932c5573a8127f9
 
