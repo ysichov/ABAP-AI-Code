@@ -247,20 +247,28 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         READ TABLE lt_compare_parts INTO DATA(ls_compare_part)
           WITH KEY part_key = ls_part-part_key.
-        IF sy-subrc = 0.
+        IF sy-subrc = 0
+        AND ls_compare_part-source = ls_part-source.
           lv_content = lv_content
                     && cl_abap_char_utilities=>newline
-                    && |CURRENT SOURCE:|
-                    && cl_abap_char_utilities=>newline
-                    && ls_compare_part-source
-                    && cl_abap_char_utilities=>newline
-                    && cl_abap_char_utilities=>newline.
-        ENDIF.
+                    && |NO CHANGES|.
+        ELSE.
+          IF sy-subrc = 0.
+            lv_content = lv_content
+                      && cl_abap_char_utilities=>newline
+                      && |CURRENT SOURCE:|
+                      && cl_abap_char_utilities=>newline
+                      && ls_compare_part-source
+                      && cl_abap_char_utilities=>newline
+                      && cl_abap_char_utilities=>newline.
+          ENDIF.
 
-        lv_content = lv_content
-                  && |PROPOSED SOURCE:|
-                  && cl_abap_char_utilities=>newline
-                  && ls_part-source.
+          lv_content = lv_content
+                    && cl_abap_char_utilities=>newline
+                    && |PROPOSED SOURCE:|
+                    && cl_abap_char_utilities=>newline
+                    && ls_part-source.
+        ENDIF.
 
         mo_messages->add_message(
           i_role        = 'assistant'

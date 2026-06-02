@@ -389,6 +389,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       READ TABLE lt_old_parts INTO ls_old_part WITH KEY part_key = ls_part-part_key.
       READ TABLE lt_new_parts INTO ls_new_part WITH KEY part_key = ls_part-part_key.
 
+      IF ls_old_part-text = ls_new_part-text.
+        CONTINUE.
+      ENDIF.
+
       IF e_old_code IS NOT INITIAL.
         e_old_code = e_old_code
                   && cl_abap_char_utilities=>newline
