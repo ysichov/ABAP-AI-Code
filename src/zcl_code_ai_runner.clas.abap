@@ -1148,6 +1148,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
       IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
+        " If CODE_CHANGE agent was not in orchestrator response - derive target object from first agent request
+        IF lv_code_change_name IS INITIAL.
+          LOOP AT lt_agent_requests INTO DATA(ls_fallback_req) WHERE object_name IS NOT INITIAL.
+            lv_code_change_type = ls_fallback_req-object_type.
+            lv_code_change_name = ls_fallback_req-object_name.
+            EXIT.
+          ENDLOOP.
+        ENDIF.
+
         DATA(lv_extracted_code) = zcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
 
           mo_messages->add_message(
