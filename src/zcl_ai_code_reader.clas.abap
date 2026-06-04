@@ -168,6 +168,35 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     TRANSLATE lv_program TO UPPER CASE.
     CONDENSE lv_program.
 
+    " Wildcard search - return list from TADIR
+    IF lv_program CS '*' OR lv_program CS '+'.
+      DATA lv_like_pattern TYPE string.
+      lv_like_pattern = lv_program.
+      REPLACE ALL OCCURRENCES OF '*' IN lv_like_pattern WITH '%'.
+      REPLACE ALL OCCURRENCES OF '+' IN lv_like_pattern WITH '_'.
+
+      DATA lt_tadir TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
+      SELECT object obj_name devclass
+        FROM tadir
+        INTO CORRESPONDING FIELDS OF TABLE lt_tadir
+        WHERE pgmid    = 'R3TR'
+          AND obj_name LIKE lv_like_pattern
+        ORDER BY object obj_name.
+
+      IF lt_tadir IS INITIAL.
+        rv_text = |No objects found in TADIR matching { lv_program }.|.
+        RETURN.
+      ENDIF.
+
+      rv_text = |Objects matching { lv_program }:|.
+      LOOP AT lt_tadir INTO DATA(ls_tadir).
+        rv_text = rv_text
+               && cl_abap_char_utilities=>newline
+               && |{ ls_tadir-object } { ls_tadir-obj_name }|.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
     SELECT SINGLE object
       FROM tadir
       INTO lv_tadir_object

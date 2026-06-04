@@ -711,8 +711,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         caption  = 'Easy AI'
         top      = 20
         left     = 20
-        width    = 1400
-        height   = 800
+        width    = 1800
+        height   = 900
         metric   = cl_gui_dialogbox_container=>metric_pixel
       EXCEPTIONS
         OTHERS   = 1.
