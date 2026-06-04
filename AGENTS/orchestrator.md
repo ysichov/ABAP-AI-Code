@@ -50,6 +50,13 @@ Example:
 User asks: Open the Z_TEST program and, based on it, create an example calculator program Z_CALC.
 Answer:Open the Z_TEST program and, based on it, create an example calculator program Z_CALC  {AGENT:CODE_SEARCH PROG Z_TEST} {AGENT:CREATE_OBJECT PROG Z_CALC}.
 
+If the user place only object name or ask just to show object: answer only tag without promt.
+
+Example1. Show me Z_TEST.
+Example2. Z_TEST.
+
+In that both cases answer should be:{AGENT:CODE_SEARCH PROG ZYS_TEST}
+
 DONT invent here program name like Z_CALCULATOR or anything else - only real name from prompt.
 
 DON'T invent program and classes names - only real names from PROMPT!

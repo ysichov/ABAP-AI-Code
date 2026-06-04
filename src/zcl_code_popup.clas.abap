@@ -50,6 +50,9 @@ private section.
   data MT_DIFF_HUNK_THREADS type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_THREADS .
   data MT_DIFF_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS .
 
+  class-data MO_ANSWER_STATIC type ref to CL_GUI_HTML_VIEWER .
+  class-data MO_MESSAGES_STATIC type ref to ZCL_AI_MESSAGES .
+
   methods ON_TOOLBAR_CLICK
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
     importing
@@ -95,6 +98,16 @@ private section.
     importing
       !I_SAVE_LOG type STRING .
   methods SYNC_MESSAGE_HISTORY .
+  class-methods BUILD_STEPS_HTML
+    importing
+      !IO_MESSAGES type ref to ZCL_AI_MESSAGES
+    returning
+      value(RV_HTML) type STRING .
+  class-methods SET_LIVE_UPDATE_CONTEXT
+    importing
+      !IO_ANSWER_VIEWER type ref to CL_GUI_HTML_VIEWER
+      !IO_MESSAGES type ref to ZCL_AI_MESSAGES .
+  class-methods UPDATE_HTML_WITH_STEPS .
 ENDCLASS.
 
 
@@ -138,6 +151,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     mo_messages = ls_result-messages_ref.
     APPEND LINES OF ls_result-messages TO mt_message_history.
+
+    " Show steps HTML with all messages
+    zcl_code_popup=>set_live_update_context(
+      io_answer_viewer = mo_answer
+      io_messages      = mo_messages ).
+    zcl_code_popup=>update_html_with_steps( ).
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
@@ -798,6 +817,131 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     mo_history = NEW zcl_api_history_popup( mt_message_history ).
     mo_history->show( ).
+
+  endmethod.
+
+
+  method BUILD_STEPS_HTML.
+
+    IF io_messages IS NOT BOUND.
+      rv_html = |<!DOCTYPE html><html><body>No messages</body></html>|.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_messages) = io_messages->get_messages( ).
+
+    DATA lv_steps_html TYPE string.
+    DATA lv_last_agent TYPE string.
+    DATA lv_step_icon TYPE string.
+    DATA lv_step_status TYPE string.
+    DATA lt_agents_seen TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
+    LOOP AT lt_messages INTO DATA(ls_msg).
+      IF ls_msg-agent IS NOT INITIAL
+      AND ls_msg-agent <> lv_last_agent.
+
+        READ TABLE lt_agents_seen WITH KEY table_line = ls_msg-agent TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND ls_msg-agent TO lt_agents_seen.
+
+          lv_step_icon = '✓'.
+          lv_step_status = 'completed'.
+
+          lv_steps_html = lv_steps_html &&
+            |<div class="step { lv_step_status }">{ lv_step_icon } { zcl_code_html_gen=>escape_html( ls_msg-agent ) }</div>|.
+
+          lv_last_agent = ls_msg-agent.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    DATA lv_messages_html TYPE string.
+    LOOP AT lt_messages INTO ls_msg.
+      DATA(lv_msg_role) = COND string(
+        WHEN ls_msg-role = 'user' THEN 'user-msg'
+        WHEN ls_msg-role = 'assistant' THEN 'assistant-msg'
+        ELSE 'system-msg' ).
+
+      DATA(lv_msg_content) = zcl_code_html_gen=>escape_html( ls_msg-content ).
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_msg_content WITH '<br>'.
+
+      lv_messages_html = lv_messages_html &&
+        |<div class="{ lv_msg_role }">|
+        && |<span class="agent">{ zcl_code_html_gen=>escape_html( ls_msg-agent ) }</span>|
+        && |<div class="content">{ lv_msg_content }</div>|
+        && |</div>|.
+    ENDLOOP.
+
+    rv_html =
+      |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+      && |body { font-family: Segoe UI, Arial, sans-serif; margin: 10px; background: #f5f5f5; }|
+      && |.steps { margin-bottom: 20px; padding: 10px; background: white; border-radius: 4px; }|
+      && |.step { padding: 8px 12px; margin: 4px 0; border-radius: 3px; font-size: 14px; }|
+      && |.step.completed { background: #e8f5e9; color: #2e7d32; }|
+      && |.step.active { background: #fff3e0; color: #f57f17; animation: pulse 1s infinite; }|
+      && |@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }|
+      && |.messages { background: white; padding: 10px; border-radius: 4px; }|
+      && |.user-msg { margin: 8px 0; padding: 10px; background: #e3f2fd; border-left: 3px solid #1976d2; }|
+      && |.assistant-msg { margin: 8px 0; padding: 10px; background: #f3e5f5; border-left: 3px solid #7b1fa2; }|
+      && |.system-msg { margin: 8px 0; padding: 10px; background: #fce4ec; border-left: 3px solid #c2185b; }|
+      && |.agent { font-weight: bold; color: #0066aa; }|
+      && |.content { margin-top: 4px; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; }|
+      && |</style></head><body>|
+      && |<div class="steps">| && lv_steps_html && |</div>|
+      && |<div class="messages">| && lv_messages_html && |</div>|
+      && |</body></html>|.
+
+  endmethod.
+
+
+  method SET_LIVE_UPDATE_CONTEXT.
+
+    zcl_code_popup=>mo_answer_static = io_answer_viewer.
+    zcl_code_popup=>mo_messages_static = io_messages.
+
+  endmethod.
+
+
+  method UPDATE_HTML_WITH_STEPS.
+
+    IF mo_answer_static IS NOT BOUND
+    OR mo_messages_static IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_html) = build_steps_html( mo_messages_static ).
+
+    DATA lt_html TYPE tt_html.
+    DATA ls_html TYPE w3html.
+    DATA lv_offset TYPE i.
+
+    WHILE lv_offset < strlen( lv_html ).
+      CLEAR ls_html.
+      ls_html-line = substring(
+        val = lv_html
+        off = lv_offset
+        len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
+      APPEND ls_html TO lt_html.
+      lv_offset = lv_offset + 255.
+    ENDWHILE.
+
+    DATA lv_url TYPE c LENGTH 255.
+    mo_answer_static->load_data(
+      EXPORTING
+        type         = 'text'
+        subtype      = 'html'
+      IMPORTING
+        assigned_url = lv_url
+      CHANGING
+        data_table   = lt_html
+      EXCEPTIONS
+        OTHERS       = 1 ).
+
+    mo_answer_static->show_url(
+      EXPORTING url = lv_url
+      EXCEPTIONS OTHERS = 1 ).
+
+    CALL METHOD cl_gui_cfw=>flush.
 
   endmethod.
 

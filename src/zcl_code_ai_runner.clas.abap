@@ -29,6 +29,9 @@ public section.
       !I_SESSION_ID type I
     returning
       value(RS_RESULT) type TY_RESULT .
+  methods GET_MESSAGES
+    returning
+      value(RO_MESSAGES) type ref to ZCL_AI_MESSAGES .
 protected section.
 private section.
 
@@ -557,6 +560,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       it_tasks  = lt_tasks ).
     DATA(lv_orchestrator_answer) = ask_orchestrator( lt_tasks ).
 
+    " Update HTML with orchestrator response
+    TRY.
+        zcl_code_popup=>update_html_with_steps( ).
+      CATCH cx_root.
+        " Silently ignore if popup is not available
+    ENDTRY.
+
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
     DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
     DATA lv_orchestrator_code_context TYPE string.
@@ -856,6 +866,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             i_text           = lv_agent_answer
           CHANGING
             ct_done_commands = lt_done_read_commands ).
+
+        " Update HTML with progress after each agent step
+        TRY.
+            zcl_code_popup=>update_html_with_steps( ).
+          CATCH cx_root.
+            " Silently ignore if popup is not available
+        ENDTRY.
       ENDLOOP.
 
       IF lt_batched_code_review IS NOT INITIAL
@@ -1310,4 +1327,11 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     rs_result-messages = mo_messages->get_messages( ).
 
   endmethod.
+
+  method GET_MESSAGES.
+
+    ro_messages = mo_messages.
+
+  endmethod.
+
 ENDCLASS.
