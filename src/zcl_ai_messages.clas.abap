@@ -390,6 +390,24 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
       APPEND ls_request TO rt_requests.
     ENDWHILE.
+
+    " Text remaining after last tag -> append to last request's relevant_prompt
+    IF rt_requests IS NOT INITIAL AND lv_rest IS NOT INITIAL.
+      DATA(lv_tail) = lv_rest.
+      REPLACE ALL OCCURRENCES OF REGEX '^\s+' IN lv_tail WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX '\s+$' IN lv_tail WITH ''.
+      IF lv_tail IS NOT INITIAL.
+        DATA(lv_last_idx) = lines( rt_requests ).
+        FIELD-SYMBOLS <ls_last> TYPE ty_agent_request.
+        READ TABLE rt_requests ASSIGNING <ls_last> INDEX lv_last_idx.
+        IF sy-subrc = 0.
+          IF <ls_last>-relevant_prompt IS NOT INITIAL.
+            <ls_last>-relevant_prompt = <ls_last>-relevant_prompt && cl_abap_char_utilities=>newline.
+          ENDIF.
+          <ls_last>-relevant_prompt = <ls_last>-relevant_prompt && lv_tail.
+        ENDIF.
+      ENDIF.
+    ENDIF.
   ENDMETHOD.
 
 
