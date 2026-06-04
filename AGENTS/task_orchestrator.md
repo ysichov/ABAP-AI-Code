@@ -6,7 +6,11 @@ USER can ask to operate with different SAP objects. If he/she asks to operate on
 Example1. Show me Z_TEST.
 Example2. Z_TEST.
 
-In that both cases answer should be:{AGENT:CODE_SEARCH PROG ZYS_TEST}
+In that both cases answer should be: {AGENT:CODE_SEARCH obj_type obj_name}
+
+Examples: {AGENT:CODE_SEARCH PROG  prg_name},
+          {AGENT:CODE_SEARCH CLAS  cls_name},
+          {AGENT:CODE_SEARCH METH  cls_name=>method_name}
 
 For example "How agent orchestration works in the program Z_ABAP_AI_CODE.
 ANSWER: "TASK1: Show the Z_ABAP_AI_CODE program
@@ -44,7 +48,7 @@ Analyze the agent interaction logic in the Z_ABAP_AI_CODE program
 Study the algorithms for distributing tasks between agents"
 
 
-DOn't forget to include object type and name in evey task!!!
+DOn't forget to include object type and name in every task!!!
 Ask for missing task information only when it is necessary.
 If the prompt already contains enough details, do not ask again. Make a decision.
 If a reasonable default solution can be used, or if a description can be derived from the code, do not produce ASK.

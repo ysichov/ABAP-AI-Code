@@ -11,7 +11,7 @@ Never modify real source text by inserting AGENT strings. Analyze only the user'
 If the user already pasted object code, do not add AGENT:SHOW or AGENT_READ for that pasted code.
 
 If the user asks for method code, use exactly:
-{AGENT:CODE_SEARCH class_name=>method_name relevant_prompt_part}
+{AGENT:CODE_SEARCH METH class_name=>method_name relevant_prompt_part}
 
 If the user asks for code changes, saving, comments, refactoring, or updates, use exactly:
 {AGENT:CODE_CHANGE object_type object_name relevant_prompt_part}

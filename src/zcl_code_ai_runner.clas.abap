@@ -676,8 +676,27 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     DATA(lv_effective_prompt) = build_effective_prompt(
       i_prompt  = lv_prompt
       it_tasks  = lt_tasks ).
-    show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
-    DATA(lv_orchestrator_answer) = ask_orchestrator( lt_tasks ).
+
+    " If task orchestrator returned a single pure CODE_SEARCH command - skip main orchestrator
+    DATA lv_orchestrator_answer TYPE string.
+    IF lines( lt_tasks ) = 1.
+      DATA(lv_single_task) = lt_tasks[ 1 ].
+      DATA(lv_single_requests) = mo_messages->parse_agent_requests( lv_single_task ).
+      IF lines( lv_single_requests ) = 1
+      AND lv_single_requests[ 1 ]-agent = zcl_ai_agents_prompts=>c_agent_code_search
+      AND lv_single_requests[ 1 ]-relevant_prompt IS INITIAL.
+        lv_orchestrator_answer = lv_single_task.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
+          i_prompt_type = 'LLM_RESPONSE'
+          i_content     = lv_orchestrator_answer ).
+      ENDIF.
+    ENDIF.
+    IF lv_orchestrator_answer IS INITIAL.
+      show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
+      lv_orchestrator_answer = ask_orchestrator( lt_tasks ).
+    ENDIF.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
     DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
