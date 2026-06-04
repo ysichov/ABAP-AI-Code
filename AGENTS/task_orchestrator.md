@@ -4,12 +4,7 @@ USER can ask to operate with different SAP objects. If he/she asks to operate on
 
 
 For example "How agent orchestration works in the program Z_ABAP_AI_CODE.
-ANSWER: "TASK1: Show the Z_ABAP_AI_CODE program
-Analyze the structure of the Z_ABAP_AI_CODE program to identify the agent orchestration mechanisms
-Study the classes and interfaces used in the Z_ABAP_AI_CODE program
-Study the methods responsible for agent management
-Analyze the agent interaction logic in the Z_ABAP_AI_CODE program
-Study the algorithms for distributing tasks between agents"
+ANSWER: How agent orchestration works in the program Z_ABAP_AI_CODE
 
 As example above - PROMPT has one SAP objects - so answer has one TASK.
 

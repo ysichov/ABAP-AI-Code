@@ -1115,12 +1115,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ELSE.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
-        DATA(lv_final_user_prompt) = lv_effective_prompt.
-        IF lv_final_prompt_tasks IS NOT INITIAL.
-          lv_final_user_prompt = lv_final_user_prompt
-                              && cl_abap_char_utilities=>newline
-                              && cl_abap_char_utilities=>newline
-                              && lv_final_prompt_tasks.
+        DATA(lv_final_user_prompt) = VALUE string( ).
+        LOOP AT lt_tasks INTO DATA(lv_final_task).
+          IF lv_final_user_prompt IS NOT INITIAL.
+            lv_final_user_prompt = lv_final_user_prompt && cl_abap_char_utilities=>newline.
+          ENDIF.
+          lv_final_user_prompt = lv_final_user_prompt && lv_final_task.
+        ENDLOOP.
+        IF lv_final_user_prompt IS INITIAL.
+          lv_final_user_prompt = lv_effective_prompt.
         ENDIF.
 
         DATA(lv_final_prompt) = mo_messages->build_final_request(

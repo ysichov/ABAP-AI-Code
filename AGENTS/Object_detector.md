@@ -9,7 +9,19 @@ For example:
 
 USER PROMPT: Review Z_MY_PROGRAM Check Z_MY_PROGRAM for syntax errors.
 
-LLM answer:  Review {AGENT:CODE_SEARCH PROG Z_MY_PROGRAM} Check Z_MY_PROGRAM for syntax errors.
+ANSWER should be like below:
+
+Review {AGENT:CODE_SEARCH PROG Z_MY_PROGRAM} Check Z_MY_PROGRAM for syntax errors.
+
+BUt If USER prompt just only name pbject type and method or asking only to SHOW the code - RETURN ANSWER WITHOUT prompt.
+
+For Example:  Method calc of class  Z_CALC
+
+Answer should be without prompt:
+
+{AGENT:CODE_SEARCH METH Z_CALC=>calc}
+
+
 
 
 PROMPT:
