@@ -354,16 +354,21 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           DATA(lv_open_name) = lt_obj_parts[ 2 ].
           DATA(lv_open_source) = VALUE string( ).
           CASE lv_open_type.
-            WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
-              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
             WHEN 'PROG' OR 'REPS'.
               lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+            WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
+              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
             WHEN OTHERS.
               lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-              IF lv_open_source IS INITIAL.
-                lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-              ENDIF.
           ENDCASE.
+          DATA(lv_open_upper) = lv_open_source.
+          TRANSLATE lv_open_upper TO UPPER CASE.
+          IF lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES' OR lv_open_source IS INITIAL.
+            lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+            IF lv_open_source IS INITIAL OR lv_open_source CS 'NOT FOUND'.
+              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
+            ENDIF.
+          ENDIF.
           IF lv_open_source IS NOT INITIAL.
             display_answer(
               i_answer = zcl_code_html_gen=>source_to_html(
