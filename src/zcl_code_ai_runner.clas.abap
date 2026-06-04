@@ -1602,8 +1602,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
       && |body\{font-family:Segoe UI,Arial,sans-serif;margin:12px;background:#f5f5f5\}|
       && |.step\{padding:5px 10px;margin:3px 0;border-radius:3px;font-size:13px\}|
-      && |.done\{background:#e8f5e9;color:#2e7d32\}|
-      && |.active\{background:#fff3e0;color:#e65100;font-style:italic\}|
+      && |.done\{color:#2e7d32\}|
+      && |.active\{color:#0033aa;font-style:italic\}|
       && |.info\{color:#888;font-size:11px\}|
       && |.total\{margin-top:8px;padding:5px 10px;font-size:12px;border-radius:3px;|
       && |color:#0033aa;font-weight:bold\}|
