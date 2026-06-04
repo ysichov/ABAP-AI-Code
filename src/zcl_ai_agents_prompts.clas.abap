@@ -50,6 +50,9 @@ CLASS zcl_ai_agents_prompts DEFINITION
     METHODS get_code_reader_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_final_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
     METHODS get_prompt_by_agent
       IMPORTING i_agent          TYPE string
       RETURNING VALUE(rv_prompt) TYPE string.
@@ -70,6 +73,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     DATA mv_task_orchestrator_prompt TYPE string.
     DATA mv_language_detector_prompt TYPE string.
     DATA mv_code_review_prompt       TYPE string.
+    DATA mv_final_prompt             TYPE string.
 
     METHODS load_agent_prompts.
 
@@ -219,6 +223,14 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_final_prompt.
+
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_final_prompt.
+
+  ENDMETHOD.
+
+
   METHOD get_system_prompt_prefix.
 
     rv_prompt = mv_system_prompt.
@@ -259,6 +271,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     mv_orchestrator_prompt = read_prompt_file( 'orchestrator.md' ).
     mv_task_orchestrator_prompt = read_prompt_file( 'task_orchestrator.md' ).
     mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
+    mv_final_prompt = read_prompt_file( 'final.md' ).
 
   ENDMETHOD.
 

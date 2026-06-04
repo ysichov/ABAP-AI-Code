@@ -501,18 +501,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       WHEN i_user_prompt IS NOT INITIAL THEN i_user_prompt
       ELSE mv_user_prompt ).
 
-    rv_prompt = |You are a Senior ABAP. Return readable Markdown with real line breaks: |
-             && |put every heading, list item, paragraph, and fenced code block on separate lines. |.
-
-    rv_prompt = rv_prompt
-             && |Generate syntactically valid classic ABAP. |
-             && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long. |.
-
-    rv_prompt = rv_prompt
-             && |For code change requests, return the complete changed ABAP source in an abap fenced code block. with remark CHANGES:YES at the end |
-             && |For create object requests, return the complete new ABAP source in an abap fenced code block.  with remark CHANGES:YES at the end |
-             && |For code change requests only: if you only provide recommendations and did not change the code, put CHANGES:NO at the very end of the answer. |
-             && |For create object requests, do not use CHANGES:NO; return the proposed new object source code. |.
+    rv_prompt = mo_prompts->get_final_prompt( ).
 
     rv_prompt = rv_prompt
              && cl_abap_char_utilities=>newline
