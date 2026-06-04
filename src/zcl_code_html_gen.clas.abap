@@ -1396,8 +1396,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |.ttl\{color:#0066aa;font-weight:bold\}|
            && |table\{border-collapse:collapse;width:100%\}|
            && |tr:hover td\{background:#f0f4fa\}|
-           && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;|
-           && |user-select:none;min-width:42px;border-right:1px solid #e0e0e0;|
+           && |.ln\{color:#aaa;text-align:right;padding:1px 6px 1px 4px;|
+           && |user-select:none;border-right:1px solid #e0e0e0;|
            && |white-space:nowrap;background:#fafafa\}|
            && |.cd\{padding:1px 8px;white-space:pre\}|
            && |.sh\{padding:4px 8px;color:#0066cc;font-weight:bold;|
