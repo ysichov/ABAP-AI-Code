@@ -145,18 +145,13 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     DATA(lo_runner) = NEW zcl_code_ai_runner(
       io_llm     = mo_llm
       io_prompts = mo_prompts ).
+    lo_runner->set_html_viewer( mo_answer ).
     DATA(ls_result) = lo_runner->run(
       i_prompt     = lv_prompt
       i_session_id = mv_session_counter ).
 
     mo_messages = ls_result-messages_ref.
     APPEND LINES OF ls_result-messages TO mt_message_history.
-
-    " Show steps HTML with all messages
-    zcl_code_popup=>set_live_update_context(
-      io_answer_viewer = mo_answer
-      io_messages      = mo_messages ).
-    zcl_code_popup=>update_html_with_steps( ).
 
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.

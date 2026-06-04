@@ -32,11 +32,17 @@ public section.
   methods GET_MESSAGES
     returning
       value(RO_MESSAGES) type ref to ZCL_AI_MESSAGES .
+  methods SET_HTML_VIEWER
+    importing
+      !IO_VIEWER type ref to CL_GUI_HTML_VIEWER .
 protected section.
 private section.
 
   types:
     tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY .
+
+  data MO_HTML_VIEWER type ref to CL_GUI_HTML_VIEWER .
+  data MT_PROGRESS_STEPS type TT_STRINGS .
 
   data MO_LLM type ref to ZCL_LLM_CLIENT .
   data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
@@ -99,6 +105,10 @@ private section.
       !I_OBJECT_NAME type STRING
     returning
       value(RV_FOUND) type ABAP_BOOL .
+  methods SHOW_STEP
+    importing
+      !I_TEXT type STRING
+      !I_PCT type I default 0 .
 ENDCLASS.
 
 
@@ -549,23 +559,19 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       io_llm      = mo_llm
       io_prompts  = mo_prompts ).
 
+    show_step( i_text = 'Detecting language...' i_pct = 5 ).
     DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
     IF lv_user_language IS NOT INITIAL.
       mo_prompts->set_user_language( lv_user_language ).
     ENDIF.
 
+    show_step( i_text = 'Planning tasks...' i_pct = 10 ).
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     DATA(lv_effective_prompt) = build_effective_prompt(
       i_prompt  = lv_prompt
       it_tasks  = lt_tasks ).
+    show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
     DATA(lv_orchestrator_answer) = ask_orchestrator( lt_tasks ).
-
-    " Update HTML with orchestrator response
-    TRY.
-        zcl_code_popup=>update_html_with_steps( ).
-      CATCH cx_root.
-        " Silently ignore if popup is not available
-    ENDTRY.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
     DATA(lv_orchestrator_read_commands) = zcl_ai_code_reader=>extract_read_command_text( lv_orchestrator_answer ).
@@ -628,9 +634,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_code_search.
           DATA(lv_search_read_command) = mo_messages->build_read_command( ls_agent_request ).
           IF lv_search_read_command IS NOT INITIAL.
-            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-              EXPORTING percentage = lv_percentage
-                        text       = |Reading code { ls_agent_request-object_name }...|.
+            show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
@@ -670,9 +674,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             THEN mo_messages->build_read_command( ls_agent_request )
             ELSE '' ).
           IF lv_change_read_command IS NOT INITIAL.
-            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-              EXPORTING percentage = lv_percentage
-                        text       = |Reading code { ls_agent_request-object_name }...|.
+            show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
@@ -726,9 +728,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
               THEN mo_messages->build_read_command( ls_agent_request )
               ELSE '' ).
             IF lv_group_review_read_command IS NOT INITIAL.
-              CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-                EXPORTING percentage = lv_percentage
-                          text       = |Reading code { ls_agent_request-object_name }...|.
+              show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).
 
               lv_ignored_context = resolve_and_log_read_commands(
                 EXPORTING
@@ -778,9 +778,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             THEN mo_messages->build_read_command( ls_agent_request )
             ELSE '' ).
           IF lv_diff_read_command IS NOT INITIAL.
-            CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-              EXPORTING percentage = lv_percentage
-                        text       = |Reading code { ls_agent_request-object_name }...|.
+            show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
@@ -822,9 +820,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
         IF lv_direct_read_command IS NOT INITIAL.
-          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-            EXPORTING percentage = lv_percentage
-                      text       = |Reading code { ls_agent_request-object_name }...|.
+          show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).
 
           lv_ignored_context = resolve_and_log_read_commands(
             EXPORTING
@@ -835,9 +831,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-          EXPORTING percentage = lv_percentage
-                    text       = |Asking agent { ls_agent_request-agent }...|.
+        show_step( i_text = |Asking agent { ls_agent_request-agent }...| i_pct = lv_percentage ).
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
         DATA(lv_agent_answer) = mo_llm->ask( lv_agent_prompt ).
@@ -867,12 +861,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           CHANGING
             ct_done_commands = lt_done_read_commands ).
 
-        " Update HTML with progress after each agent step
-        TRY.
-            zcl_code_popup=>update_html_with_steps( ).
-          CATCH cx_root.
-            " Silently ignore if popup is not available
-        ENDTRY.
       ENDLOOP.
 
       IF lt_batched_code_review IS NOT INITIAL
@@ -884,9 +872,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             CONTINUE.
           ENDIF.
 
-          CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-            EXPORTING percentage = 80
-                      text       = |Reading code { ls_review_request-object_name }...|.
+          show_step( i_text = |Reading code { ls_review_request-object_name }...| i_pct = 80 ).
 
           lv_ignored_context = resolve_and_log_read_commands(
             EXPORTING
@@ -895,9 +881,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
               ct_done_commands = lt_done_read_commands ).
         ENDLOOP.
 
-        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-          EXPORTING percentage = 90
-                    text       = 'Asking code review agent...'.
+        show_step( i_text = 'Asking code review agent...' i_pct = 90 ).
 
         DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
         DATA(lv_review_answer) = mo_llm->ask( lv_review_prompt ).
@@ -1331,6 +1315,60 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
   method GET_MESSAGES.
 
     ro_messages = mo_messages.
+
+  endmethod.
+
+
+  method SET_HTML_VIEWER.
+
+    mo_html_viewer = io_viewer.
+    CLEAR mt_progress_steps.
+
+  endmethod.
+
+
+  method SHOW_STEP.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = i_pct text = i_text.
+
+    CHECK mo_html_viewer IS BOUND.
+
+    APPEND i_text TO mt_progress_steps.
+
+    DATA lv_rows TYPE string.
+    LOOP AT mt_progress_steps INTO DATA(lv_step).
+      lv_rows = lv_rows && |<div class="step">&#x2713; { lv_step }</div>|.
+    ENDLOOP.
+
+    DATA(lv_html) =
+      |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+      && |body\{font-family:Segoe UI,Arial,sans-serif;margin:12px;background:#f5f5f5\}|
+      && |.step\{padding:6px 12px;margin:3px 0;border-radius:3px;background:#e8f5e9;|
+      && |color:#2e7d32;font-size:13px\}|
+      && |</style></head><body>|
+      && lv_rows
+      && |</body></html>|.
+
+    DATA lt_html TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_off TYPE i.
+    WHILE lv_off < strlen( lv_html ).
+      DATA(lv_chunk) = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_off ).
+      APPEND VALUE w3html( line = substring( val = lv_html off = lv_off len = lv_chunk ) )
+        TO lt_html.
+      lv_off = lv_off + lv_chunk.
+    ENDWHILE.
+
+    DATA lv_url TYPE c LENGTH 255.
+    mo_html_viewer->load_data(
+      EXPORTING type = 'text' subtype = 'html'
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS = 1 ).
+    CHECK sy-subrc = 0.
+
+    mo_html_viewer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
+    cl_gui_cfw=>flush( ).
 
   endmethod.
 
