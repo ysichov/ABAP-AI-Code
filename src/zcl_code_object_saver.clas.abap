@@ -1002,55 +1002,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           mv_last_log = mv_last_log && lv_nl
                      && |INSERT REPORT { lv_include } for '{ ls_block-title }' OK.|.
 
-          " Update SEO metadata for sections (like abapGit update_meta)
-          lv_exposure = 0.
-          IF lv_blk_upper CP '*PUBLIC*'.
-            lv_exposure = 2. " seoc_exposure_public
-          ELSEIF lv_blk_upper CP '*PROTECTED*'.
-            lv_exposure = 1. " seoc_exposure_protected
-          ELSEIF lv_blk_upper CP '*PRIVATE*'.
-            lv_exposure = 0. " seoc_exposure_private
-          ENDIF.
-          IF lv_blk_upper CP '*SECTION*'.
-            ls_clskey-clsname = lv_class.
-            CALL FUNCTION 'SEO_BUFFER_REFRESH'
-              EXPORTING
-                cifkey  = ls_clskey
-                version = 1. " seoc_version_active
-            TRY.
-                CREATE OBJECT lo_section
-                  EXPORTING
-                    clskey                        = ls_clskey
-                    exposure                      = CONV #( lv_exposure )
-                    state                         = 'A'
-                    source                        = lt_new_str
-                    suppress_constrctr_generation = abap_true
-                  EXCEPTIONS
-                    class_not_existing            = 1
-                    read_source_error             = 2
-                    OTHERS                        = 3.
-                IF sy-subrc = 0.
-                  lo_section->scan_section_source(
-                    RECEIVING  scan_error             = lv_scan_error
-                    EXCEPTIONS scan_abap_source_error = 1
-                               OTHERS                 = 2 ).
-                  IF sy-subrc = 0 AND lv_scan_error = abap_false.
-                    lo_section->revert_scan_result( ).
-                  ENDIF.
-                  IF lv_exposure = 2. " public
-                    CALL FUNCTION 'SEO_CLASS_GENERATE_CLASSPOOL'
-                      EXPORTING
-                        clskey       = ls_clskey
-                      EXCEPTIONS
-                        not_existing = 1
-                        OTHERS       = 2.
-                  ENDIF.
-                ENDIF.
-              CATCH cx_root ##CATCH_ALL.
-                " Ignore meta update errors — include is already written
-            ENDTRY.
-          ENDIF.
-
           " Track written include for activation
           CLEAR ls_written.
           ls_written-object = 'REPS'.
@@ -1071,6 +1022,12 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+
+    " Add CLAS object for activation (needed for new methods/sections)
+    CLEAR ls_written.
+    ls_written-object = 'CLAS'.
+    ls_written-obj_name = lv_class.
+    APPEND ls_written TO lt_act_objects.
 
     TRY.
         CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
@@ -1237,6 +1194,10 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA ls_act_obj TYPE dwinactiv.
     DATA lv_t100_message2 TYPE string.
     DATA lv_subrc_text2   TYPE string.
+
+    ls_act_obj-object   = 'CLAS'.
+    ls_act_obj-obj_name = i_class.
+    APPEND ls_act_obj TO lt_act_objects.
 
     ls_act_obj-object   = 'REPS'.
     ls_act_obj-obj_name = lv_include.
