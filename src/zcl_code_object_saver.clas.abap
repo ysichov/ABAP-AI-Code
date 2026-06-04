@@ -901,6 +901,12 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       ENDIF.
       lv_saved_any = abap_true.
     ELSE.
+      mv_last_log = mv_last_log && lv_nl && |Parsed { lines( lt_blocks ) } blocks:|.
+      LOOP AT lt_blocks INTO ls_block.
+        mv_last_log = mv_last_log && lv_nl
+                   && |  Block { sy-tabix }: "{ ls_block-title }" (len={ strlen( ls_block-source ) })|.
+      ENDLOOP.
+
       " Write each section to its include
       LOOP AT lt_blocks INTO ls_block.
         DATA(lv_blk_upper) = ls_block-title.
@@ -992,6 +998,14 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        " Log what we're about to write
+        mv_last_log = mv_last_log && lv_nl
+                   && |Writing { lv_include } for "{ ls_block-title }" ({ lines( lt_source ) } lines):|.
+        LOOP AT lt_source INTO DATA(lv_log_line).
+          IF sy-tabix > 3. EXIT. ENDIF.
+          mv_last_log = mv_last_log && lv_nl && |  >{ lv_log_line }|.
+        ENDLOOP.
+
         " Write include as inactive version, then activate
         INSERT REPORT lv_include FROM lt_source STATE 'I'.
         IF sy-subrc <> 0.
@@ -1023,12 +1037,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Add CLAS object for activation (needed for new methods/sections)
-    CLEAR ls_written.
-    ls_written-object = 'CLAS'.
-    ls_written-obj_name = lv_class.
-    APPEND ls_written TO lt_act_objects.
-
     TRY.
         CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
           EXPORTING
@@ -1055,6 +1063,16 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
             insert_into_corr_error = 3
             OTHERS                 = 4.
     ENDTRY.
+
+    mv_last_log = mv_last_log && lv_nl
+               && |Activation subrc={ sy-subrc } msgid={ sy-msgid } msgno={ sy-msgno }|
+               && | v1={ sy-msgv1 } v2={ sy-msgv2 }|.
+
+    " Log what was in activation list
+    LOOP AT lt_act_objects INTO ls_written.
+      mv_last_log = mv_last_log && lv_nl
+                 && |  Activated: { ls_written-object } { ls_written-obj_name }|.
+    ENDLOOP.
 
     IF sy-subrc <> 0 AND sy-subrc <> 2.
       DATA lv_act_t100 TYPE string.
@@ -1188,24 +1206,19 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |INSERT REPORT { lv_include } executed.|.
 
-    " Activate method include + classpool
-    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( CONV #( i_class ) ).
+    " Activate method include only
     DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
     DATA ls_act_obj TYPE dwinactiv.
     DATA lv_t100_message2 TYPE string.
     DATA lv_subrc_text2   TYPE string.
 
-    ls_act_obj-object   = 'CLAS'.
-    ls_act_obj-obj_name = i_class.
-    APPEND ls_act_obj TO lt_act_objects.
-
     ls_act_obj-object   = 'REPS'.
     ls_act_obj-obj_name = lv_include.
     APPEND ls_act_obj TO lt_act_objects.
 
-    ls_act_obj-object   = 'REPS'.
-    ls_act_obj-obj_name = lv_classpool.
-    APPEND ls_act_obj TO lt_act_objects.
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |Activating: REPS { lv_include }|.
 
     TRY.
         CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
