@@ -884,7 +884,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     IF lt_blocks IS INITIAL.
       lt_source = source_to_table( i_source ).
       lv_include = cl_oo_classname_service=>get_classpool_name( lv_class ).
-      INSERT REPORT lv_include FROM lt_source STATE 'I'.
+      INSERT REPORT lv_include FROM lt_source STATE 'A'.
       IF sy-subrc <> 0.
         rv_message = |Error writing classpool { lv_include }.|.
         mv_last_log = mv_last_log && lv_nl && rv_message.
@@ -981,7 +981,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        INSERT REPORT lv_include FROM lt_source STATE 'I'.
+        INSERT REPORT lv_include FROM lt_source STATE 'A'.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
                    && |Error writing include { lv_include } for '{ ls_block-title }'.|.
@@ -1005,11 +1005,12 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Activate class object (not individual includes)
+    " Activate classpool
+    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( lv_class ).
     DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
     DATA ls_act_object TYPE dwinactiv.
-    ls_act_object-object = 'CLAS'.
-    ls_act_object-obj_name = lv_class.
+    ls_act_object-object = 'REPS'.
+    ls_act_object-obj_name = lv_classpool.
     APPEND ls_act_object TO lt_act_objects.
 
     TRY.
@@ -1160,7 +1161,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && |Source lines: { lines( lt_source ) }|.
 
     " Write source into method include
-    INSERT REPORT lv_include FROM lt_source STATE 'I'.
+    INSERT REPORT lv_include FROM lt_source STATE 'A'.
     IF sy-subrc <> 0.
       rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
       mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
@@ -1171,14 +1172,19 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |INSERT REPORT { lv_include } executed.|.
 
-    " Activate class object (not individual includes)
+    " Activate method include + classpool
+    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( CONV #( i_class ) ).
     DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
     DATA ls_act_obj TYPE dwinactiv.
     DATA lv_t100_message2 TYPE string.
     DATA lv_subrc_text2   TYPE string.
 
-    ls_act_obj-object   = 'CLAS'.
-    ls_act_obj-obj_name = i_class.
+    ls_act_obj-object   = 'REPS'.
+    ls_act_obj-obj_name = lv_include.
+    APPEND ls_act_obj TO lt_act_objects.
+
+    ls_act_obj-object   = 'REPS'.
+    ls_act_obj-obj_name = lv_classpool.
     APPEND ls_act_obj TO lt_act_objects.
 
     TRY.
