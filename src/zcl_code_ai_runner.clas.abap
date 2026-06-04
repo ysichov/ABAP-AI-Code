@@ -462,6 +462,18 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                     && cl_abap_char_utilities=>newline
                     && |NO CHANGES|.
         ELSE.
+          " DEBUG: log raw part sources before diff
+          lv_content = lv_content
+                    && cl_abap_char_utilities=>newline
+                    && |DEBUG COMPARE RAW (len={ strlen( ls_compare_part-source ) }):|
+                    && cl_abap_char_utilities=>newline
+                    && ls_compare_part-source
+                    && cl_abap_char_utilities=>newline
+                    && |DEBUG PROPOSED RAW (len={ strlen( ls_part-source ) }):|
+                    && cl_abap_char_utilities=>newline
+                    && ls_part-source
+                    && cl_abap_char_utilities=>newline.
+
           DATA lv_current_context TYPE string.
           DATA lv_proposed_context TYPE string.
           zcl_code_answer_tools=>extract_changed_context(
