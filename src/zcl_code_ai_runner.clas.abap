@@ -9,6 +9,7 @@ public section.
       answer       TYPE string,
       answer_log   TYPE string,
       resolved_code TYPE string,
+      source_title TYPE string,
       messages     TYPE zcl_ai_messages=>tt_messages,
       messages_ref TYPE REF TO zcl_ai_messages,
       has_diff     TYPE abap_bool,
@@ -1100,9 +1101,17 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         complete_last_step( ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
+        DATA(lv_src_title) = VALUE string( ).
+        LOOP AT lt_agent_requests INTO DATA(ls_src_req) WHERE object_name IS NOT INITIAL.
+          lv_src_title = |{ ls_src_req-object_type } { ls_src_req-object_name }|.
+          EXIT.
+        ENDLOOP.
+        IF lv_src_title IS INITIAL.
+          lv_src_title = 'ABAP Source'.
+        ENDIF.
         lv_answer = zcl_code_html_gen=>source_to_html(
           i_source = lv_code_only
-          i_title  = 'ABAP Source' ).
+          i_title  = lv_src_title ).
       ELSE.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
@@ -1469,6 +1478,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     rs_result-resolved_code = lv_resolved_code.
     rs_result-messages_ref = mo_messages.
     rs_result-messages = mo_messages->get_messages( ).
+    IF rs_result-diff_object_name IS NOT INITIAL.
+      rs_result-source_title = |{ rs_result-diff_object_type } { rs_result-diff_object_name }|.
+    ENDIF.
 
   endmethod.
 

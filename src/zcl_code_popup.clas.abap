@@ -87,7 +87,8 @@ private section.
   methods DISPLAY_ANSWER
     importing
       !I_ANSWER type STRING
-      !I_SOURCE type STRING optional .
+      !I_SOURCE type STRING optional
+      !I_TITLE  type STRING optional .
   methods DIFF_TO_HTML
     importing
       !I_OLD_CODE type STRING
@@ -175,7 +176,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     display_answer(
       i_answer = lv_display_answer
-      i_source = ls_result-resolved_code ).
+      i_source = ls_result-resolved_code
+      i_title  = ls_result-source_title ).
 
   endmethod.
 
@@ -231,7 +233,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     lv_html = zcl_code_html_gen=>answer_to_html(
       i_answer = i_answer
-      i_source = i_source ).
+      i_source = i_source
+      i_title  = i_title ).
 
     DATA lt_html TYPE tt_html.
     DATA ls_html TYPE w3html.

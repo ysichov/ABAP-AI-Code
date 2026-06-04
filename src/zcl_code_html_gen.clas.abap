@@ -9,6 +9,7 @@ public section.
     importing
       !I_ANSWER type STRING
       !I_SOURCE type STRING optional
+      !I_TITLE  type STRING optional
     returning
       value(RV_HTML) type STRING .
   class-methods SOURCE_TO_HTML
@@ -176,7 +177,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       DATA(lv_render_text) = render_abap_blocks( i_answer ).
       DATA(lv_source_html) = source_block_to_html(
         i_source = i_source
-        i_title  = 'Source code from code_agent' ).
+        i_title  = COND #( WHEN i_title IS NOT INITIAL THEN i_title ELSE 'Source code' ) ).
 
       rv_html = |<!doctype html><html><head><meta charset="utf-8">|
              && |<style>body\{font-family:"Segoe UI",Arial,sans-serif;font-size:14px;margin:0;|
