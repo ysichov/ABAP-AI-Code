@@ -253,8 +253,11 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
     lv_rest = i_orchestrator_answer.
     REPLACE ALL OCCURRENCES OF REGEX '\{\s*AGENT\s*:' IN lv_rest WITH '{AGENT:'.
 
+    DATA lv_prefix TYPE string.
     WHILE lv_rest CS '{AGENT:'.
       FIND FIRST OCCURRENCE OF '{AGENT:' IN lv_rest MATCH OFFSET lv_pos.
+      lv_prefix = substring( val = lv_rest len = lv_pos ).
+      REPLACE ALL OCCURRENCES OF REGEX '^\s+|\s+$' IN lv_prefix WITH ''.
       lv_rest = substring( val = lv_rest off = lv_pos + 7 ).
 
       FIND FIRST OCCURRENCE OF '}' IN lv_rest MATCH OFFSET lv_end.
@@ -385,6 +388,14 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
           IF lv_raw_relevant_prompt IS NOT INITIAL.
             ls_request-relevant_prompt = lv_raw_relevant_prompt.
           ENDIF.
+        ENDIF.
+      ENDIF.
+
+      IF lv_prefix IS NOT INITIAL.
+        IF ls_request-relevant_prompt IS NOT INITIAL.
+          ls_request-relevant_prompt = lv_prefix && space && ls_request-relevant_prompt.
+        ELSE.
+          ls_request-relevant_prompt = lv_prefix.
         ENDIF.
       ENDIF.
 
