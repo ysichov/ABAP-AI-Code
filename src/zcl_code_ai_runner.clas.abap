@@ -101,6 +101,7 @@ private section.
       !I_PHASE type STRING
       !I_LOG type ABAP_BOOL default ABAP_TRUE
       !I_COMPARE_SOURCE type STRING optional
+      !I_FILTER_SOURCE type STRING optional
     returning
       value(RV_SOURCE) type STRING .
   methods FIX_PROGRAM_SYNTAX
@@ -424,6 +425,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     DATA(lt_parts) = zcl_code_answer_tools=>extract_class_parts( i_source ).
     DATA(lt_compare_parts) = zcl_code_answer_tools=>extract_class_parts( i_compare_source ).
+    DATA(lt_filter_parts) = zcl_code_answer_tools=>extract_class_parts( i_filter_source ).
 
     rv_source = i_source.
     IF lt_parts IS INITIAL.
@@ -432,7 +434,43 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     CLEAR rv_source.
 
+    DATA lv_current_context TYPE string.
+    DATA lv_proposed_context TYPE string.
+
     LOOP AT lt_parts INTO DATA(ls_part).
+
+      " If filter is provided, only include parts whose key exists in filter
+      IF lt_filter_parts IS NOT INITIAL.
+        READ TABLE lt_filter_parts TRANSPORTING NO FIELDS
+          WITH KEY part_key = ls_part-part_key.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      " Check if part is unchanged compared to current source
+      READ TABLE lt_compare_parts INTO DATA(ls_compare_part)
+        WITH KEY part_key = ls_part-part_key.
+      DATA(lv_has_compare) = xsdbool( sy-subrc = 0 ).
+      DATA(lv_unchanged) = xsdbool( lv_has_compare = abap_true
+                                AND ls_compare_part-source = ls_part-source ).
+
+      " Skip unchanged parts — don't include in output for save
+      IF lv_unchanged = abap_true.
+        IF i_log = abap_true.
+          DATA(lv_skip_content) = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|
+                    && cl_abap_char_utilities=>newline
+                    && |NO CHANGES - skipped|.
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_class_extract
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_skip_content ).
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      " Include changed part in output
       IF rv_source IS NOT INITIAL.
         rv_source = rv_source
                   && cl_abap_char_utilities=>newline
@@ -453,53 +491,29 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         DATA(lv_content) = |CLASS_EXTRACT { i_phase } { i_object_name } part { sy-tabix }: { ls_part-title }|.
 
-        READ TABLE lt_compare_parts INTO DATA(ls_compare_part)
-          WITH KEY part_key = ls_part-part_key.
-        DATA(lv_has_compare) = xsdbool( sy-subrc = 0 ).
-        IF lv_has_compare = abap_true
-        AND ls_compare_part-source = ls_part-source.
+        zcl_code_answer_tools=>extract_changed_context(
+          EXPORTING
+            i_current_source  = ls_compare_part-source
+            i_proposed_source = ls_part-source
+          IMPORTING
+            e_current_source  = lv_current_context
+            e_proposed_source = lv_proposed_context ).
+
+        IF lv_has_compare = abap_true.
           lv_content = lv_content
                     && cl_abap_char_utilities=>newline
-                    && |NO CHANGES|.
-        ELSE.
-          " DEBUG: log raw part sources before diff
-          lv_content = lv_content
+                    && |CURRENT SOURCE:|
                     && cl_abap_char_utilities=>newline
-                    && |DEBUG COMPARE RAW (len={ strlen( ls_compare_part-source ) }):|
+                    && lv_current_context
                     && cl_abap_char_utilities=>newline
-                    && ls_compare_part-source
-                    && cl_abap_char_utilities=>newline
-                    && |DEBUG PROPOSED RAW (len={ strlen( ls_part-source ) }):|
-                    && cl_abap_char_utilities=>newline
-                    && ls_part-source
                     && cl_abap_char_utilities=>newline.
-
-          DATA lv_current_context TYPE string.
-          DATA lv_proposed_context TYPE string.
-          zcl_code_answer_tools=>extract_changed_context(
-            EXPORTING
-              i_current_source  = ls_compare_part-source
-              i_proposed_source = ls_part-source
-            IMPORTING
-              e_current_source  = lv_current_context
-              e_proposed_source = lv_proposed_context ).
-
-          IF lv_has_compare = abap_true.
-            lv_content = lv_content
-                      && cl_abap_char_utilities=>newline
-                      && |CURRENT SOURCE:|
-                      && cl_abap_char_utilities=>newline
-                      && lv_current_context
-                      && cl_abap_char_utilities=>newline
-                      && cl_abap_char_utilities=>newline.
-          ENDIF.
-
-          lv_content = lv_content
-                    && cl_abap_char_utilities=>newline
-                    && |PROPOSED SOURCE:|
-                    && cl_abap_char_utilities=>newline
-                    && lv_proposed_context.
         ENDIF.
+
+        lv_content = lv_content
+                  && cl_abap_char_utilities=>newline
+                  && |PROPOSED SOURCE:|
+                  && cl_abap_char_utilities=>newline
+                  && lv_proposed_context.
 
         mo_messages->add_message(
           i_role        = 'assistant'
@@ -1225,16 +1239,19 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             lv_diff_new_code = zcl_code_answer_tools=>merge_class_parts(
               i_full_source    = lv_diff_old_code
               i_changed_source = lv_diff_new_code ).
-            lv_diff_old_code = log_class_extract(
-              i_source      = lv_diff_old_code
-              i_object_name = lv_code_change_name
-              i_phase       = 'CURRENT'
-              i_log         = abap_false ).
+            " PROPOSED — filters out unchanged parts, only changed go to save/diff
             lv_diff_new_code = log_class_extract(
-              i_source      = lv_diff_new_code
-              i_object_name = lv_code_change_name
-              i_phase       = 'PROPOSED'
+              i_source         = lv_diff_new_code
+              i_object_name    = lv_code_change_name
+              i_phase          = 'PROPOSED'
               i_compare_source = lv_diff_old_code ).
+            " CURRENT — reformat to match same sections as filtered PROPOSED
+            lv_diff_old_code = log_class_extract(
+              i_source         = lv_diff_old_code
+              i_object_name    = lv_code_change_name
+              i_phase          = 'CURRENT'
+              i_filter_source  = lv_diff_new_code
+              i_log            = abap_false ).
           ENDIF.
 
           lv_diff_new_code = fix_program_syntax(
@@ -1340,16 +1357,19 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 i_full_source    = lv_create_context
                 i_changed_source = lv_create_extracted_code ).
             ENDIF.
-            lv_create_context = log_class_extract(
-              i_source      = lv_create_context
-              i_object_name = ls_create_object_command-object_name
-              i_phase       = 'CURRENT'
-              i_log         = abap_false ).
+            " PROPOSED first — filters out unchanged parts
             lv_create_extracted_code = log_class_extract(
-              i_source      = lv_create_extracted_code
-              i_object_name = ls_create_object_command-object_name
-              i_phase       = 'PROPOSED'
+              i_source         = lv_create_extracted_code
+              i_object_name    = ls_create_object_command-object_name
+              i_phase          = 'PROPOSED'
               i_compare_source = lv_create_context ).
+            " CURRENT — only parts that exist in filtered PROPOSED
+            lv_create_context = log_class_extract(
+              i_source         = lv_create_context
+              i_object_name    = ls_create_object_command-object_name
+              i_phase          = 'CURRENT'
+              i_filter_source  = lv_create_extracted_code
+              i_log            = abap_false ).
           ENDIF.
 
           lv_create_extracted_code = fix_program_syntax(

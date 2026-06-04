@@ -808,6 +808,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lt_source   TYPE tt_source.
     DATA lv_t100_msg TYPE string.
     DATA lv_nl       TYPE string.
+    DATA lt_existing TYPE tt_source.
+    DATA lv_same     TYPE abap_bool.
+    DATA lv_idx      TYPE i.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -973,28 +976,24 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        " Skip unchanged includes — read current source and compare
-        DATA lt_existing TYPE tt_source.
+        " Skip unchanged includes — compare line by line as strings
+        " (CONV string trims trailing spaces from fixed-length ABAP source lines)
+        CLEAR lt_existing.
         READ REPORT lv_include INTO lt_existing STATE 'A'.
-        IF sy-subrc = 0 AND lt_existing = lt_source.
-          mv_last_log = mv_last_log && lv_nl
-                     && |Section '{ ls_block-title }' unchanged - skipped.|.
-          CONTINUE.
-        ENDIF.
-
-        " Syntax check before writing
-        DATA lv_syn_msg TYPE string.
-        DATA lv_syn_line TYPE i.
-        DATA lv_syn_word TYPE string.
-        SYNTAX-CHECK FOR lt_source
-          MESSAGE lv_syn_msg
-          LINE lv_syn_line
-          WORD lv_syn_word
-          PROGRAM lv_include.
-        IF sy-subrc <> 0.
-          lv_errors = lv_errors && lv_nl
-                   && |Syntax error in '{ ls_block-title }' line { lv_syn_line } word { lv_syn_word }: { lv_syn_msg }|.
-          CONTINUE.
+        IF sy-subrc = 0 AND lines( lt_existing ) = lines( lt_source ).
+          lv_same = abap_true.
+          DO lines( lt_existing ) TIMES.
+            lv_idx = sy-index.
+            IF CONV string( lt_existing[ lv_idx ] ) <> CONV string( lt_source[ lv_idx ] ).
+              lv_same = abap_false.
+              EXIT.
+            ENDIF.
+          ENDDO.
+          IF lv_same = abap_true.
+            mv_last_log = mv_last_log && lv_nl
+                       && |Section '{ ls_block-title }' unchanged - skipped.|.
+            CONTINUE.
+          ENDIF.
         ENDIF.
 
         INSERT REPORT lv_include FROM lt_source STATE 'I'.
