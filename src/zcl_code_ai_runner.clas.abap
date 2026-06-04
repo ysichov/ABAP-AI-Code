@@ -686,11 +686,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       AND lv_single_requests[ 1 ]-agent = zcl_ai_agents_prompts=>c_agent_code_search
       AND lv_single_requests[ 1 ]-relevant_prompt IS INITIAL.
         lv_orchestrator_answer = lv_single_task.
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
-          i_prompt_type = 'LLM_RESPONSE'
-          i_content     = lv_orchestrator_answer ).
       ENDIF.
     ENDIF.
     IF lv_orchestrator_answer IS INITIAL.
