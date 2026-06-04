@@ -40,9 +40,23 @@ private section.
 
   types:
     tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF ty_step,
+      text     TYPE string,
+      done     TYPE abap_bool,
+      is_llm   TYPE abap_bool,
+      seconds  TYPE i,
+      tok_in   TYPE i,
+      tok_out  TYPE i,
+    END OF ty_step .
+  types:
+    tt_steps TYPE STANDARD TABLE OF ty_step WITH NON-UNIQUE DEFAULT KEY .
 
   data MO_HTML_VIEWER type ref to CL_GUI_HTML_VIEWER .
-  data MT_PROGRESS_STEPS type TT_STRINGS .
+  data MT_PROGRESS_STEPS type TT_STEPS .
+  data MV_TOTAL_SECONDS type I .
+  data MV_TOTAL_TOK_IN  type I .
+  data MV_TOTAL_TOK_OUT type I .
 
   data MO_LLM type ref to ZCL_LLM_CLIENT .
   data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
@@ -109,6 +123,15 @@ private section.
     importing
       !I_TEXT type STRING
       !I_PCT type I default 0 .
+  methods COMPLETE_LAST_STEP
+    importing
+      !I_IS_LLM  type ABAP_BOOL default ABAP_FALSE
+      !I_SECONDS type I         default 0
+      !I_TOK_IN  type I         default 0
+      !I_TOK_OUT type I         default 0 .
+  methods RENDER_STEPS_HTML
+    returning
+      value(RV_HTML) type STRING .
   methods IS_SINGLE_CODE_WORD
     importing
       !I_PROMPT type STRING
@@ -676,12 +699,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     show_step( i_text = 'Detecting language...' i_pct = 5 ).
     DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
+    complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
     IF lv_user_language IS NOT INITIAL.
       mo_prompts->set_user_language( lv_user_language ).
     ENDIF.
 
     show_step( i_text = 'Planning tasks...' i_pct = 10 ).
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
+    complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
     DATA(lv_effective_prompt) = build_effective_prompt(
       i_prompt  = lv_prompt
       it_tasks  = lt_tasks ).
@@ -700,6 +725,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     IF lv_orchestrator_answer IS INITIAL.
       show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
       lv_orchestrator_answer = ask_orchestrator( lt_tasks ).
+      complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
     ENDIF.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
@@ -967,6 +993,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_agent_answer_log) = lv_agent_answer.
         lv_agent_answer = zcl_ai_messages=>strip_log_info( lv_agent_answer ).
 
+        complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
+
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = ls_agent_request-agent
@@ -1017,6 +1045,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_review_answer_log) = lv_review_answer.
         lv_review_answer = zcl_ai_messages=>strip_log_info( lv_review_answer ).
 
+        complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
+
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
@@ -1063,14 +1093,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         AND ( lv_orchestrator_read_commands IS NOT INITIAL
            OR lv_has_show_command = abap_true
            OR mo_messages->get_resolved_code( ) IS NOT INITIAL ).
+        complete_last_step( ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
         lv_answer = zcl_code_html_gen=>source_to_html(
           i_source = lv_code_only
           i_title  = 'ABAP Source' ).
       ELSE.
-        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
-          EXPORTING percentage = 85 text = 'Asking AI with agent context...'.
+        show_step( i_text = 'Asking AI...' i_pct = 85 ).
 
         DATA(lv_final_user_prompt) = lv_effective_prompt.
         IF lv_final_prompt_tasks IS NOT INITIAL.
@@ -1084,6 +1114,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_user_prompt = lv_final_user_prompt ).
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
+        complete_last_step( i_is_llm = abap_true i_seconds = mo_llm->get_last_seconds( ) ).
         lv_answer_log = lv_answer.
         lv_answer = zcl_ai_messages=>strip_log_info( lv_answer ).
         DATA(lv_total_usage) = mo_messages->get_total_token_usage( lv_answer_log ).
@@ -1439,6 +1470,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     mo_html_viewer = io_viewer.
     CLEAR mt_progress_steps.
+    CLEAR mv_total_seconds.
+    CLEAR mv_total_tok_in.
+    CLEAR mv_total_tok_out.
 
   endmethod.
 
@@ -1450,22 +1484,19 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     CHECK mo_html_viewer IS BOUND.
 
-    APPEND i_text TO mt_progress_steps.
+    " Mark previous last step as done
+    DATA(lv_last) = lines( mt_progress_steps ).
+    IF lv_last > 0.
+      FIELD-SYMBOLS <ls_prev> TYPE ty_step.
+      READ TABLE mt_progress_steps ASSIGNING <ls_prev> INDEX lv_last.
+      IF sy-subrc = 0.
+        <ls_prev>-done = abap_true.
+      ENDIF.
+    ENDIF.
 
-    DATA lv_rows TYPE string.
-    LOOP AT mt_progress_steps INTO DATA(lv_step).
-      lv_rows = lv_rows && |<div class="step">&#x2713; { lv_step }</div>|.
-    ENDLOOP.
+    APPEND VALUE ty_step( text = i_text done = abap_false ) TO mt_progress_steps.
 
-    DATA(lv_html) =
-      |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
-      && |body\{font-family:Segoe UI,Arial,sans-serif;margin:12px;background:#f5f5f5\}|
-      && |.step\{padding:6px 12px;margin:3px 0;border-radius:3px;background:#e8f5e9;|
-      && |color:#2e7d32;font-size:13px\}|
-      && |</style></head><body>|
-      && lv_rows
-      && |</body></html>|.
-
+    DATA(lv_html) = render_steps_html( ).
     DATA lt_html TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
     DATA lv_off TYPE i.
     WHILE lv_off < strlen( lv_html ).
@@ -1474,7 +1505,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         TO lt_html.
       lv_off = lv_off + lv_chunk.
     ENDWHILE.
-
     DATA lv_url TYPE c LENGTH 255.
     mo_html_viewer->load_data(
       EXPORTING type = 'text' subtype = 'html'
@@ -1482,9 +1512,104 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       CHANGING  data_table   = lt_html
       EXCEPTIONS OTHERS = 1 ).
     CHECK sy-subrc = 0.
-
     mo_html_viewer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
     cl_gui_cfw=>flush( ).
+
+  endmethod.
+
+
+  method COMPLETE_LAST_STEP.
+
+    CHECK mo_html_viewer IS BOUND.
+
+    DATA(lv_last) = lines( mt_progress_steps ).
+    CHECK lv_last > 0.
+
+    FIELD-SYMBOLS <ls_step> TYPE ty_step.
+    READ TABLE mt_progress_steps ASSIGNING <ls_step> INDEX lv_last.
+    CHECK sy-subrc = 0.
+
+    <ls_step>-done    = abap_true.
+    <ls_step>-is_llm  = i_is_llm.
+    <ls_step>-seconds = i_seconds.
+    <ls_step>-tok_in  = i_tok_in.
+    <ls_step>-tok_out = i_tok_out.
+
+    IF i_is_llm = abap_true.
+      mv_total_seconds = mv_total_seconds + i_seconds.
+      mv_total_tok_in  = mv_total_tok_in  + i_tok_in.
+      mv_total_tok_out = mv_total_tok_out + i_tok_out.
+    ENDIF.
+
+    DATA(lv_html) = render_steps_html( ).
+    DATA lt_html TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_off TYPE i.
+    WHILE lv_off < strlen( lv_html ).
+      DATA(lv_chunk) = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_off ).
+      APPEND VALUE w3html( line = substring( val = lv_html off = lv_off len = lv_chunk ) )
+        TO lt_html.
+      lv_off = lv_off + lv_chunk.
+    ENDWHILE.
+    DATA lv_url TYPE c LENGTH 255.
+    mo_html_viewer->load_data(
+      EXPORTING type = 'text' subtype = 'html'
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS = 1 ).
+    CHECK sy-subrc = 0.
+    mo_html_viewer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
+    cl_gui_cfw=>flush( ).
+
+  endmethod.
+
+
+  method RENDER_STEPS_HTML.
+
+    DATA lv_rows TYPE string.
+    LOOP AT mt_progress_steps INTO DATA(ls_step).
+      DATA(lv_text) = ls_step-text.
+      REPLACE ALL OCCURRENCES OF '&' IN lv_text WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<' IN lv_text WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>' IN lv_text WITH '&gt;'.
+
+      IF ls_step-done = abap_true.
+        DATA(lv_info) = VALUE string( ).
+        IF ls_step-is_llm = abap_true.
+          lv_info = | &nbsp;<span class="info">{ ls_step-seconds }s|.
+          IF ls_step-tok_in > 0.
+            lv_info = lv_info && |, in:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
+          ENDIF.
+          lv_info = lv_info && |</span>|.
+        ENDIF.
+        lv_rows = lv_rows
+          && |<div class="step done">&#x2713; { lv_text }{ lv_info }</div>|.
+      ELSE.
+        lv_rows = lv_rows
+          && |<div class="step active">&#x23F3; { lv_text }</div>|.
+      ENDIF.
+    ENDLOOP.
+
+    IF mv_total_seconds > 0.
+      lv_rows = lv_rows
+        && |<div class="total">Total: { mv_total_seconds }s|.
+      IF mv_total_tok_in > 0.
+        lv_rows = lv_rows && |, in:{ mv_total_tok_in }, out:{ mv_total_tok_out }|.
+      ENDIF.
+      lv_rows = lv_rows && |</div>|.
+    ENDIF.
+
+    rv_html =
+      |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+      && |body\{font-family:Segoe UI,Arial,sans-serif;margin:12px;background:#f5f5f5\}|
+      && |.step\{padding:5px 10px;margin:3px 0;border-radius:3px;font-size:13px\}|
+      && |.done\{background:#e8f5e9;color:#2e7d32\}|
+      && |.active\{background:#fff3e0;color:#e65100;font-style:italic\}|
+      && |.info\{color:#888;font-size:11px\}|
+      && |.total\{margin-top:8px;padding:5px 10px;background:#e3f2fd;|
+      && |color:#0066aa;font-size:12px;border-radius:3px\}|
+      && |</style></head><body>|
+      && lv_rows
+      && |</body></html>|.
 
   endmethod.
 
