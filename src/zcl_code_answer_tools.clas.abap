@@ -494,9 +494,14 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
 
   METHOD merge_class_parts.
+    " Strip CHANGES:YES/NO marker that CLASS_PROCESSOR appends
+    DATA(lv_changed) = i_changed_source.
+    REPLACE ALL OCCURRENCES OF REGEX '[\r\n]+\s*CHANGES\s*:\s*(YES|NO)\s*$'
+      IN lv_changed WITH '' IGNORING CASE.
+
     " Parse full old class into parts map
     DATA(lt_old_parts) = extract_class_parts( i_full_source ).
-    DATA(lt_new_parts) = extract_class_parts( i_changed_source ).
+    DATA(lt_new_parts) = extract_class_parts( lv_changed ).
 
     IF lt_new_parts IS INITIAL.
       " Changed source has no --- section --- markers: return unchanged
@@ -506,7 +511,7 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
     IF lt_old_parts IS INITIAL.
       " No old parts: return changed source as-is
-      rv_merged = i_changed_source.
+      rv_merged = lv_changed.
       RETURN.
     ENDIF.
 
@@ -515,10 +520,41 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       READ TABLE lt_old_parts ASSIGNING FIELD-SYMBOL(<ls_old>)
         WITH KEY part_key = ls_new-part_key.
       IF sy-subrc = 0.
+        " If old method source had METHOD X. / ENDMETHOD. wrappers, preserve them
+        DATA(lv_old_first_line) = <ls_old>-source.
+        DATA(lv_old_first_upper) = lv_old_first_line.
+        IF sy-subrc = 0.
+          FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline IN lv_old_first_line.
+          IF sy-subrc = 0.
+            lv_old_first_line = lv_old_first_line(sy-fdpos).
+          ENDIF.
+        ENDIF.
+        lv_old_first_upper = lv_old_first_line.
+        CONDENSE lv_old_first_upper.
+        TRANSLATE lv_old_first_upper TO UPPER CASE.
+        IF lv_old_first_upper CP 'METHOD *'.
+          " New source is body only — wrap with METHOD/ENDMETHOD
+          DATA(lv_meth_name) = ls_new-part_key.
+          REPLACE FIRST OCCURRENCE OF 'METHOD:' IN lv_meth_name WITH ''.
+          ls_new-source = |METHOD { lv_meth_name }.|
+                       && cl_abap_char_utilities=>newline
+                       && ls_new-source
+                       && cl_abap_char_utilities=>newline
+                       && |ENDMETHOD.|.
+        ENDIF.
         <ls_old>-source = ls_new-source.
         <ls_old>-title  = ls_new-title.
       ELSE.
-        " New part not in old class (e.g. new method) — append
+        " New method not in old class — add METHOD/ENDMETHOD if it looks like a method body
+        IF ls_new-part_key CP 'METHOD:*'.
+          DATA(lv_new_meth_name) = ls_new-part_key.
+          REPLACE FIRST OCCURRENCE OF 'METHOD:' IN lv_new_meth_name WITH ''.
+          ls_new-source = |METHOD { lv_new_meth_name }.|
+                       && cl_abap_char_utilities=>newline
+                       && ls_new-source
+                       && cl_abap_char_utilities=>newline
+                       && |ENDMETHOD.|.
+        ENDIF.
         APPEND ls_new TO lt_old_parts.
       ENDIF.
     ENDLOOP.

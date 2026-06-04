@@ -1170,7 +1170,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
       mo_messages->add_message(
         i_role        = 'assistant'
-        i_agent       = 'FINAL'
+        i_agent       = COND string( WHEN lv_final_agent IS NOT INITIAL THEN lv_final_agent ELSE 'FINAL' )
         i_prompt_type = 'FINAL_ANSWER'
         i_duration_seconds = lv_final_duration_seconds
         i_content     = lv_answer_log ).
