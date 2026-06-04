@@ -285,13 +285,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       lv_source_state = 'active'.
     ENDIF.
 
-    rv_text = |Source for program { lv_program } ({ lv_source_state }|.
-    IF lv_tadir_object IS NOT INITIAL.
-      rv_text = rv_text && |, TADIR { lv_tadir_object }|.
-    ENDIF.
-    rv_text = rv_text && |):|
-           && cl_abap_char_utilities=>newline
-           && format_source( lt_source ).
+    rv_text = format_source( lt_source ).
   ENDMETHOD.
 
   METHOD read_class.
@@ -337,8 +331,6 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_prefix) = class_include_prefix( lv_class ).
-
-    rv_text = |Source for class { lv_class }:|.
 
     append_include_source(
       EXPORTING
@@ -428,7 +420,6 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    rv_text = |Source for method { lv_class }=>{ lv_method }:|.
     append_include_source(
       EXPORTING
         i_include = ls_method-incname
@@ -471,5 +462,6 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       rv_text = rv_text && lv_line.
     ENDLOOP.
   ENDMETHOD.
+
 
 ENDCLASS.
