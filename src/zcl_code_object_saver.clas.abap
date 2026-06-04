@@ -898,7 +898,31 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         TRANSLATE lv_blk_upper TO UPPER CASE.
         CONDENSE lv_blk_upper.
 
-        lt_source = source_to_table( ls_block-source ).
+        " Strip CLASS DEFINITION header and ENDCLASS/IMPLEMENTATION lines that
+        " log_class_extract may include in section source
+        DATA(lv_block_source) = ls_block-source.
+        IF lv_blk_upper CP '*SECTION*'.
+          " Remove lines before PUBLIC/PROTECTED/PRIVATE SECTION. keyword
+          DATA(lv_sect_kw) = COND string(
+            WHEN lv_blk_upper CP '*PUBLIC*'    THEN 'PUBLIC SECTION'
+            WHEN lv_blk_upper CP '*PROTECTED*' THEN 'PROTECTED SECTION'
+            WHEN lv_blk_upper CP '*PRIVATE*'   THEN 'PRIVATE SECTION'
+            ELSE '' ).
+          IF lv_sect_kw IS NOT INITIAL.
+            DATA(lv_sect_pos) = 0.
+            DATA(lv_sect_src_upper) = lv_block_source.
+            TRANSLATE lv_sect_src_upper TO UPPER CASE.
+            FIND FIRST OCCURRENCE OF lv_sect_kw IN lv_sect_src_upper MATCH OFFSET lv_sect_pos.
+            IF sy-subrc = 0.
+              lv_block_source = substring( val = lv_block_source off = lv_sect_pos ).
+            ENDIF.
+          ENDIF.
+          " Remove ENDCLASS. and CLASS ... IMPLEMENTATION. lines
+          REPLACE ALL OCCURRENCES OF REGEX '(?i)\nENDCLASS\s*\.' IN lv_block_source WITH ''.
+          REPLACE ALL OCCURRENCES OF REGEX '(?i)\nCLASS\s+\S+\s+IMPLEMENTATION\s*\.' IN lv_block_source WITH ''.
+        ENDIF.
+
+        lt_source = source_to_table( lv_block_source ).
 
         IF lv_blk_upper CP '*PUBLIC*SECTION*' OR lv_blk_upper = 'PUBLIC SECTION'.
           lv_include = cl_oo_classname_service=>get_pubsec_name( lv_class ).

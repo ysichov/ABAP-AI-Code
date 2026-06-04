@@ -476,6 +476,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     DATA(lv_save_message_upper) = lv_save_message.
     TRANSLATE lv_save_message_upper TO UPPER CASE.
+    DATA(lv_save_obj_type_upper) = mv_diff_object_type.
+    TRANSLATE lv_save_obj_type_upper TO UPPER CASE.
     IF lv_save_message_upper CS 'SYNTAX ERROR'
     OR lv_save_message_upper CS 'ERROR SAVING'
     OR lv_save_message_upper CS 'ERROR CREATING'
@@ -490,6 +492,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
              mt_diff_hunk_actions,
              mt_diff_hunk_threads,
              mv_diff_save_stub_logged.
+      IF lv_save_obj_type_upper = 'CLAS' OR lv_save_obj_type_upper = 'CLASS'
+      OR lv_save_obj_type_upper = 'METH' OR lv_save_obj_type_upper = 'METHOD'.
+        display_text( |Save error (auto-fix not supported for classes/methods):| &&
+                      cl_abap_char_utilities=>newline && lv_save_message ).
+        RETURN.
+      ENDIF.
       display_text(
         |Saved inactive version has errors. Asking AI to fix them before showing code review again.|
         && cl_abap_char_utilities=>newline
