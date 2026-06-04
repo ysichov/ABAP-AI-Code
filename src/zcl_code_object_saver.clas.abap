@@ -1014,8 +1014,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_in_method   TYPE abap_bool.
     DATA lv_depth       TYPE i.
     DATA lt_body        TYPE tt_source.
+    DATA lv_src_upper   TYPE string.
     LOOP AT lt_source INTO DATA(lv_src_line).
-      DATA(lv_src_upper) = lv_src_line.
+      lv_src_upper = lv_src_line.
       TRANSLATE lv_src_upper TO UPPER CASE.
       CONDENSE lv_src_upper.
       IF lv_in_method = abap_false.
