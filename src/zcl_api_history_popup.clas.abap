@@ -485,7 +485,6 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
 
     mo_split->set_row_height( id = 1 height = 18 ).
     mo_split->set_row_height( id = 2 height = 82 ).
-    mo_split->set_row_sash( id = 1 type = 0 value = 0 ).
 
     DATA(lo_top) = mo_split->get_container( row = 1 column = 1 ).
     DATA(lo_bottom) = mo_split->get_container( row = 2 column = 1 ).
