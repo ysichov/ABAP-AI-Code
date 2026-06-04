@@ -12,6 +12,16 @@ public section.
       !I_PROVIDER type STRING
       !I_AGENTS_PATH type STRING .
   methods SHOW .
+  class-methods BUILD_STEPS_HTML
+    importing
+      !IO_MESSAGES type ref to ZCL_AI_MESSAGES
+    returning
+      value(RV_HTML) type STRING .
+  class-methods SET_LIVE_UPDATE_CONTEXT
+    importing
+      !IO_ANSWER_VIEWER type ref to CL_GUI_HTML_VIEWER
+      !IO_MESSAGES type ref to ZCL_AI_MESSAGES .
+  class-methods UPDATE_HTML_WITH_STEPS .
 protected section.
 private section.
 
@@ -98,16 +108,6 @@ private section.
     importing
       !I_SAVE_LOG type STRING .
   methods SYNC_MESSAGE_HISTORY .
-  class-methods BUILD_STEPS_HTML
-    importing
-      !IO_MESSAGES type ref to ZCL_AI_MESSAGES
-    returning
-      value(RV_HTML) type STRING .
-  class-methods SET_LIVE_UPDATE_CONTEXT
-    importing
-      !IO_ANSWER_VIEWER type ref to CL_GUI_HTML_VIEWER
-      !IO_MESSAGES type ref to ZCL_AI_MESSAGES .
-  class-methods UPDATE_HTML_WITH_STEPS .
 ENDCLASS.
 
 
