@@ -992,8 +992,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        " Write include (without STATE like abapGit — writes modified version)
-        INSERT REPORT lv_include FROM lt_source.
+        " Write include as inactive version, then activate
+        INSERT REPORT lv_include FROM lt_source STATE 'I'.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
                    && |Error writing include { lv_include } for '{ ls_block-title }'.|.
@@ -1021,7 +1021,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                 CREATE OBJECT lo_section
                   EXPORTING
                     clskey                        = ls_clskey
-                    exposure                      = lv_exposure
+                    exposure                      = CONV #( lv_exposure )
                     state                         = 'A'
                     source                        = lt_new_str
                     suppress_constrctr_generation = abap_true
@@ -1219,8 +1219,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |Source lines: { lines( lt_source ) }|.
 
-    " Write source into method include (without STATE like abapGit)
-    INSERT REPORT lv_include FROM lt_source.
+    " Write source into method include as inactive version
+    INSERT REPORT lv_include FROM lt_source STATE 'I'.
     IF sy-subrc <> 0.
       rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
       mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
