@@ -816,6 +816,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_scan_error TYPE abap_bool.
     DATA ls_written  TYPE dwinactiv.
     DATA lv_exposure TYPE i.
+    DATA lv_log_str  TYPE string.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -1003,7 +1004,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                    && |Writing { lv_include } for "{ ls_block-title }" ({ lines( lt_source ) } lines):|.
         LOOP AT lt_source INTO DATA(lv_log_line).
           IF sy-tabix > 3. EXIT. ENDIF.
-          mv_last_log = mv_last_log && lv_nl && |  >{ lv_log_line }|.
+          lv_log_str = lv_log_line.
+          mv_last_log = mv_last_log && lv_nl && |  >{ lv_log_str }|.
         ENDLOOP.
 
         " Write include as inactive version, then activate
