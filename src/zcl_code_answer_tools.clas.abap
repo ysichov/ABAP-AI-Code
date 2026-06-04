@@ -150,13 +150,18 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     READ TABLE ct_parts ASSIGNING FIELD-SYMBOL(<ls_part>)
       WITH KEY part_key = is_part-part_key.
     IF sy-subrc = 0.
-      IF <ls_part>-source IS NOT INITIAL
-      AND is_part-source IS NOT INITIAL.
-        <ls_part>-source = <ls_part>-source
-                         && cl_abap_char_utilities=>newline
-                         && is_part-source.
-      ELSEIF is_part-source IS NOT INITIAL.
-        <ls_part>-source = is_part-source.
+      IF is_part-source IS NOT INITIAL.
+        IF is_part-part_key CP 'METHOD:*'.
+          " Methods: replace (same method read twice = duplicate, keep latest)
+          <ls_part>-source = is_part-source.
+        ELSEIF <ls_part>-source IS NOT INITIAL.
+          " Sections: append (delta from LLM added to existing)
+          <ls_part>-source = <ls_part>-source
+                           && cl_abap_char_utilities=>newline
+                           && is_part-source.
+        ELSE.
+          <ls_part>-source = is_part-source.
+        ENDIF.
       ENDIF.
       RETURN.
     ENDIF.
@@ -391,45 +396,39 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       FIND FIRST OCCURRENCE OF REGEX '^\s*(PUBLIC|PROTECTED|PRIVATE)\s+SECTION\s*\.'
         IN lv_line IGNORING CASE SUBMATCHES lv_section.
       IF sy-subrc = 0.
+        append_class_part(
+          EXPORTING
+            is_part = ls_part
+          CHANGING
+            ct_parts = rt_parts ).
+
         TRANSLATE lv_section TO LOWER CASE.
         CONCATENATE lv_section 'section' INTO lv_title SEPARATED BY space.
-        DATA(lv_sect_key) = normalize_class_part_key( lv_title ).
-        " If current part already has this key (from --- title --- header), just continue as content
-        IF ls_part-part_key <> lv_sect_key.
-          append_class_part(
-            EXPORTING
-              is_part = ls_part
-            CHANGING
-              ct_parts = rt_parts ).
-          CLEAR ls_part.
-          ls_part-title = lv_title.
-          ls_part-part_key = lv_sect_key.
-          IF lv_preamble IS NOT INITIAL.
-            ls_part-source = lv_preamble.
-            CLEAR lv_preamble.
-          ENDIF.
+        CLEAR ls_part.
+        ls_part-title = lv_title.
+        ls_part-part_key = normalize_class_part_key( lv_title ).
+        IF lv_preamble IS NOT INITIAL.
+          ls_part-source = lv_preamble.
+          CLEAR lv_preamble.
         ENDIF.
       ELSE.
         FIND FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+([A-Za-z0-9_~/]+)\s*\.'
           IN lv_line IGNORING CASE SUBMATCHES lv_method.
         IF sy-subrc = 0.
+          append_class_part(
+            EXPORTING
+              is_part = ls_part
+            CHANGING
+              ct_parts = rt_parts ).
+
           TRANSLATE lv_method TO UPPER CASE.
           CONCATENATE 'Method' lv_method INTO lv_title SEPARATED BY space.
-          DATA(lv_meth_key) = normalize_class_part_key( lv_title ).
-          " If current part already has this key (from --- title --- header), just continue as content
-          IF ls_part-part_key <> lv_meth_key.
-            append_class_part(
-              EXPORTING
-                is_part = ls_part
-              CHANGING
-                ct_parts = rt_parts ).
-            CLEAR ls_part.
-            ls_part-title = lv_title.
-            ls_part-part_key = lv_meth_key.
-            IF lv_preamble IS NOT INITIAL.
-              ls_part-source = lv_preamble.
-              CLEAR lv_preamble.
-            ENDIF.
+          CLEAR ls_part.
+          ls_part-title = lv_title.
+          ls_part-part_key = normalize_class_part_key( lv_title ).
+          IF lv_preamble IS NOT INITIAL.
+            ls_part-source = lv_preamble.
+            CLEAR lv_preamble.
           ENDIF.
         ENDIF.
       ENDIF.
