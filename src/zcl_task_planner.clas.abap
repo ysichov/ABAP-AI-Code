@@ -182,8 +182,46 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
     DATA(lv_text) = i_text.
     DATA(lv_nl) = cl_abap_char_utilities=>newline.
-
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_text WITH lv_nl.
+
+    " If no TASK-prefixed lines but answer is a direct agent command - return as single task
+    DATA(lv_text_upper_check) = lv_text.
+    TRANSLATE lv_text_upper_check TO UPPER CASE.
+    IF lv_text_upper_check CP '{AGENT:*}' AND NOT lv_text_upper_check CS 'TASK'.
+      DATA(lv_direct_cmd) = lv_text.
+      CONDENSE lv_direct_cmd.
+      APPEND lv_direct_cmd TO rt_tasks.
+      RETURN.
+    ENDIF.
+
+    " Split by <TASK>...</TASK> tags
+    DATA(lv_text_tag_check) = lv_text_upper_check.
+    IF lv_text_tag_check CS '<TASK>'.
+      DATA(lv_rest) = lv_text.
+      WHILE lv_rest CS '<TASK>' OR lv_rest CS '<task>'.
+        DATA(lv_open_pos)  = 0.
+        DATA(lv_close_pos) = 0.
+        FIND FIRST OCCURRENCE OF REGEX '<TASK>' IN lv_rest
+          MATCH OFFSET lv_open_pos IGNORING CASE.
+        IF sy-subrc <> 0. EXIT. ENDIF.
+        DATA(lv_after_open) = lv_open_pos + 6.
+        DATA(lv_inner_rest) = substring( val = lv_rest off = lv_after_open ).
+        FIND FIRST OCCURRENCE OF REGEX '</TASK>' IN lv_inner_rest
+          MATCH OFFSET lv_close_pos IGNORING CASE.
+        IF sy-subrc <> 0. EXIT. ENDIF.
+        DATA(lv_block) = substring( val = lv_inner_rest len = lv_close_pos ).
+        CONDENSE lv_block.
+        IF lv_block IS NOT INITIAL.
+          APPEND lv_block TO rt_tasks.
+        ENDIF.
+        lv_rest = substring( val = lv_inner_rest off = lv_close_pos + 7 ).
+      ENDWHILE.
+      IF rt_tasks IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    " Fallback: old merge logic by TASK N / TASK N.N prefixes
     REPLACE ALL OCCURRENCES OF REGEX '\s+(TASK\s*[0-9]+(\.[0-9]+)?(\s*-\s*ASK\s*[0-9]+|-ASK[0-9]+)?:)'
       IN lv_text WITH |{ lv_nl }$1|.
     REPLACE ALL OCCURRENCES OF REGEX '\s+([0-9]+\.[0-9]+:)'
@@ -191,29 +229,6 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
 
     DATA lt_lines TYPE tt_strings.
     SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
-
-    " If no TASK-prefixed lines but answer is a direct agent command - return as single task
-    DATA(lv_text_upper_check) = lv_text.
-    TRANSLATE lv_text_upper_check TO UPPER CASE.
-    CONDENSE lv_text_upper_check.
-    IF lv_text_upper_check CP '{AGENT:*}'.
-      DATA(lv_has_task_prefix) = abap_false.
-      LOOP AT lt_lines INTO DATA(lv_check_line).
-        DATA(lv_check_upper) = lv_check_line.
-        TRANSLATE lv_check_upper TO UPPER CASE.
-        CONDENSE lv_check_upper.
-        IF lv_check_upper CP 'TASK*'.
-          lv_has_task_prefix = abap_true.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
-      IF lv_has_task_prefix = abap_false.
-        DATA(lv_direct_cmd) = lv_text.
-        CONDENSE lv_direct_cmd.
-        APPEND lv_direct_cmd TO rt_tasks.
-        RETURN.
-      ENDIF.
-    ENDIF.
 
     LOOP AT lt_lines INTO DATA(lv_line).
       CONDENSE lv_line.
@@ -223,11 +238,8 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       IF lv_line_upper CP 'TASK*'.
         lv_is_task_line = abap_true.
       ELSE.
-        FIND FIRST OCCURRENCE OF REGEX '^[0-9]+\.[0-9]+:'
-          IN lv_line_upper.
-        IF sy-subrc = 0.
-          lv_is_task_line = abap_true.
-        ENDIF.
+        FIND FIRST OCCURRENCE OF REGEX '^[0-9]+\.[0-9]+:' IN lv_line_upper.
+        IF sy-subrc = 0. lv_is_task_line = abap_true. ENDIF.
       ENDIF.
       CHECK lv_is_task_line = abap_true.
 
@@ -265,7 +277,6 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
         REPLACE FIRST OCCURRENCE OF REGEX '^TASK\s+' IN lv_existing_key WITH 'TASK' IGNORING CASE.
         REPLACE FIRST OCCURRENCE OF REGEX '^([0-9]+)$' IN lv_existing_key WITH 'TASK$1'.
         CONDENSE lv_existing_key.
-
         IF lv_existing_key = lv_root_key.
           <task_line> = <task_line> && |; { lv_task_text }|.
           lv_merged = abap_true.
