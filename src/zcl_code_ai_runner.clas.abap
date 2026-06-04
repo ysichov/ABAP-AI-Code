@@ -578,9 +578,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     IF lv_trimmed_upper CP '{AGENT:CODE_SEARCH *}'.
       DATA(lv_cs_inner) = lv_trimmed_prompt.
       " Strip leading '{AGENT:CODE_SEARCH ' and trailing '}'
-      FIND FIRST OCCURRENCE OF REGEX '(?i)\{AGENT\s*:\s*CODE_SEARCH\s+' IN lv_cs_inner MATCH LENGTH DATA(lv_cs_pfx_len).
+      FIND FIRST OCCURRENCE OF 'CODE_SEARCH ' IN lv_trimmed_upper MATCH OFFSET DATA(lv_cs_pfx_off) MATCH LENGTH DATA(lv_cs_pfx_len).
       IF sy-subrc = 0.
-        lv_cs_inner = lv_cs_inner+lv_cs_pfx_len.
+        DATA(lv_cs_skip) = lv_cs_pfx_off + lv_cs_pfx_len.
+        lv_cs_inner = lv_cs_inner+lv_cs_skip.
         " Remove trailing '}'
         DATA(lv_cs_last) = strlen( lv_cs_inner ) - 1.
         IF lv_cs_last >= 0 AND lv_cs_inner+lv_cs_last(1) = '}'.
