@@ -851,18 +851,65 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |INSERT REPORT { lv_include } executed.|.
 
-    " Activate via class pool
-    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( i_class ).
-    DATA(lv_act_msg) = activate_program( lv_classpool ).
-    IF lv_act_msg IS NOT INITIAL.
-      rv_message = lv_act_msg.
+    " Activate method include + classpool together
+    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( CONV #( i_class ) ).
+    DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_act_obj TYPE dwinactiv.
+    DATA lv_t100_message2 TYPE string.
+    DATA lv_subrc_text2   TYPE string.
+
+    ls_act_obj-object   = 'REPS'.
+    ls_act_obj-obj_name = lv_include.
+    APPEND ls_act_obj TO lt_act_objects.
+
+    ls_act_obj-object   = 'REPS'.
+    ls_act_obj-obj_name = lv_classpool.
+    APPEND ls_act_obj TO lt_act_objects.
+
+    TRY.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+            ui_decoupled           = abap_true
+          TABLES
+            objects                = lt_act_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+      CATCH cx_sy_dyn_call_param_not_found.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+          TABLES
+            objects                = lt_act_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+    ENDTRY.
+
+    IF sy-subrc <> 0.
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+          INTO lv_t100_message2.
+      ELSE.
+        lv_subrc_text2 = sy-subrc.
+        CONCATENATE 'subrc' lv_subrc_text2 INTO lv_t100_message2 SEPARATED BY space.
+      ENDIF.
+      rv_message = |Error activating method { i_class }=>{ i_method }: { lv_t100_message2 }|.
       mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
       RETURN.
     ENDIF.
 
     mv_last_log = mv_last_log
                && cl_abap_char_utilities=>newline
-               && |Class { i_class } activated via { lv_classpool }.|.
+               && |RS_WORKING_OBJECTS_ACTIVATE executed for { lv_include } + { lv_classpool }.|.
 
     rv_message = |Method { i_class }=>{ i_method } was saved and activated.|.
     mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
