@@ -334,9 +334,6 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      " Strip trailing --- that LLM appends (markdown hr artifact)
-      REPLACE FIRST OCCURRENCE OF REGEX '-{2,}\s*$' IN lv_line WITH '' IGNORING CASE.
-
       " XML closing tag </section> or </Method X> — end of current part, skip line
       FIND FIRST OCCURRENCE OF REGEX '^</[^>]+>\s*$' IN lv_line IGNORING CASE.
       IF sy-subrc = 0.
@@ -363,7 +360,7 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      " Legacy --- title --- format
+      " Legacy --- title --- format (check BEFORE stripping trailing dashes)
       FIND FIRST OCCURRENCE OF REGEX '^---\s+(.+)---\s*$'
         IN lv_line SUBMATCHES lv_title.
       IF sy-subrc = 0.
@@ -385,6 +382,10 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         ENDIF.
         CONTINUE.
       ENDIF.
+
+      " Strip trailing --- that LLM appends (markdown hr artifact)
+      " Must be AFTER --- title --- check to avoid breaking section headers
+      REPLACE FIRST OCCURRENCE OF REGEX '-{2,}\s*$' IN lv_line WITH '' IGNORING CASE.
 
       FIND FIRST OCCURRENCE OF REGEX '^\s*(PUBLIC|PROTECTED|PRIVATE)\s+SECTION\s*\.'
         IN lv_line IGNORING CASE SUBMATCHES lv_section.

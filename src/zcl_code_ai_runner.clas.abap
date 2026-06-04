@@ -1172,7 +1172,11 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       TRANSLATE lv_answer_log_upper TO UPPER CASE.
       DATA(lv_has_changes_yes) = xsdbool( lv_answer_log_upper CS 'CHANGES:YES'
         OR ( lv_final_agent = zcl_ai_agents_prompts=>c_agent_class_processor
-             AND lv_answer_log_upper CS '--- ' ) ).
+             AND ( lv_answer_log_upper CS '--- '
+                OR lv_answer_log_upper CS '<PUBLIC'
+                OR lv_answer_log_upper CS '<PROTECTED'
+                OR lv_answer_log_upper CS '<PRIVATE'
+                OR lv_answer_log_upper CS '<METHOD ' ) ) ).
 
       IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
