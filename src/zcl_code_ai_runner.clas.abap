@@ -646,8 +646,17 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_prompt_type = 'AGENT_PROMPT'
         i_content     = |Direct lookup: { lv_word }| ).
       DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
-      IF lv_direct_source IS INITIAL.
+      DATA(lv_direct_upper) = lv_direct_source.
+      TRANSLATE lv_direct_upper TO UPPER CASE.
+      IF lv_direct_source IS INITIAL OR lv_direct_upper CS 'NOT FOUND' OR lv_direct_upper CS 'SIMILAR CLASSES'.
+        DATA(lv_class_err) = lv_direct_source.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
+        DATA(lv_direct_upper2) = lv_direct_source.
+        TRANSLATE lv_direct_upper2 TO UPPER CASE.
+        IF lv_direct_source IS INITIAL OR lv_direct_upper2 CS 'NOT FOUND' OR lv_direct_upper2 CS 'CANNOT BE READ'.
+          " Neither found - show both error messages
+          lv_direct_source = lv_class_err && cl_abap_char_utilities=>newline && lv_direct_source.
+        ENDIF.
       ENDIF.
       IF lv_direct_source IS NOT INITIAL.
         mo_messages->add_message(

@@ -363,8 +363,15 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           ENDCASE.
           DATA(lv_open_upper) = lv_open_source.
           TRANSLATE lv_open_upper TO UPPER CASE.
-          IF lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES' OR lv_open_source IS INITIAL.
+          IF lv_open_source IS INITIAL OR lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES'.
+            DATA(lv_class_fallback) = lv_open_source.
             lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+            DATA(lv_prog_upper) = lv_open_source.
+            TRANSLATE lv_prog_upper TO UPPER CASE.
+            IF lv_open_source IS INITIAL OR lv_prog_upper CS 'NOT FOUND' OR lv_prog_upper CS 'CANNOT BE READ'.
+              " Neither class nor program found - show both error messages
+              lv_open_source = lv_class_fallback && cl_abap_char_utilities=>newline && lv_open_source.
+            ENDIF.
           ENDIF.
           IF lv_open_source IS NOT INITIAL.
             display_answer(
