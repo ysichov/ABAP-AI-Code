@@ -326,6 +326,14 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
 
     LOOP AT lt_lines INTO lv_line.
+      " Skip lone markdown hr lines (--- or ---- without title)
+      DATA(lv_line_hr) = lv_line.
+      CONDENSE lv_line_hr.
+      FIND FIRST OCCURRENCE OF REGEX '^-+$' IN lv_line_hr.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+
       FIND FIRST OCCURRENCE OF REGEX '^---\s+(.+)---\s*$'
         IN lv_line SUBMATCHES lv_title.
       IF sy-subrc = 0.
