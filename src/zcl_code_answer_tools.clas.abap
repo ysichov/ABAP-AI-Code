@@ -168,12 +168,15 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     DATA lv_end TYPE i.
     DATA lv_after TYPE string.
 
-    FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN i_text
+    DATA(lv_text) = i_text.
+    REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*' IN lv_text WITH ''.
+
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN lv_text
       MATCH OFFSET lv_start
       MATCH LENGTH lv_fence_len.
     IF sy-subrc = 0.
       lv_code_start = lv_start + lv_fence_len.
-      lv_after = substring( val = i_text off = lv_code_start ).
+      lv_after = substring( val = lv_text off = lv_code_start ).
       FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
       IF sy-subrc <> 0.
         rv_code = lv_after.
@@ -184,16 +187,16 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN i_text
+    FIND FIRST OCCURRENCE OF REGEX '```\s*[A-Za-z0-9_-]*\s*' IN lv_text
       MATCH OFFSET lv_start
       MATCH LENGTH lv_fence_len.
     IF sy-subrc <> 0.
-      rv_code = i_text.
+      rv_code = lv_text.
       RETURN.
     ENDIF.
 
     lv_code_start = lv_start + lv_fence_len.
-    lv_after = substring( val = i_text off = lv_code_start ).
+    lv_after = substring( val = lv_text off = lv_code_start ).
     FIND FIRST OCCURRENCE OF '```' IN lv_after MATCH OFFSET lv_end.
     IF sy-subrc <> 0.
       rv_code = lv_after.

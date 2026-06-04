@@ -21,6 +21,13 @@ Answer should be without prompt:
 
 {AGENT:CODE_SEARCH METH Z_CALC=>calc}
 
+Other example: Add header to the program Z_CALC
+
+Answer should be with exact prompt, just replace objectname
+
+Add header to the program {AGENT:CODE_SEARCH PROG Z_CALC}
+
+
 
 
 
