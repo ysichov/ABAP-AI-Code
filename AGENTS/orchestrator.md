@@ -44,7 +44,7 @@ If the request is relevant to SAP but unsupported, answer:
 AGENT:Not supported
 
 Allowed object types:
-PROG, CLASS, METH, FM - DON'T hallucinate with object names - only names from PROMPT!
+PROG, CLAS, METH - DON'T hallucinate with object names - only names from PROMPT!
 
 Example:
 User asks: Open the Z_TEST program and, based on it, create an example calculator program Z_CALC.

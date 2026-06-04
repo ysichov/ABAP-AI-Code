@@ -28,6 +28,7 @@ CLASS zcl_ai_code_reader DEFINITION
 
     CLASS-METHODS read_program
       IMPORTING i_program      TYPE string
+                i_object_type  TYPE string OPTIONAL
       RETURNING VALUE(rv_text) TYPE string.
 
     CLASS-METHODS read_class
@@ -125,16 +126,25 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     LOOP AT lt_commands INTO DATA(ls_command).
       DATA(lv_resolved) = VALUE string( ).
 
-      CASE ls_command-object_type.
-        WHEN 'REPS' OR 'PROG'.
-          lv_resolved = read_program( ls_command-object_name ).
-        WHEN 'CLAS' OR 'CLASS'.
-          lv_resolved = read_class( ls_command-object_name ).
-        WHEN 'METH' OR 'METHOD'.
-          lv_resolved = read_method(
-            i_class  = ls_command-object_name
-            i_method = ls_command-method_name ).
-      ENDCASE.
+      " Wildcard - search TADIR regardless of object type
+      IF ls_command-object_name CS '*' OR ls_command-object_name CS '+'.
+        lv_resolved = read_program(
+          i_program     = ls_command-object_name
+          i_object_type = ls_command-object_type ).
+      ELSE.
+        CASE ls_command-object_type.
+          WHEN 'REPS' OR 'PROG'.
+            lv_resolved = read_program(
+              i_program     = ls_command-object_name
+              i_object_type = ls_command-object_type ).
+          WHEN 'CLAS' OR 'CLASS'.
+            lv_resolved = read_class( ls_command-object_name ).
+          WHEN 'METH' OR 'METHOD'.
+            lv_resolved = read_method(
+              i_class  = ls_command-object_name
+              i_method = ls_command-method_name ).
+        ENDCASE.
+      ENDIF.
 
       IF lv_resolved IS NOT INITIAL.
         IF rv_text IS NOT INITIAL.
@@ -175,13 +185,39 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '*' IN lv_like_pattern WITH '%'.
       REPLACE ALL OCCURRENCES OF '+' IN lv_like_pattern WITH '_'.
 
+      " Map requested type to TADIR object column values
+      DATA lt_tadir_types TYPE STANDARD TABLE OF tadir-object WITH NON-UNIQUE DEFAULT KEY.
+      DATA(lv_type_upper) = i_object_type.
+      TRANSLATE lv_type_upper TO UPPER CASE.
+      CASE lv_type_upper.
+        WHEN 'PROG' OR 'PROGRAM' OR 'REPORT'.
+          APPEND 'PROG' TO lt_tadir_types.
+          APPEND 'REPS' TO lt_tadir_types.
+        WHEN 'CLAS' OR 'CLASS'.
+          APPEND 'CLAS' TO lt_tadir_types.
+        WHEN 'FUGR' OR 'FM' OR 'FUNC'.
+          APPEND 'FUGR' TO lt_tadir_types.
+        WHEN OTHERS.
+          " No filter - return all matching object names
+      ENDCASE.
+
       DATA lt_tadir TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
-      SELECT object obj_name devclass
-        FROM tadir
-        INTO CORRESPONDING FIELDS OF TABLE lt_tadir
-        WHERE pgmid    = 'R3TR'
-          AND obj_name LIKE lv_like_pattern
-        ORDER BY object obj_name.
+      IF lt_tadir_types IS NOT INITIAL.
+        SELECT object obj_name devclass
+          FROM tadir
+          INTO CORRESPONDING FIELDS OF TABLE lt_tadir
+          WHERE pgmid    = 'R3TR'
+            AND obj_name LIKE lv_like_pattern
+            AND object IN lt_tadir_types
+          ORDER BY object obj_name.
+      ELSE.
+        SELECT object obj_name devclass
+          FROM tadir
+          INTO CORRESPONDING FIELDS OF TABLE lt_tadir
+          WHERE pgmid    = 'R3TR'
+            AND obj_name LIKE lv_like_pattern
+          ORDER BY object obj_name.
+      ENDIF.
 
       IF lt_tadir IS INITIAL.
         rv_text = |No objects found in TADIR matching { lv_program }.|.
