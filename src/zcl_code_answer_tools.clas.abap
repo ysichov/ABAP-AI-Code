@@ -335,7 +335,8 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       ENDIF.
 
       " XML closing tag </section> or </Method X> — end of current part, skip line
-      FIND FIRST OCCURRENCE OF REGEX '^</[^>]+>\s*$' IN lv_line IGNORING CASE.
+      " Allow trailing garbage (e.g. </public section>Total tokens: ...)
+      FIND FIRST OCCURRENCE OF REGEX '^</[^>]+>' IN lv_line IGNORING CASE.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.

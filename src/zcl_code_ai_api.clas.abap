@@ -195,13 +195,13 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       /ui2/cl_json=>deserialize( EXPORTING json = i_json CHANGING data = openai_response ).
       IF openai_response-choices IS NOT INITIAL.
         lv_text = openai_response-choices[ 1 ]-message-content.
-        IF openai_response-usage-total_tokens IS NOT INITIAL.
-          lv_usage_info = |---| && cl_abap_char_utilities=>newline
-                       && |Tokens: prompt={ openai_response-usage-prompt_tokens } completion={ openai_response-usage-completion_tokens } total={ openai_response-usage-total_tokens } cached={ openai_response-usage-prompt_tokens_details-cached_tokens }|.
-          rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
-        ELSE.
+*        IF openai_response-usage-total_tokens IS NOT INITIAL.
+*          lv_usage_info = |---| && cl_abap_char_utilities=>newline
+*                       && |Tokens: prompt={ openai_response-usage-prompt_tokens } completion={ openai_response-usage-completion_tokens } total={ openai_response-usage-total_tokens } cached={ openai_response-usage-prompt_tokens_details-cached_tokens }|.
+*          rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
+*        ELSE.
           rv_answer = lv_text.
-        ENDIF.
+*        ENDIF.
       ELSE.
         rv_answer = i_json.
       ENDIF.
@@ -212,13 +212,13 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     IF response-content IS NOT INITIAL.
       lv_text = response-content[ 1 ]-text.
-      IF response-usage-total_tokens IS NOT INITIAL.
-        lv_usage_info = |---| && cl_abap_char_utilities=>newline
-                     && |Tokens: input={ response-usage-prompt_tokens } output={ response-usage-completion_tokens } total={ response-usage-total_tokens }|.
-        rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
-      ELSE.
+*      IF response-usage-total_tokens IS NOT INITIAL.
+*        lv_usage_info = |---| && cl_abap_char_utilities=>newline
+*                     && |Tokens: input={ response-usage-prompt_tokens } output={ response-usage-completion_tokens } total={ response-usage-total_tokens }|.
+*        rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
+*      ELSE.
         rv_answer = lv_text.
-      ENDIF.
+*      ENDIF.
     ELSE.
       rv_answer = i_json.
     ENDIF.
