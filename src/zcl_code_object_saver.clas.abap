@@ -996,11 +996,50 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Activate classpool
-    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( lv_class ).
-    DATA(lv_act_msg) = activate_program( lv_classpool ).
-    IF lv_act_msg IS NOT INITIAL.
-      rv_message = lv_act_msg.
+    " Activate class object (not individual includes)
+    DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_act_object TYPE dwinactiv.
+    ls_act_object-object = 'CLAS'.
+    ls_act_object-obj_name = lv_class.
+    APPEND ls_act_object TO lt_act_objects.
+
+    TRY.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+            ui_decoupled           = abap_true
+          TABLES
+            objects                = lt_act_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+      CATCH cx_sy_dyn_call_param_not_found.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+          TABLES
+            objects                = lt_act_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+    ENDTRY.
+
+    IF sy-subrc <> 0.
+      DATA lv_act_t100 TYPE string.
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+          INTO lv_act_t100.
+      ELSE.
+        lv_act_t100 = |subrc { sy-subrc }|.
+      ENDIF.
+      rv_message = |Error activating class { lv_class }: { lv_act_t100 }|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.

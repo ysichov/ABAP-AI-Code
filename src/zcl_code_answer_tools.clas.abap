@@ -557,6 +557,9 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Track which parts were actually changed
+    DATA lt_changed_keys TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+
     " Override old parts with new (changed) parts
     LOOP AT lt_new_parts INTO DATA(ls_new).
       READ TABLE lt_old_parts ASSIGNING FIELD-SYMBOL(<ls_old>)
@@ -617,14 +620,21 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
             <ls_old>-source = ls_new-source.
           ENDIF.
         ENDIF.
+        APPEND ls_new-part_key TO lt_changed_keys.
       ELSE.
         " New method not in old class — no wrapping needed (LLM provides full method)
         APPEND ls_new TO lt_old_parts.
+        APPEND ls_new-part_key TO lt_changed_keys.
       ENDIF.
     ENDLOOP.
 
-    " Reconstruct full source from merged parts
+    " Reconstruct source from changed parts only
     LOOP AT lt_old_parts INTO DATA(ls_part).
+      READ TABLE lt_changed_keys TRANSPORTING NO FIELDS
+        WITH KEY table_line = ls_part-part_key.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
       IF rv_merged IS NOT INITIAL.
         rv_merged = rv_merged
                  && cl_abap_char_utilities=>newline
