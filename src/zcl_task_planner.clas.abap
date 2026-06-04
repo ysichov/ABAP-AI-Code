@@ -192,6 +192,29 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
     DATA lt_lines TYPE tt_strings.
     SPLIT lv_text AT lv_nl INTO TABLE lt_lines.
 
+    " If no TASK-prefixed lines but answer is a direct agent command - return as single task
+    DATA(lv_text_upper_check) = lv_text.
+    TRANSLATE lv_text_upper_check TO UPPER CASE.
+    CONDENSE lv_text_upper_check.
+    IF lv_text_upper_check CP '{AGENT:*}'.
+      DATA(lv_has_task_prefix) = abap_false.
+      LOOP AT lt_lines INTO DATA(lv_check_line).
+        DATA(lv_check_upper) = lv_check_line.
+        TRANSLATE lv_check_upper TO UPPER CASE.
+        CONDENSE lv_check_upper.
+        IF lv_check_upper CP 'TASK*'.
+          lv_has_task_prefix = abap_true.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF lv_has_task_prefix = abap_false.
+        DATA(lv_direct_cmd) = lv_text.
+        CONDENSE lv_direct_cmd.
+        APPEND lv_direct_cmd TO rt_tasks.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     LOOP AT lt_lines INTO DATA(lv_line).
       CONDENSE lv_line.
       DATA(lv_line_upper) = lv_line.
