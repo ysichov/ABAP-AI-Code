@@ -805,8 +805,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       EXCEPTIONS
         OTHERS  = 1.
 
-    lo_outer->set_row_height( id = 1 height = 8 ).
-    lo_outer->set_row_height( id = 2 height = 92 ).
+    lo_outer->set_row_height( id = 1 height = 4 ).
+    lo_outer->set_row_height( id = 2 height = 96 ).
     lo_outer->set_row_sash( id = 1 type = 0 value = 0 ).
 
     DATA lo_toolbar_cont TYPE REF TO cl_gui_container.
