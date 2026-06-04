@@ -832,9 +832,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     DATA lv_steps_html TYPE string.
     DATA lv_last_agent TYPE string.
-    DATA lv_step_icon TYPE string.
-    DATA lv_step_status TYPE string.
     DATA lt_agents_seen TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_esc TYPE string.
 
     LOOP AT lt_messages INTO DATA(ls_msg).
       IF ls_msg-agent IS NOT INITIAL
@@ -844,11 +843,13 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         IF sy-subrc <> 0.
           APPEND ls_msg-agent TO lt_agents_seen.
 
-          lv_step_icon = '✓'.
-          lv_step_status = 'completed'.
+          lv_esc = ls_msg-agent.
+          REPLACE ALL OCCURRENCES OF '&' IN lv_esc WITH '&amp;'.
+          REPLACE ALL OCCURRENCES OF '<' IN lv_esc WITH '&lt;'.
+          REPLACE ALL OCCURRENCES OF '>' IN lv_esc WITH '&gt;'.
 
           lv_steps_html = lv_steps_html &&
-            |<div class="step { lv_step_status }">{ lv_step_icon } { zcl_code_html_gen=>escape_html( ls_msg-agent ) }</div>|.
+            |<div class="step completed">&#x2713; { lv_esc }</div>|.
 
           lv_last_agent = ls_msg-agent.
         ENDIF.
@@ -862,12 +863,20 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         WHEN ls_msg-role = 'assistant' THEN 'assistant-msg'
         ELSE 'system-msg' ).
 
-      DATA(lv_msg_content) = zcl_code_html_gen=>escape_html( ls_msg-content ).
+      DATA(lv_agent_esc) = ls_msg-agent.
+      REPLACE ALL OCCURRENCES OF '&' IN lv_agent_esc WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<' IN lv_agent_esc WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>' IN lv_agent_esc WITH '&gt;'.
+
+      DATA(lv_msg_content) = ls_msg-content.
+      REPLACE ALL OCCURRENCES OF '&' IN lv_msg_content WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<' IN lv_msg_content WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>' IN lv_msg_content WITH '&gt;'.
       REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_msg_content WITH '<br>'.
 
       lv_messages_html = lv_messages_html &&
         |<div class="{ lv_msg_role }">|
-        && |<span class="agent">{ zcl_code_html_gen=>escape_html( ls_msg-agent ) }</span>|
+        && |<span class="agent">{ lv_agent_esc }</span>|
         && |<div class="content">{ lv_msg_content }</div>|
         && |</div>|.
     ENDLOOP.
