@@ -1577,7 +1577,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         IF ls_step-is_llm = abap_true.
           lv_info = | &nbsp;<span class="info">{ ls_step-seconds }s|.
           IF ls_step-tok_in > 0.
-            lv_info = lv_info && |, in:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
+            lv_info = lv_info && | Tokens: inp:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
           ENDIF.
           lv_info = lv_info && |</span>|.
         ENDIF.
@@ -1593,7 +1593,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       lv_rows = lv_rows
         && |<div class="total">Total: { mv_total_seconds }s|.
       IF mv_total_tok_in > 0.
-        lv_rows = lv_rows && |, in:{ mv_total_tok_in }, out:{ mv_total_tok_out }|.
+        lv_rows = lv_rows && | Tokens: inp:{ mv_total_tok_in }, out:{ mv_total_tok_out }|.
       ENDIF.
       lv_rows = lv_rows && |</div>|.
     ENDIF.
