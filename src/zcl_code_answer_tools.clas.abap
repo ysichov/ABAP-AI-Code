@@ -334,6 +334,33 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      " XML closing tag </section> or </Method X> — end of current part, skip line
+      FIND FIRST OCCURRENCE OF REGEX '^</[^>]+>\s*$' IN lv_line IGNORING CASE.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+
+      " XML opening tag <public section>, <Method NAME>, etc.
+      FIND FIRST OCCURRENCE OF REGEX '^<([^/][^>]*)>\s*$' IN lv_line
+        IGNORING CASE SUBMATCHES lv_title.
+      IF sy-subrc = 0.
+        CONDENSE lv_title.
+        append_class_part(
+          EXPORTING
+            is_part = ls_part
+          CHANGING
+            ct_parts = rt_parts ).
+        CLEAR ls_part.
+        ls_part-title = lv_title.
+        ls_part-part_key = normalize_class_part_key( lv_title ).
+        IF lv_preamble IS NOT INITIAL.
+          ls_part-source = lv_preamble.
+          CLEAR lv_preamble.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      " Legacy --- title --- format
       FIND FIRST OCCURRENCE OF REGEX '^---\s+(.+)---\s*$'
         IN lv_line SUBMATCHES lv_title.
       IF sy-subrc = 0.
