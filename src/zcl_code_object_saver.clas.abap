@@ -982,6 +982,21 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        " Syntax check before writing
+        DATA lv_syn_msg TYPE string.
+        DATA lv_syn_line TYPE i.
+        DATA lv_syn_word TYPE string.
+        SYNTAX-CHECK FOR lt_source
+          MESSAGE lv_syn_msg
+          LINE lv_syn_line
+          WORD lv_syn_word
+          PROGRAM lv_include.
+        IF sy-subrc <> 0.
+          lv_errors = lv_errors && lv_nl
+                   && |Syntax error in '{ ls_block-title }' line { lv_syn_line } word { lv_syn_word }: { lv_syn_msg }|.
+          CONTINUE.
+        ENDIF.
+
         INSERT REPORT lv_include FROM lt_source STATE 'I'.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
