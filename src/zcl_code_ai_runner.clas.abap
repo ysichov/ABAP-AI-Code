@@ -1115,6 +1115,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ELSE.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
+
         DATA(lv_final_user_prompt) = VALUE string( ).
         LOOP AT lt_tasks INTO DATA(lv_final_task).
           IF lv_final_user_prompt IS NOT INITIAL.
@@ -1141,6 +1142,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_final_user_prompt
           i_agent       = lv_final_agent ).
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = 'DEBUG'
+          i_prompt_type = 'COMMAND'
+          i_content     = |FINAL AGENT SELECTION: code_change_type={ lv_code_change_type } final_type={ lv_final_type } agent={ lv_final_agent }| &&
+                          cl_abap_char_utilities=>newline &&
+                          |PROMPT (first 300): { lv_final_prompt(300) }| ).
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).

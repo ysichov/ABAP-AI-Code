@@ -565,7 +565,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
     add_message(
       i_role        = 'user'
-      i_agent       = 'FINAL'
+      i_agent       = COND string( WHEN i_agent IS NOT INITIAL THEN i_agent ELSE 'FINAL' )
       i_prompt_type = 'AGENT_PROMPT'
       i_content     = rv_prompt ).
   ENDMETHOD.
