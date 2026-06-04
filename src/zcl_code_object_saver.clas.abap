@@ -817,6 +817,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA ls_written  TYPE dwinactiv.
     DATA lv_exposure TYPE i.
     DATA lv_log_str  TYPE string.
+    DATA lv_old_norm TYPE string.
+    DATA lv_new_norm TYPE string.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -988,15 +990,32 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        " Skip unchanged includes — compare as string_table (like abapGit)
+        " Skip unchanged includes — normalize and compare (ignore case, trailing spaces, blank lines)
         CLEAR: lt_existing, lt_old_str, lt_new_str.
         READ REPORT lv_include INTO lt_existing.
-        lt_old_str = lt_existing.
-        lt_new_str = lt_source.
-        IF lt_old_str = lt_new_str.
-          mv_last_log = mv_last_log && lv_nl
-                     && |Section '{ ls_block-title }' unchanged - skipped.|.
-          CONTINUE.
+        IF sy-subrc = 0 AND lt_existing IS NOT INITIAL.
+          CLEAR: lv_old_norm, lv_new_norm.
+          LOOP AT lt_existing INTO DATA(lv_ex_line).
+            lv_log_str = lv_ex_line.
+            CONDENSE lv_log_str.
+            TRANSLATE lv_log_str TO UPPER CASE.
+            IF lv_log_str IS NOT INITIAL.
+              lv_old_norm = lv_old_norm && lv_log_str && '|'.
+            ENDIF.
+          ENDLOOP.
+          LOOP AT lt_source INTO DATA(lv_src_line2).
+            lv_log_str = lv_src_line2.
+            CONDENSE lv_log_str.
+            TRANSLATE lv_log_str TO UPPER CASE.
+            IF lv_log_str IS NOT INITIAL.
+              lv_new_norm = lv_new_norm && lv_log_str && '|'.
+            ENDIF.
+          ENDLOOP.
+          IF lv_old_norm = lv_new_norm.
+            mv_last_log = mv_last_log && lv_nl
+                       && |Section '{ ls_block-title }' unchanged - skipped.|.
+            CONTINUE.
+          ENDIF.
         ENDIF.
 
         " Log what we're about to write
