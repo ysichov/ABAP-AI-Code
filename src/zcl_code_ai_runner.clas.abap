@@ -699,14 +699,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     show_step( i_text = 'Detecting language...' i_pct = 5 ).
     DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
-    complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+    complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
     IF lv_user_language IS NOT INITIAL.
       mo_prompts->set_user_language( lv_user_language ).
     ENDIF.
 
     show_step( i_text = 'Planning tasks...' i_pct = 10 ).
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
-    complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+    complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
     DATA(lv_effective_prompt) = build_effective_prompt(
       i_prompt  = lv_prompt
       it_tasks  = lt_tasks ).
@@ -725,7 +725,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     IF lv_orchestrator_answer IS INITIAL.
       show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
       lv_orchestrator_answer = ask_orchestrator( lt_tasks ).
-      complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+      complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
     ENDIF.
 
     DATA(lt_agent_requests) = mo_messages->parse_agent_requests( lv_orchestrator_answer ).
@@ -993,7 +993,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_agent_answer_log) = lv_agent_answer.
         lv_agent_answer = zcl_ai_messages=>strip_log_info( lv_agent_answer ).
 
-        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
@@ -1045,7 +1045,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_review_answer_log) = lv_review_answer.
         lv_review_answer = zcl_ai_messages=>strip_log_info( lv_review_answer ).
 
-        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
 
         mo_messages->add_message(
           i_role        = 'assistant'
@@ -1114,7 +1114,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_user_prompt = lv_final_user_prompt ).
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
-        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) ).
+        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->get_last_tok_in( ) i_tok_out = mo_llm->get_last_tok_out( ) ).
         lv_answer_log = lv_answer.
         lv_answer = zcl_ai_messages=>strip_log_info( lv_answer ).
         DATA(lv_total_usage) = mo_messages->get_total_token_usage( lv_answer_log ).
