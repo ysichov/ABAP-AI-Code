@@ -127,7 +127,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
 
         lv_request = ls_message-content.
         CASE ls_message-prompt_type.
-          WHEN 'SYSTEM_PROMPT'. lv_request_type = 'USER'.
+          WHEN 'SYSTEM_PROMPT' OR 'USER_PROMPT'. lv_request_type = 'USER'.
           WHEN 'AGENT_PROMPT'.  lv_request_type = 'AGENT'.
           WHEN 'COMMAND'.       lv_request_type = 'COMMAND'.
           WHEN OTHERS.          lv_request_type = ls_message-prompt_type.

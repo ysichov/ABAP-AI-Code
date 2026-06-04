@@ -5,7 +5,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
 
   PUBLIC SECTION.
     CONSTANTS:
-      c_agent_orchestrator      TYPE string VALUE 'ORCHESTRATOR',
+      c_agent_orchestrator      TYPE string VALUE 'OBJECT_DETECTOR',
       c_agent_task_orchestrator TYPE string VALUE 'TASK_ORCHESTRATOR',
       c_agent_language_detector TYPE string VALUE 'LANGUAGE_DETECTOR',
       c_agent_code_search       TYPE string VALUE 'CODE_SEARCH',
@@ -268,7 +268,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
     mv_system_prompt = read_prompt_file( 'system.md' ).
     mv_language_detector_prompt = read_prompt_file( 'language_detector.md' ).
-    mv_orchestrator_prompt = read_prompt_file( 'orchestrator.md' ).
+    mv_orchestrator_prompt = read_prompt_file( 'object_detector.md' ).
     mv_task_orchestrator_prompt = read_prompt_file( 'task_orchestrator.md' ).
     mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
     mv_final_prompt = read_prompt_file( 'final.md' ).

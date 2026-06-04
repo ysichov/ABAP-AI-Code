@@ -42,12 +42,14 @@ private section.
     tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY .
   types:
     BEGIN OF ty_step,
-      text     TYPE string,
-      done     TYPE abap_bool,
-      is_llm   TYPE abap_bool,
-      seconds  TYPE i,
-      tok_in   TYPE i,
-      tok_out  TYPE i,
+      text         TYPE string,
+      agent        TYPE string,
+      prompt_type  TYPE string,
+      done         TYPE abap_bool,
+      is_llm       TYPE abap_bool,
+      seconds      TYPE i,
+      tok_in       TYPE i,
+      tok_out      TYPE i,
     END OF ty_step .
   types:
     tt_steps TYPE STANDARD TABLE OF ty_step WITH NON-UNIQUE DEFAULT KEY .
@@ -121,8 +123,10 @@ private section.
       value(RV_FOUND) type ABAP_BOOL .
   methods SHOW_STEP
     importing
-      !I_TEXT type STRING
-      !I_PCT type I default 0 .
+      !I_TEXT        type STRING optional
+      !I_AGENT       type STRING optional
+      !I_PROMPT_TYPE type STRING optional
+      !I_PCT         type I default 0 .
   methods COMPLETE_LAST_STEP
     importing
       !I_IS_LLM  type ABAP_BOOL default ABAP_FALSE
@@ -697,14 +701,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    show_step( i_text = 'Detecting language...' i_pct = 5 ).
+    show_step( i_text = 'Detect language' i_prompt_type = 'LLM' i_pct = 5 ).
     DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
     complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).
     IF lv_user_language IS NOT INITIAL.
       mo_prompts->set_user_language( lv_user_language ).
     ENDIF.
 
-    show_step( i_text = 'Planning tasks...' i_pct = 10 ).
+    show_step( i_text = 'Plan tasks' i_prompt_type = 'LLM' i_pct = 10 ).
     DATA(lt_tasks) = mo_task_planner->prepare_task_list( lv_prompt ).
     complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).
     DATA(lv_effective_prompt) = build_effective_prompt(
@@ -723,7 +727,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ENDIF.
     ENDIF.
     IF lv_orchestrator_answer IS INITIAL.
-      show_step( i_text = 'Asking orchestrator...' i_pct = 20 ).
+      show_step( i_text = 'Object detector' i_prompt_type = 'LLM' i_pct = 20 ).
       lv_orchestrator_answer = ask_orchestrator( lt_tasks ).
       complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).
     ENDIF.
@@ -742,7 +746,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     IF lt_agent_requests IS INITIAL
     AND lv_orchestrator_read_commands IS INITIAL
     AND lv_orchestrator_upper CS 'AGENT'.
-      lv_answer = |Error: Orchestrator returned an agent command that could not be parsed. Check History for the raw response.|.
+      lv_answer = |Error: Object detector returned an agent command that could not be parsed. Check History for the raw response.|.
       lv_answer_log = lv_answer.
     ENDIF.
 
@@ -986,7 +990,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        show_step( i_text = |Asking agent { ls_agent_request-agent }...| i_pct = lv_percentage ).
+        show_step( i_agent = ls_agent_request-agent i_prompt_type = 'LLM' i_pct = lv_percentage ).
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
         DATA(lv_agent_answer) = mo_llm->ask( lv_agent_prompt ).
@@ -1038,7 +1042,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
               ct_done_commands = lt_done_read_commands ).
         ENDLOOP.
 
-        show_step( i_text = 'Asking code review agent...' i_pct = 90 ).
+        show_step( i_agent = zcl_ai_agents_prompts=>c_agent_code_review i_prompt_type = 'LLM' i_pct = 90 ).
 
         DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
         DATA(lv_review_answer) = mo_llm->ask( lv_review_prompt ).
@@ -1100,7 +1104,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_source = lv_code_only
           i_title  = 'ABAP Source' ).
       ELSE.
-        show_step( i_text = 'Asking AI...' i_pct = 85 ).
+        show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
         DATA(lv_final_user_prompt) = lv_effective_prompt.
         IF lv_final_prompt_tasks IS NOT INITIAL.
@@ -1494,7 +1498,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    APPEND VALUE ty_step( text = i_text done = abap_false ) TO mt_progress_steps.
+    APPEND VALUE ty_step( text = i_text agent = i_agent prompt_type = i_prompt_type done = abap_false ) TO mt_progress_steps.
 
     DATA(lv_html) = render_steps_html( ).
     DATA lt_html TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
@@ -1567,25 +1571,38 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     DATA lv_rows TYPE string.
     LOOP AT mt_progress_steps INTO DATA(ls_step).
-      DATA(lv_text) = ls_step-text.
-      REPLACE ALL OCCURRENCES OF '&' IN lv_text WITH '&amp;'.
-      REPLACE ALL OCCURRENCES OF '<' IN lv_text WITH '&lt;'.
-      REPLACE ALL OCCURRENCES OF '>' IN lv_text WITH '&gt;'.
+      DATA(lv_label) = COND string(
+        WHEN ls_step-agent IS NOT INITIAL THEN |Agent { ls_step-agent }|
+        WHEN ls_step-text  IS NOT INITIAL THEN ls_step-text
+        WHEN ls_step-prompt_type IS NOT INITIAL THEN ls_step-prompt_type ).
+      REPLACE ALL OCCURRENCES OF '&' IN lv_label WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<' IN lv_label WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>' IN lv_label WITH '&gt;'.
+
+      DATA(lv_is_llm) = xsdbool( ls_step-prompt_type = 'LLM' OR ls_step-is_llm = abap_true ).
 
       IF ls_step-done = abap_true.
         DATA(lv_info) = VALUE string( ).
-        IF ls_step-is_llm = abap_true.
-          lv_info = | &nbsp;<span class="info">{ ls_step-seconds }s|.
+        IF lv_is_llm = abap_true.
+          lv_info = |<span class="info">{ ls_step-seconds }s|.
           IF ls_step-tok_in > 0.
             lv_info = lv_info && | Tokens: inp:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
           ENDIF.
           lv_info = lv_info && |</span>|.
+          lv_rows = lv_rows
+            && |<div class="step done">&#x2713; { lv_label }: { lv_info }</div>|.
+        ELSE.
+          lv_rows = lv_rows
+            && |<div class="step done">&#x2713; { lv_label }</div>|.
         ENDIF.
-        lv_rows = lv_rows
-          && |<div class="step done">&#x2713; { lv_text }{ lv_info }</div>|.
       ELSE.
-        lv_rows = lv_rows
-          && |<div class="step active">&#x23F3; { lv_text }</div>|.
+        IF lv_is_llm = abap_true.
+          lv_rows = lv_rows
+            && |<div class="step active">&#x23F3; { lv_label } is working...</div>|.
+        ELSE.
+          lv_rows = lv_rows
+            && |<div class="step active">&#x23F3; { lv_label }</div>|.
+        ENDIF.
       ENDIF.
     ENDLOOP.
 
