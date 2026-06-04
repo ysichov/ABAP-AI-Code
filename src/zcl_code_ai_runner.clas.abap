@@ -567,19 +567,32 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     " Optimization: bare {AGENT:CODE_SEARCH CLASS=>METHOD} or {AGENT:CODE_SEARCH CLASS} -> skip LLM
     DATA(lv_trimmed_prompt) = lv_prompt.
     CONDENSE lv_trimmed_prompt.
+    " Also strip newlines that CONDENSE leaves
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_trimmed_prompt WITH ''.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf    IN lv_trimmed_prompt WITH ''.
+    DATA(lv_trimmed_upper) = lv_trimmed_prompt.
+    TRANSLATE lv_trimmed_upper TO UPPER CASE.
     DATA lv_cs_class  TYPE string.
     DATA lv_cs_method TYPE string.
-    FIND FIRST OCCURRENCE OF
-      REGEX '^\{AGENT\s*:\s*CODE_SEARCH\s+([A-Za-z0-9_]+)=>([A-Za-z0-9_]+)\}\s*$'
-      IN lv_trimmed_prompt
-      IGNORING CASE
-      SUBMATCHES lv_cs_class lv_cs_method.
-    IF sy-subrc <> 0.
-      FIND FIRST OCCURRENCE OF
-        REGEX '^\{AGENT\s*:\s*CODE_SEARCH\s+([A-Za-z0-9_]+)\}\s*$'
-        IN lv_trimmed_prompt
-        IGNORING CASE
-        SUBMATCHES lv_cs_class.
+    " Check for {AGENT:CODE_SEARCH ...} pattern using string ops (regex \{ unreliable in ABAP ICU)
+    IF lv_trimmed_upper CP '{AGENT:CODE_SEARCH *}'.
+      DATA(lv_cs_inner) = lv_trimmed_prompt.
+      " Strip leading '{AGENT:CODE_SEARCH ' and trailing '}'
+      FIND FIRST OCCURRENCE OF REGEX '(?i)\{AGENT\s*:\s*CODE_SEARCH\s+' IN lv_cs_inner MATCH LENGTH DATA(lv_cs_pfx_len).
+      IF sy-subrc = 0.
+        lv_cs_inner = lv_cs_inner+lv_cs_pfx_len.
+        " Remove trailing '}'
+        DATA(lv_cs_last) = strlen( lv_cs_inner ) - 1.
+        IF lv_cs_last >= 0 AND lv_cs_inner+lv_cs_last(1) = '}'.
+          lv_cs_inner = lv_cs_inner(lv_cs_last).
+          CONDENSE lv_cs_inner.
+          IF lv_cs_inner CS '=>'.
+            SPLIT lv_cs_inner AT '=>' INTO lv_cs_class lv_cs_method.
+          ELSE.
+            lv_cs_class = lv_cs_inner.
+          ENDIF.
+        ENDIF.
+      ENDIF.
     ENDIF.
     IF lv_cs_class IS NOT INITIAL.
       TRANSLATE lv_cs_class  TO UPPER CASE.
