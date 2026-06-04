@@ -570,11 +570,21 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       CONDENSE lv_word.
       TRANSLATE lv_word TO UPPER CASE.
       show_step( i_text = |Looking up { lv_word }...| i_pct = 30 ).
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+        i_prompt_type = 'AGENT_PROMPT'
+        i_content     = |Direct lookup: { lv_word }| ).
       DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
       IF lv_direct_source IS INITIAL.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
       ENDIF.
       IF lv_direct_source IS NOT INITIAL.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = lv_direct_source ).
         rs_result-answer = zcl_code_html_gen=>source_to_html(
           i_source = lv_direct_source
           i_title  = lv_word ).
