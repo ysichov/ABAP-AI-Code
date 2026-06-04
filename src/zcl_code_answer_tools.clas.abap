@@ -334,6 +334,9 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      " Strip trailing --- that LLM appends (markdown hr artifact)
+      REPLACE FIRST OCCURRENCE OF REGEX '-{2,}\s*$' IN lv_line WITH '' IGNORING CASE.
+
       " XML closing tag </section> or </Method X> — end of current part, skip line
       FIND FIRST OCCURRENCE OF REGEX '^</[^>]+>\s*$' IN lv_line IGNORING CASE.
       IF sy-subrc = 0.

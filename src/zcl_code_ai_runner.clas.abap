@@ -1154,8 +1154,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           lv_answer = lv_answer
                    && cl_abap_char_utilities=>newline
                    && cl_abap_char_utilities=>newline
-                   && |---|
-                   && cl_abap_char_utilities=>newline
                    && lv_total_usage.
           lv_answer_log = lv_answer.
         ENDIF.
@@ -1205,7 +1203,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           DATA(lv_diff_new_code) = lv_extracted_code.
           DATA(lv_code_change_type_upper) = lv_code_change_type.
           TRANSLATE lv_code_change_type_upper TO UPPER CASE.
-          IF lv_code_change_type_upper CP 'CLAS*'.
+          IF lv_code_change_type_upper CP 'CLAS*'
+          OR lv_final_agent = zcl_ai_agents_prompts=>c_agent_class_processor.
             " Merge changed sections into full old class so unchanged parts are not shown as deleted
             lv_diff_new_code = zcl_code_answer_tools=>merge_class_parts(
               i_full_source    = lv_diff_old_code
