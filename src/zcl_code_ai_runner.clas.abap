@@ -564,6 +564,62 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       io_llm      = mo_llm
       io_prompts  = mo_prompts ).
 
+    " Optimization: bare {AGENT:CODE_SEARCH CLASS=>METHOD} or {AGENT:CODE_SEARCH CLASS} -> skip LLM
+    DATA(lv_trimmed_prompt) = lv_prompt.
+    CONDENSE lv_trimmed_prompt.
+    DATA lv_cs_class  TYPE string.
+    DATA lv_cs_method TYPE string.
+    FIND FIRST OCCURRENCE OF
+      REGEX '^\{AGENT\s*:\s*CODE_SEARCH\s+([A-Za-z0-9_]+)=>([A-Za-z0-9_]+)\}\s*$'
+      IN lv_trimmed_prompt
+      IGNORING CASE
+      SUBMATCHES lv_cs_class lv_cs_method.
+    IF sy-subrc <> 0.
+      FIND FIRST OCCURRENCE OF
+        REGEX '^\{AGENT\s*:\s*CODE_SEARCH\s+([A-Za-z0-9_]+)\}\s*$'
+        IN lv_trimmed_prompt
+        IGNORING CASE
+        SUBMATCHES lv_cs_class.
+    ENDIF.
+    IF lv_cs_class IS NOT INITIAL.
+      TRANSLATE lv_cs_class  TO UPPER CASE.
+      TRANSLATE lv_cs_method TO UPPER CASE.
+      DATA(lv_cs_label) = COND string(
+        WHEN lv_cs_method IS NOT INITIAL THEN |{ lv_cs_class }=>{ lv_cs_method }|
+        ELSE lv_cs_class ).
+      show_step( i_text = |Reading { lv_cs_label }...| i_pct = 30 ).
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+        i_prompt_type = 'AGENT_PROMPT'
+        i_content     = |Direct lookup: { lv_cs_label }| ).
+      DATA lv_cs_source TYPE string.
+      IF lv_cs_method IS NOT INITIAL.
+        lv_cs_source = zcl_ai_code_reader=>read_method(
+          i_class  = lv_cs_class
+          i_method = lv_cs_method ).
+      ELSE.
+        lv_cs_source = zcl_ai_code_reader=>read_class( lv_cs_class ).
+        IF lv_cs_source IS INITIAL.
+          lv_cs_source = zcl_ai_code_reader=>read_program( lv_cs_class ).
+        ENDIF.
+      ENDIF.
+      IF lv_cs_source IS NOT INITIAL.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = lv_cs_source ).
+        rs_result-answer = zcl_code_html_gen=>source_to_html(
+          i_source = lv_cs_source
+          i_title  = lv_cs_label ).
+        rs_result-answer_log  = lv_cs_source.
+        rs_result-messages_ref = mo_messages.
+        rs_result-messages    = mo_messages->get_messages( ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     " Optimization: single code word (only latin/digits/_) -> skip LLM steps, find object directly
     IF is_single_code_word( lv_prompt ) = abap_true.
       DATA(lv_word) = lv_prompt.
