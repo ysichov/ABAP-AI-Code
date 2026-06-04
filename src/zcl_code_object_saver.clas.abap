@@ -972,6 +972,15 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        " Skip unchanged includes — read current source and compare
+        DATA lt_existing TYPE tt_source.
+        READ REPORT lv_include INTO lt_existing STATE 'A'.
+        IF sy-subrc = 0 AND lt_existing = lt_source.
+          mv_last_log = mv_last_log && lv_nl
+                     && |Section '{ ls_block-title }' unchanged - skipped.|.
+          CONTINUE.
+        ENDIF.
+
         INSERT REPORT lv_include FROM lt_source STATE 'I'.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
