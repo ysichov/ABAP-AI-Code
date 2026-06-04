@@ -537,7 +537,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       WHEN OTHERS.
         lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
     ENDCASE.
-    display_answer( i_source = lv_saved_source i_answer = '' ).
+    display_answer( i_answer = zcl_code_html_gen=>source_to_html(
+      i_source = lv_saved_source
+      i_title  = |{ mv_diff_object_type } { mv_diff_object_name }| ) ).
 
     cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
