@@ -494,10 +494,12 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
 
   METHOD merge_class_parts.
-    " Strip CHANGES:YES/NO marker that CLASS_PROCESSOR appends
+    " Strip CHANGES:YES/NO marker and lone --- (markdown hr) lines
     DATA(lv_changed) = i_changed_source.
     REPLACE ALL OCCURRENCES OF REGEX '[\r\n]+\s*CHANGES\s*:\s*(YES|NO)\s*$'
       IN lv_changed WITH '' IGNORING CASE.
+    REPLACE ALL OCCURRENCES OF REGEX '(^|\n)\s*---\s*(\n|$)'
+      IN lv_changed WITH cl_abap_char_utilities=>newline IGNORING CASE.
 
     " Parse full old class into parts map
     DATA(lt_old_parts) = extract_class_parts( i_full_source ).
