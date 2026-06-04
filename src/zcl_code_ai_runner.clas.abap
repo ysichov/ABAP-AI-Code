@@ -982,7 +982,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       TRANSLATE lv_answer_log_upper TO UPPER CASE.
       DATA(lv_has_changes_yes) = xsdbool( lv_answer_log_upper CS 'CHANGES:YES' ).
 
-      IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
+      IF lv_has_code_change = abap_true AND lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
         DATA(lv_extracted_code) = zcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
 

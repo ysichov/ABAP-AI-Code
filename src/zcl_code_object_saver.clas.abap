@@ -234,7 +234,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     TRANSLATE lv_object_type TO UPPER CASE.
 
     CASE lv_object_type.
-      WHEN 'REPS' OR 'PROG' OR 'PROGRAM' OR 'REPORT'.
+      WHEN 'REPS' OR 'PROG' OR 'PROGRAM' OR 'REPORT'
+        OR 'CLASS' OR 'CLAS'.
         rv_message = save_program(
           i_program = i_object_name
           i_source  = i_source
