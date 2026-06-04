@@ -346,6 +346,33 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       WHEN 'askai'.
         MESSAGE 'ASK AI stub for AI code diff' TYPE 'S'.
 
+      WHEN 'openobj'.
+        DATA lt_obj_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+        SPLIT lv_rest AT '~' INTO TABLE lt_obj_parts.
+        IF lines( lt_obj_parts ) >= 2.
+          DATA(lv_open_type) = lt_obj_parts[ 1 ].
+          DATA(lv_open_name) = lt_obj_parts[ 2 ].
+          DATA(lv_open_source) = VALUE string( ).
+          CASE lv_open_type.
+            WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
+              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
+            WHEN 'PROG' OR 'REPS'.
+              lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+            WHEN OTHERS.
+              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
+              IF lv_open_source IS INITIAL.
+                lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+              ENDIF.
+          ENDCASE.
+          IF lv_open_source IS NOT INITIAL.
+            display_answer(
+              i_answer = zcl_code_html_gen=>source_to_html(
+                i_source = lv_open_source
+                i_title  = |{ lv_open_type } { lv_open_name }| ) ).
+          ENDIF.
+        ENDIF.
+        RETURN.
+
       WHEN OTHERS.
         RETURN.
     ENDCASE.

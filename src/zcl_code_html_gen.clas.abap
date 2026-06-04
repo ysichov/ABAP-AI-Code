@@ -1367,9 +1367,20 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
                && |<td class="sh">{ lv_escaped }</td></tr>|.
       ELSE.
         lv_lno = lv_lno + 1.
+        DATA(lv_line_upper) = lv_line.
+        TRANSLATE lv_line_upper TO UPPER CASE.
+        CONDENSE lv_line_upper.
+        DATA(lv_cell) = escape_html( i_text = lv_line ).
+        " TADIR list line: TYPE OBJNAME -> make clickable
+        FIND FIRST OCCURRENCE OF REGEX
+          '^(CLAS|PROG|REPS|FUGR|INTF|DEVC|MSAG|DOMA|DTEL|TABL|TTYP|VIEW|SHLP)\s+(\S+)$'
+          IN lv_line_upper SUBMATCHES DATA(lv_obj_type) DATA(lv_obj_name).
+        IF sy-subrc = 0.
+          lv_cell = |<a href="sapevent:openobj~{ lv_obj_type }~{ lv_obj_name }" class="ol">{ lv_cell }</a>|.
+        ENDIF.
         lv_rows = lv_rows
                && |<tr><td class="ln">{ lv_lno }</td>|
-               && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+               && |<td class="cd">{ lv_cell }</td></tr>|.
       ENDIF.
     ENDLOOP.
 
@@ -1392,6 +1403,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |background:#f0f6ff;border-top:2px solid #cce0ff;white-space:pre\}|
            && |.th\{padding:6px 8px;color:#003d80;font-weight:bold;font-size:13px;|
            && |background:#dceeff;border-bottom:2px solid #99c4f0;white-space:pre\}|
+           && |.ol\{color:#0066cc;text-decoration:none\}|
+           && |.ol:hover\{text-decoration:underline;color:#004499\}|
            && |</style></head><body>|
            && |<table><tbody>| && lv_title_row && lv_rows && |</tbody></table></body></html>|.
 
