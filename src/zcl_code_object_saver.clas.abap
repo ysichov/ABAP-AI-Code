@@ -106,6 +106,14 @@ CLASS zcl_code_object_saver DEFINITION
         i_source  TYPE string
       RETURNING
         VALUE(rs_progdir) TYPE ty_progdir.
+
+    CLASS-METHODS save_method
+      IMPORTING
+        i_class   TYPE string
+        i_method  TYPE string
+        i_source  TYPE string
+      RETURNING
+        VALUE(rv_message) TYPE string.
 ENDCLASS.
 
 
@@ -240,6 +248,19 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           i_program = i_object_name
           i_source  = i_source
           i_package = i_package ).
+      WHEN 'METH' OR 'METHOD'.
+        DATA(lv_meth_cls) = i_object_name.
+        DATA(lv_meth_mth) = VALUE string( ).
+        IF i_object_name CS '=>'.
+          SPLIT i_object_name AT '=>' INTO lv_meth_cls lv_meth_mth.
+        ENDIF.
+        TRANSLATE lv_meth_cls TO UPPER CASE.
+        TRANSLATE lv_meth_mth TO UPPER CASE.
+        CONDENSE lv_meth_cls. CONDENSE lv_meth_mth.
+        rv_message = save_method(
+          i_class  = lv_meth_cls
+          i_method = lv_meth_mth
+          i_source = i_source ).
       WHEN OTHERS.
         rv_message = |Saving { i_object_type } { i_object_name } is not implemented yet.|.
         mv_last_log = rv_message.
@@ -766,6 +787,85 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                   ': inactive source is still identical to active source.'
              INTO rv_message SEPARATED BY space.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD save_method.
+
+    DATA lv_include   TYPE syrepid.
+    DATA ls_mtdkey    TYPE seocpdkey.
+    DATA lt_source    TYPE tt_source.
+    DATA lv_t100_msg  TYPE string.
+
+    CLEAR mv_last_log.
+
+    IF i_class IS INITIAL OR i_method IS INITIAL.
+      rv_message = |Method name is incomplete: class={ i_class } method={ i_method }.|.
+      mv_last_log = rv_message.
+      RETURN.
+    ENDIF.
+
+    lt_source = source_to_table( i_source ).
+    IF lt_source IS INITIAL.
+      rv_message = |No source code to save for method { i_class }=>{ i_method }.|.
+      mv_last_log = rv_message.
+      RETURN.
+    ENDIF.
+
+    ls_mtdkey-clsname = i_class.
+    ls_mtdkey-cpdname = i_method.
+
+    " Get include name for the method
+    cl_oo_classname_service=>get_method_include(
+      EXPORTING
+        mtdkey              = ls_mtdkey
+      RECEIVING
+        result              = lv_include
+      EXCEPTIONS
+        method_not_existing = 1 ).
+
+    IF sy-subrc <> 0 OR lv_include IS INITIAL.
+      rv_message = |Method { i_class }=>{ i_method } not found. Cannot determine include.|.
+      mv_last_log = rv_message.
+      RETURN.
+    ENDIF.
+
+    mv_last_log = |SAVE_METHOD diagnostics|
+               && cl_abap_char_utilities=>newline
+               && |Object: METH { i_class }=>{ i_method }|
+               && cl_abap_char_utilities=>newline
+               && |Include: { lv_include }|
+               && cl_abap_char_utilities=>newline
+               && |Source lines: { lines( lt_source ) }|.
+
+    " Write source into method include
+    INSERT REPORT lv_include FROM lt_source STATE 'I'.
+    IF sy-subrc <> 0.
+      rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
+      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+      RETURN.
+    ENDIF.
+
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |INSERT REPORT { lv_include } executed.|.
+
+    " Activate via class pool
+    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( i_class ).
+    DATA(lv_act_msg) = activate_program( lv_classpool ).
+    IF lv_act_msg IS NOT INITIAL.
+      rv_message = lv_act_msg.
+      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+      RETURN.
+    ENDIF.
+
+    mv_last_log = mv_last_log
+               && cl_abap_char_utilities=>newline
+               && |Class { i_class } activated via { lv_classpool }.|.
+
+    rv_message = |Method { i_class }=>{ i_method } was saved and activated.|.
+    mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
 
   ENDMETHOD.
 ENDCLASS.

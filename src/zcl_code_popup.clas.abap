@@ -499,7 +499,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF lv_save_message_upper CS 'ACTIVATED'.
+    DATA(lv_run_type_upper) = mv_diff_object_type.
+    TRANSLATE lv_run_type_upper TO UPPER CASE.
+    IF lv_save_message_upper CS 'ACTIVATED'
+    AND lv_run_type_upper <> 'METH' AND lv_run_type_upper <> 'METHOD'.
       MV_RUN_PROGRAM = CONV progname( mv_diff_object_name ).
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
@@ -534,6 +537,15 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
       WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
         lv_saved_source = zcl_ai_code_reader=>read_class( mv_diff_object_name ).
+      WHEN 'METH' OR 'METHOD'.
+        DATA(lv_saved_cls) = mv_diff_object_name.
+        DATA(lv_saved_mth) = VALUE string( ).
+        IF mv_diff_object_name CS '=>'.
+          SPLIT mv_diff_object_name AT '=>' INTO lv_saved_cls lv_saved_mth.
+        ENDIF.
+        lv_saved_source = zcl_ai_code_reader=>read_method(
+          i_class  = lv_saved_cls
+          i_method = lv_saved_mth ).
       WHEN OTHERS.
         lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
     ENDCASE.
