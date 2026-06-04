@@ -978,25 +978,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_duration_seconds = lv_final_duration_seconds
         i_content     = lv_answer_log ).
 
-      IF lv_has_code_change = abap_true AND lv_agent_error IS INITIAL.
-        DATA(lv_answer_log_upper) = lv_answer_log.
-        TRANSLATE lv_answer_log_upper TO UPPER CASE.
+      DATA(lv_answer_log_upper) = lv_answer_log.
+      TRANSLATE lv_answer_log_upper TO UPPER CASE.
+      DATA(lv_has_changes_yes) = xsdbool( lv_answer_log_upper CS 'CHANGES:YES' ).
 
-        IF lv_answer_log_upper CS 'CHANGES:NO'.
-          mo_messages->add_message(
-            i_role        = 'user'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
-            i_prompt_type = 'COMMAND'
-            i_content     = |Extract changed code from final answer| ).
+      IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
-          mo_messages->add_message(
-            i_role        = 'assistant'
-            i_agent       = zcl_ai_agents_prompts=>c_agent_code_extract
-            i_prompt_type = 'AGENT_RESPONSE'
-            i_content     = |No changed code extracted. LLM returned CHANGES:NO.| ).
-
-        ELSE.
-          DATA(lv_extracted_code) = zcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
+        DATA(lv_extracted_code) = zcl_code_answer_tools=>extract_code_from_answer( lv_answer_log ).
 
           mo_messages->add_message(
             i_role        = 'user'
@@ -1061,7 +1049,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
             rs_result-diff_object_name = lv_code_change_name.
             rs_result-diff_package = lv_diff_package.
           ENDIF.
-        ENDIF.
       ENDIF.
 
       LOOP AT lt_code_diff_commands INTO DATA(ls_code_diff_command).
