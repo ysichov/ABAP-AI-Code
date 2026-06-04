@@ -1171,19 +1171,14 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |INSERT REPORT { lv_include } executed.|.
 
-    " Activate method include + classpool together
-    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( CONV #( i_class ) ).
+    " Activate class object (not individual includes)
     DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
     DATA ls_act_obj TYPE dwinactiv.
     DATA lv_t100_message2 TYPE string.
     DATA lv_subrc_text2   TYPE string.
 
-    ls_act_obj-object   = 'REPS'.
-    ls_act_obj-obj_name = lv_include.
-    APPEND ls_act_obj TO lt_act_objects.
-
-    ls_act_obj-object   = 'REPS'.
-    ls_act_obj-obj_name = lv_classpool.
+    ls_act_obj-object   = 'CLAS'.
+    ls_act_obj-obj_name = i_class.
     APPEND ls_act_obj TO lt_act_objects.
 
     TRY.
