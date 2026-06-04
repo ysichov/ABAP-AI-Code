@@ -332,18 +332,34 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
             ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
           ENDLOOP.
         ELSEIF lines( lt_parts ) >= 2.
-          ls_request-object_type = lt_parts[ 2 ].
-          TRANSLATE ls_request-object_type TO UPPER CASE.
-          IF lines( lt_parts ) >= 3.
-            ls_request-object_name = lt_parts[ 3 ].
-          ENDIF.
-          IF lines( lt_parts ) >= 4.
-            LOOP AT lt_parts INTO lv_part FROM 4.
-              IF ls_request-relevant_prompt IS NOT INITIAL.
-                ls_request-relevant_prompt = ls_request-relevant_prompt && space.
-              ENDIF.
-              ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
-            ENDLOOP.
+          DATA(lv_part2) = lt_parts[ 2 ].
+          DATA(lv_part2_upper) = lv_part2.
+          TRANSLATE lv_part2_upper TO UPPER CASE.
+          " {AGENT:CODE_SEARCH CLASS=>METHOD ...} - part2 contains '=>'
+          IF lv_part2 CS '=>'.
+            ls_request-object_type = 'METH'.
+            ls_request-object_name = lv_part2_upper.
+            IF lines( lt_parts ) >= 3.
+              LOOP AT lt_parts INTO lv_part FROM 3.
+                IF ls_request-relevant_prompt IS NOT INITIAL.
+                  ls_request-relevant_prompt = ls_request-relevant_prompt && space.
+                ENDIF.
+                ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
+              ENDLOOP.
+            ENDIF.
+          ELSE.
+            ls_request-object_type = lv_part2_upper.
+            IF lines( lt_parts ) >= 3.
+              ls_request-object_name = lt_parts[ 3 ].
+            ENDIF.
+            IF lines( lt_parts ) >= 4.
+              LOOP AT lt_parts INTO lv_part FROM 4.
+                IF ls_request-relevant_prompt IS NOT INITIAL.
+                  ls_request-relevant_prompt = ls_request-relevant_prompt && space.
+                ENDIF.
+                ls_request-relevant_prompt = ls_request-relevant_prompt && lv_part.
+              ENDLOOP.
+            ENDIF.
           ENDIF.
         ENDIF.
       ELSE.
