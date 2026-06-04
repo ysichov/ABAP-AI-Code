@@ -933,7 +933,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         AND lv_only_code_search = abap_true
         AND lt_tasks IS INITIAL
         AND ( lv_orchestrator_read_commands IS NOT INITIAL
-           OR lv_has_show_command = abap_true ).
+           OR lv_has_show_command = abap_true
+           OR mo_messages->get_resolved_code( ) IS NOT INITIAL ).
         DATA(lv_code_only) = mo_messages->get_resolved_code( ).
         lv_answer_log = lv_code_only.
         lv_answer = zcl_code_html_gen=>source_to_html(
