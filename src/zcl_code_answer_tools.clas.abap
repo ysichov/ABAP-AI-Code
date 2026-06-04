@@ -29,6 +29,12 @@ public section.
     exporting
       !E_CURRENT_SOURCE type STRING
       !E_PROPOSED_SOURCE type STRING .
+  class-methods MERGE_CLASS_PARTS
+    importing
+      !I_FULL_SOURCE    type STRING
+      !I_CHANGED_SOURCE type STRING
+    returning
+      value(RV_MERGED)  type STRING .
 protected section.
 private section.
   class-methods APPEND_CLASS_PART
@@ -485,4 +491,50 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     ENDWHILE.
 
   endmethod.
+
+
+  METHOD merge_class_parts.
+    " Parse full old class into parts map
+    DATA(lt_old_parts) = extract_class_parts( i_full_source ).
+    DATA(lt_new_parts) = extract_class_parts( i_changed_source ).
+
+    IF lt_new_parts IS INITIAL.
+      " Changed source has no --- section --- markers: return unchanged
+      rv_merged = i_full_source.
+      RETURN.
+    ENDIF.
+
+    IF lt_old_parts IS INITIAL.
+      " No old parts: return changed source as-is
+      rv_merged = i_changed_source.
+      RETURN.
+    ENDIF.
+
+    " Override old parts with new (changed) parts
+    LOOP AT lt_new_parts INTO DATA(ls_new).
+      READ TABLE lt_old_parts ASSIGNING FIELD-SYMBOL(<ls_old>)
+        WITH KEY part_key = ls_new-part_key.
+      IF sy-subrc = 0.
+        <ls_old>-source = ls_new-source.
+        <ls_old>-title  = ls_new-title.
+      ELSE.
+        " New part not in old class (e.g. new method) — append
+        APPEND ls_new TO lt_old_parts.
+      ENDIF.
+    ENDLOOP.
+
+    " Reconstruct full source from merged parts
+    LOOP AT lt_old_parts INTO DATA(ls_part).
+      IF rv_merged IS NOT INITIAL.
+        rv_merged = rv_merged
+                 && cl_abap_char_utilities=>newline
+                 && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_merged = rv_merged
+               && |--- { ls_part-title } ---|
+               && cl_abap_char_utilities=>newline
+               && ls_part-source.
+    ENDLOOP.
+
+  ENDMETHOD.
 ENDCLASS.

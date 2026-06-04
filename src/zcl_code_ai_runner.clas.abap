@@ -1209,6 +1209,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           DATA(lv_code_change_type_upper) = lv_code_change_type.
           TRANSLATE lv_code_change_type_upper TO UPPER CASE.
           IF lv_code_change_type_upper CP 'CLAS*'.
+            " Merge changed sections into full old class so unchanged parts are not shown as deleted
+            lv_diff_new_code = zcl_code_answer_tools=>merge_class_parts(
+              i_full_source    = lv_diff_old_code
+              i_changed_source = lv_diff_new_code ).
             lv_diff_old_code = log_class_extract(
               i_source      = lv_diff_old_code
               i_object_name = lv_code_change_name
@@ -1318,6 +1322,12 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           DATA(lv_create_type_upper) = ls_create_object_command-object_type.
           TRANSLATE lv_create_type_upper TO UPPER CASE.
           IF lv_create_type_upper CP 'CLAS*'.
+            " Merge changed sections into full old class so unchanged parts are not shown as deleted
+            IF lv_create_context IS NOT INITIAL.
+              lv_create_extracted_code = zcl_code_answer_tools=>merge_class_parts(
+                i_full_source    = lv_create_context
+                i_changed_source = lv_create_extracted_code ).
+            ENDIF.
             lv_create_context = log_class_extract(
               i_source      = lv_create_context
               i_object_name = ls_create_object_command-object_name
