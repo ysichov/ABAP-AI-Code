@@ -589,7 +589,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF REGEX 'Source for program [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
       REPLACE ALL OCCURRENCES OF REGEX 'Source for class [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
       REPLACE ALL OCCURRENCES OF REGEX 'Source for method [^:\n\r]*:\s*' IN lv_clean_code WITH ''.
-      REPLACE ALL OCCURRENCES OF REGEX '---[^\n\r]*---[\r\n]*' IN lv_clean_code WITH ''.
+*      REPLACE ALL OCCURRENCES OF REGEX '---[^\n\r]*---[\r\n]*' IN lv_clean_code WITH ''.
 
       DATA(lv_seen_key) = lv_clean_code.
       CONDENSE lv_seen_key.
