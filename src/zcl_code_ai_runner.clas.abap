@@ -109,6 +109,11 @@ private section.
     importing
       !I_TEXT type STRING
       !I_PCT type I default 0 .
+  methods IS_SINGLE_CODE_WORD
+    importing
+      !I_PROMPT type STRING
+    returning
+      value(RV_IS) type ABAP_BOOL .
 ENDCLASS.
 
 
@@ -558,6 +563,27 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       io_messages = mo_messages
       io_llm      = mo_llm
       io_prompts  = mo_prompts ).
+
+    " Optimization: single code word (only latin/digits/_) -> skip LLM steps, find object directly
+    IF is_single_code_word( lv_prompt ) = abap_true.
+      DATA(lv_word) = lv_prompt.
+      CONDENSE lv_word.
+      TRANSLATE lv_word TO UPPER CASE.
+      show_step( i_text = |Looking up { lv_word }...| i_pct = 30 ).
+      DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
+      IF lv_direct_source IS INITIAL.
+        lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
+      ENDIF.
+      IF lv_direct_source IS NOT INITIAL.
+        rs_result-answer = zcl_code_html_gen=>source_to_html(
+          i_source = lv_direct_source
+          i_title  = lv_word ).
+        rs_result-answer_log  = lv_direct_source.
+        rs_result-messages_ref = mo_messages.
+        rs_result-messages    = mo_messages->get_messages( ).
+        RETURN.
+      ENDIF.
+    ENDIF.
 
     show_step( i_text = 'Detecting language...' i_pct = 5 ).
     DATA(lv_user_language) = detect_prompt_language( lv_prompt ).
@@ -1359,5 +1385,25 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     cl_gui_cfw=>flush( ).
 
   endmethod.
+
+
+  METHOD is_single_code_word.
+
+    DATA(lv_trimmed) = i_prompt.
+    CONDENSE lv_trimmed.
+
+    " Single word = no spaces, only A-Z a-z 0-9 _
+    IF lv_trimmed IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF lv_trimmed CA ' '.
+      RETURN.
+    ENDIF.
+    FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed.
+    IF sy-subrc <> 0.
+      rv_is = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
 
 ENDCLASS.

@@ -1374,6 +1374,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     ENDLOOP.
 
     DATA(lv_title) = escape_html( i_text = i_title ).
+    DATA(lv_title_row) = |<tr><td class="ln"></td><td class="th">{ lv_title }</td></tr>|.
 
     rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
            && |*\{margin:0;padding:0;box-sizing:border-box\}|
@@ -1389,9 +1390,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |.cd\{padding:1px 8px;white-space:pre\}|
            && |.sh\{padding:4px 8px;color:#0066cc;font-weight:bold;|
            && |background:#f0f6ff;border-top:2px solid #cce0ff;white-space:pre\}|
+           && |.th\{padding:6px 8px;color:#003d80;font-weight:bold;font-size:13px;|
+           && |background:#dceeff;border-bottom:2px solid #99c4f0;white-space:pre\}|
            && |</style></head><body>|
-           && |<div class="hdr"><span class="ttl">{ lv_title }</span></div>|
-           && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
+           && |<table><tbody>| && lv_title_row && lv_rows && |</tbody></table></body></html>|.
 
   endmethod.
 ENDCLASS.
