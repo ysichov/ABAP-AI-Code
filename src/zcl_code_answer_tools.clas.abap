@@ -549,8 +549,21 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
                        && cl_abap_char_utilities=>newline
                        && |ENDMETHOD.|.
         ENDIF.
-        <ls_old>-source = ls_new-source.
-        <ls_old>-title  = ls_new-title.
+
+        IF ls_new-part_key CP 'METHOD:*'.
+          " Method: full replace
+          <ls_old>-source = ls_new-source.
+          <ls_old>-title  = ls_new-title.
+        ELSE.
+          " Section (public/protected/private): append delta to existing content
+          IF <ls_old>-source IS NOT INITIAL AND ls_new-source IS NOT INITIAL.
+            <ls_old>-source = <ls_old>-source
+                           && cl_abap_char_utilities=>newline
+                           && ls_new-source.
+          ELSEIF ls_new-source IS NOT INITIAL.
+            <ls_old>-source = ls_new-source.
+          ENDIF.
+        ENDIF.
       ELSE.
         " New method not in old class — no wrapping needed (LLM provides full method)
         APPEND ls_new TO lt_old_parts.
