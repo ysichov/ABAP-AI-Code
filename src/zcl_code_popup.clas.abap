@@ -501,7 +501,42 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
 
-    display_text( lv_save_message ).
+    " Show saved notice in middle log (progress viewer)
+    DATA(lv_saved_label) = |&#x2713; { mv_diff_object_type } { mv_diff_object_name } saved|.
+    DATA(lv_saved_html) = |<!DOCTYPE html><html><head><meta charset="utf-8">|
+      && |<style>body\{font-family:Segoe UI,Arial,sans-serif;margin:12px\}|
+      && |.ok\{padding:8px 12px;border-radius:4px;font-size:13px;font-weight:bold;color:#2e7d32\}</style></head>|
+      && |<body><div class="ok">{ lv_saved_label }</div></body></html>|.
+    DATA lt_saved_html TYPE tt_html.
+    DATA ls_saved_html TYPE w3html.
+    DATA lv_saved_off TYPE i.
+    WHILE lv_saved_off < strlen( lv_saved_html ).
+      CLEAR ls_saved_html.
+      ls_saved_html-line = substring( val = lv_saved_html off = lv_saved_off
+        len = nmin( val1 = 255 val2 = strlen( lv_saved_html ) - lv_saved_off ) ).
+      APPEND ls_saved_html TO lt_saved_html.
+      lv_saved_off = lv_saved_off + 255.
+    ENDWHILE.
+    DATA lv_saved_url TYPE c LENGTH 255.
+    mo_progress->load_data( EXPORTING type = 'text' subtype = 'html'
+      IMPORTING assigned_url = lv_saved_url CHANGING data_table = lt_saved_html EXCEPTIONS OTHERS = 1 ).
+    mo_progress->show_url( EXPORTING url = lv_saved_url EXCEPTIONS OTHERS = 1 ).
+
+    " Read saved object and show in answer viewer (right)
+    DATA(lv_saved_type_upper) = mv_diff_object_type.
+    TRANSLATE lv_saved_type_upper TO UPPER CASE.
+    DATA(lv_saved_source) = VALUE string( ).
+    CASE lv_saved_type_upper.
+      WHEN 'PROG' OR 'REPS' OR 'PROGRAM' OR 'REPORT'.
+        lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
+      WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
+        lv_saved_source = zcl_ai_code_reader=>read_class( mv_diff_object_name ).
+      WHEN OTHERS.
+        lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
+    ENDCASE.
+    display_answer( i_source = lv_saved_source i_answer = '' ).
+
+    cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
 
   ENDMETHOD.
