@@ -1172,7 +1172,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
       DATA(lv_answer_log_upper) = lv_answer_log.
       TRANSLATE lv_answer_log_upper TO UPPER CASE.
-      DATA(lv_has_changes_yes) = xsdbool( lv_answer_log_upper CS 'CHANGES:YES' ).
+      DATA(lv_has_changes_yes) = xsdbool( lv_answer_log_upper CS 'CHANGES:YES'
+        OR ( lv_final_agent = zcl_ai_agents_prompts=>c_agent_class_processor
+             AND lv_answer_log_upper CS '--- ' ) ).
 
       IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
