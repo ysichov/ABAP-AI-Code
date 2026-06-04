@@ -124,7 +124,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
     rv_prompt = mo_prompts->get_orchestrator_prompt( )
              && cl_abap_char_utilities=>newline
              && cl_abap_char_utilities=>newline
-             && |PROMPT: { mv_user_prompt }|.
+             && mv_user_prompt.
 
     add_message(
       i_role        = 'user'
@@ -539,8 +539,6 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
     rv_prompt = rv_prompt
              && cl_abap_char_utilities=>newline
-             && cl_abap_char_utilities=>newline
-             && |USER PROMPT:|
              && cl_abap_char_utilities=>newline
              && lv_user_prompt
              && cl_abap_char_utilities=>newline

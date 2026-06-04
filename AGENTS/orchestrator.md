@@ -12,4 +12,4 @@ USER PROMPT: Review Z_MY_PROGRAM Check Z_MY_PROGRAM for syntax errors.
 LLM answer:  Review {AGENT:CODE_SEARCH PROG Z_MY_PROGRAM} Check Z_MY_PROGRAM for syntax errors.
 
 
-USER PROMPT:
+PROMPT:

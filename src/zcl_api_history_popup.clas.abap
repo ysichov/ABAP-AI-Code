@@ -126,7 +126,12 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         ENDIF.
 
         lv_request = ls_message-content.
-        lv_request_type = ls_message-prompt_type.
+        CASE ls_message-prompt_type.
+          WHEN 'SYSTEM_PROMPT'. lv_request_type = 'USER'.
+          WHEN 'AGENT_PROMPT'.  lv_request_type = 'AGENT'.
+          WHEN 'COMMAND'.       lv_request_type = 'COMMAND'.
+          WHEN OTHERS.          lv_request_type = ls_message-prompt_type.
+        ENDCASE.
         lv_request_agent = ls_message-agent.
         lv_request_session = ls_message-session_id.
         lv_request_message_id = ls_message-message_id.
@@ -136,7 +141,11 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         ls_row-session_id = ls_message-session_id.
         ls_row-owner = ls_message-agent.
         ls_row-request_type = lv_request_type.
-        ls_row-answer_type = ls_message-prompt_type.
+        CASE ls_message-prompt_type.
+          WHEN 'LLM_RESPONSE' OR 'FINAL_ANSWER'. ls_row-answer_type = 'LLM'.
+          WHEN 'AGENT_RESPONSE'.                 ls_row-answer_type = 'ABAP'.
+          WHEN OTHERS.                           ls_row-answer_type = ls_message-prompt_type.
+        ENDCASE.
         ls_row-duration_seconds = ls_message-duration_seconds.
         ls_row-request = lv_request.
         ls_row-answer = ls_message-content.
@@ -146,7 +155,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         IF ls_row-session_id IS INITIAL.
           ls_row-session_id = lv_request_session.
         ENDIF.
-        IF ls_row-answer_type = 'LLM_RESPONSE'
+        IF ls_row-answer_type = 'LLM'
         OR ls_row-duration_seconds IS NOT INITIAL.
           extract_usage(
             EXPORTING
@@ -160,7 +169,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         CONDENSE lv_answer_key.
 
         IF ls_row-owner = zcl_ai_agents_prompts=>c_agent_code_reader
-        AND ls_row-answer_type = 'AGENT_RESPONSE'
+        AND ls_row-answer_type = 'ABAP'
         AND (    lv_answer_key CP 'SOURCE FOR PROGRAM * WAS NOT FOUND*'
               OR lv_answer_key CP 'SOURCE FOR PROGRAM * CANNOT BE READ*'
               OR lv_answer_key CP 'CLASS * WAS NOT FOUND*'
@@ -173,8 +182,7 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           ls_row-rowcolor = 'C601'. " red text
         ELSEIF ls_row-prompt_tokens IS NOT INITIAL
             OR ls_row-total_tokens IS NOT INITIAL
-            OR ls_row-answer_type = 'LLM_RESPONSE'
-            OR ls_row-answer_type = 'FINAL_ANSWER'.
+            OR ls_row-answer_type = 'LLM'.
           ls_row-rowcolor = 'C110'. " blue
         ENDIF.
         ls_row-request_preview = preview( ls_row-request ).

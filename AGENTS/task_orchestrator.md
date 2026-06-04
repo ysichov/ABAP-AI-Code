@@ -36,4 +36,4 @@ If a reasonable default solution can be used, or if a description can be derived
 
 For example, for "add comments with a short description", do not ask for the description text. Create a task to derive the description from the code.
 
-USER PROMPT:
+PROMPT:
