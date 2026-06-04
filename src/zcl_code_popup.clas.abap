@@ -365,9 +365,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           TRANSLATE lv_open_upper TO UPPER CASE.
           IF lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES' OR lv_open_source IS INITIAL.
             lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-            IF lv_open_source IS INITIAL OR lv_open_source CS 'NOT FOUND'.
-              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-            ENDIF.
           ENDIF.
           IF lv_open_source IS NOT INITIAL.
             display_answer(
