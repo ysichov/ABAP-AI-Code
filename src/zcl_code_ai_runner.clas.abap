@@ -564,61 +564,61 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       io_llm      = mo_llm
       io_prompts  = mo_prompts ).
 
-    " Optimization: bare {AGENT:CODE_SEARCH CLASS=>METHOD} or {AGENT:CODE_SEARCH CLASS} -> skip LLM
+    " Optimization: if prompt is a single bare {AGENT:CODE_SEARCH ...} -> skip all LLM, read directly
     DATA(lv_trimmed_prompt) = lv_prompt.
     CONDENSE lv_trimmed_prompt.
-    " Also strip newlines that CONDENSE leaves
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_trimmed_prompt WITH ''.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf    IN lv_trimmed_prompt WITH ''.
-    DATA(lv_trimmed_upper) = lv_trimmed_prompt.
-    TRANSLATE lv_trimmed_upper TO UPPER CASE.
-    DATA lv_cs_class  TYPE string.
-    DATA lv_cs_method TYPE string.
-    " Check for {AGENT:CODE_SEARCH ...} pattern using string ops (regex \{ unreliable in ABAP ICU)
-    IF lv_trimmed_upper CP '{AGENT:CODE_SEARCH *}'.
-      DATA(lv_cs_inner) = lv_trimmed_prompt.
-      " Strip leading '{AGENT:CODE_SEARCH ' and trailing '}'
-      FIND FIRST OCCURRENCE OF 'CODE_SEARCH ' IN lv_trimmed_upper MATCH OFFSET DATA(lv_cs_pfx_off) MATCH LENGTH DATA(lv_cs_pfx_len).
-      IF sy-subrc = 0.
-        DATA(lv_cs_skip) = lv_cs_pfx_off + lv_cs_pfx_len.
-        lv_cs_inner = lv_cs_inner+lv_cs_skip.
-        " Remove trailing '}'
-        DATA(lv_cs_last) = strlen( lv_cs_inner ) - 1.
-        IF lv_cs_last >= 0 AND lv_cs_inner+lv_cs_last(1) = '}'.
-          lv_cs_inner = lv_cs_inner(lv_cs_last).
-          CONDENSE lv_cs_inner.
-          IF lv_cs_inner CS '=>'.
-            SPLIT lv_cs_inner AT '=>' INTO lv_cs_class lv_cs_method.
-          ELSE.
-            lv_cs_class = lv_cs_inner.
-          ENDIF.
-        ENDIF.
-      ENDIF.
-    ENDIF.
-    IF lv_cs_class IS NOT INITIAL.
-      TRANSLATE lv_cs_class  TO UPPER CASE.
-      TRANSLATE lv_cs_method TO UPPER CASE.
-      DATA(lv_cs_label) = COND string(
-        WHEN lv_cs_method IS NOT INITIAL THEN |{ lv_cs_class }=>{ lv_cs_method }|
-        ELSE lv_cs_class ).
-      show_step( i_text = |Reading { lv_cs_label }...| i_pct = 30 ).
-      mo_messages->add_message(
-        i_role        = 'user'
-        i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
-        i_prompt_type = 'AGENT_PROMPT'
-        i_content     = |Direct lookup: { lv_cs_label }| ).
+    CONDENSE lv_trimmed_prompt.
+    DATA(lv_prompt_parsed) = mo_messages->parse_agent_requests( lv_trimmed_prompt ).
+    IF lines( lv_prompt_parsed ) = 1
+    AND lv_prompt_parsed[ 1 ]-agent = zcl_ai_agents_prompts=>c_agent_code_search
+    AND lv_prompt_parsed[ 1 ]-relevant_prompt IS INITIAL.
+      DATA(lv_cs_req) = lv_prompt_parsed[ 1 ].
       DATA lv_cs_source TYPE string.
-      IF lv_cs_method IS NOT INITIAL.
-        lv_cs_source = zcl_ai_code_reader=>read_method(
-          i_class  = lv_cs_class
-          i_method = lv_cs_method ).
-      ELSE.
-        lv_cs_source = zcl_ai_code_reader=>read_class( lv_cs_class ).
-        IF lv_cs_source IS INITIAL.
-          lv_cs_source = zcl_ai_code_reader=>read_program( lv_cs_class ).
-        ENDIF.
-      ENDIF.
+      CASE lv_cs_req-object_type.
+        WHEN 'METH' OR 'METHOD'.
+          DATA lv_meth_cls TYPE string.
+          DATA lv_meth_mth TYPE string.
+          IF lv_cs_req-object_name CS '=>'.
+            SPLIT lv_cs_req-object_name AT '=>' INTO lv_meth_cls lv_meth_mth.
+          ELSE.
+            lv_meth_cls = lv_cs_req-object_name.
+          ENDIF.
+          TRANSLATE lv_meth_cls TO UPPER CASE.
+          TRANSLATE lv_meth_mth TO UPPER CASE.
+          CONDENSE lv_meth_cls. CONDENSE lv_meth_mth.
+          lv_cs_source = zcl_ai_code_reader=>read_method(
+            i_class  = lv_meth_cls
+            i_method = lv_meth_mth ).
+        WHEN 'CLAS' OR 'CLASS'.
+          lv_cs_source = zcl_ai_code_reader=>read_class( lv_cs_req-object_name ).
+        WHEN 'REPS' OR 'PROG'.
+          lv_cs_source = zcl_ai_code_reader=>read_program( lv_cs_req-object_name ).
+        WHEN OTHERS.
+          IF lv_cs_req-object_name CS '=>'.
+            SPLIT lv_cs_req-object_name AT '=>' INTO lv_meth_cls lv_meth_mth.
+            TRANSLATE lv_meth_cls TO UPPER CASE.
+            TRANSLATE lv_meth_mth TO UPPER CASE.
+            CONDENSE lv_meth_cls. CONDENSE lv_meth_mth.
+            lv_cs_source = zcl_ai_code_reader=>read_method(
+              i_class  = lv_meth_cls
+              i_method = lv_meth_mth ).
+          ELSE.
+            lv_cs_source = zcl_ai_code_reader=>read_class( lv_cs_req-object_name ).
+            IF lv_cs_source IS INITIAL.
+              lv_cs_source = zcl_ai_code_reader=>read_program( lv_cs_req-object_name ).
+            ENDIF.
+          ENDIF.
+      ENDCASE.
       IF lv_cs_source IS NOT INITIAL.
+        DATA(lv_cs_label) = lv_cs_req-object_name.
+        TRANSLATE lv_cs_label TO UPPER CASE.
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
+          i_prompt_type = 'AGENT_PROMPT'
+          i_content     = |Direct lookup: { lv_cs_label }| ).
         mo_messages->add_message(
           i_role        = 'assistant'
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
@@ -1056,7 +1056,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ELSEIF lv_has_code_change = abap_false
         AND lv_has_agent_followup_text = abap_false
         AND lv_only_code_search = abap_true
-        AND lt_tasks IS INITIAL
         AND ( lv_orchestrator_read_commands IS NOT INITIAL
            OR lv_has_show_command = abap_true
            OR mo_messages->get_resolved_code( ) IS NOT INITIAL ).
