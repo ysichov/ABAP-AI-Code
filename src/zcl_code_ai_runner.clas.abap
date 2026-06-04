@@ -185,7 +185,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_task_orchestrator_prompt) = mo_prompts->get_orchestrator_prompt( )
           && cl_abap_char_utilities=>newline
           && cl_abap_char_utilities=>newline
-          && |PROMPT: { lv_task_prompt_text }|.
+          && lv_task_prompt_text.
 
         mo_messages->add_message(
           i_role        = 'user'
@@ -234,7 +234,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     DATA(lv_language_prompt) = mo_prompts->get_language_detector_prompt( )
                             && cl_abap_char_utilities=>newline
                             && cl_abap_char_utilities=>newline
-                            && |PROMPT: { i_prompt }|.
+                            && i_prompt.
 
     mo_messages->add_message(
       i_role        = 'user'
