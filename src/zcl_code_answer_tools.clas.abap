@@ -553,8 +553,10 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         IF ls_new-part_key CP 'METHOD:*'.
           " Method: extract body between METHOD./ENDMETHOD., skip if empty
           DATA(lv_meth_body) = ls_new-source.
-          REPLACE FIRST OCCURRENCE OF REGEX '(?i)^\s*METHOD\s+\S[^\n]*\n?' IN lv_meth_body WITH ''.
-          REPLACE FIRST OCCURRENCE OF REGEX '(?i)\n?\s*ENDMETHOD\s*\.?\s*$' IN lv_meth_body WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '^\s*METHOD\s+\S[^\n]*\n?'
+            IN lv_meth_body WITH '' IGNORING CASE.
+          REPLACE FIRST OCCURRENCE OF REGEX '\n?\s*ENDMETHOD\s*\.?\s*$'
+            IN lv_meth_body WITH '' IGNORING CASE.
           DATA(lv_meth_body_check) = lv_meth_body.
           CONDENSE lv_meth_body_check.
           IF lv_meth_body_check IS INITIAL.
