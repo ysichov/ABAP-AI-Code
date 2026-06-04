@@ -42,4 +42,3 @@ AT SELECTION-SCREEN.
     i_agents_path = CONV string( p_agents ) ).
 
   go_popup->show( ).
-  d
