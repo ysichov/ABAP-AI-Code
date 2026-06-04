@@ -314,7 +314,25 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         OTHERS                       = 2.
 
     IF sy-subrc <> 0.
-      rv_text = |Class { lv_class } was not found.|.
+      " Fallback: search TADIR with LIKE
+      DATA(lv_like) = |%{ lv_class }%|.
+      DATA lt_found TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
+      SELECT object obj_name
+        FROM tadir
+        INTO CORRESPONDING FIELDS OF TABLE lt_found
+        WHERE pgmid    = 'R3TR'
+          AND object   = 'CLAS'
+          AND obj_name LIKE lv_like
+        ORDER BY obj_name.
+      IF lt_found IS INITIAL.
+        rv_text = |Class { lv_class } was not found.|.
+      ELSE.
+        rv_text = |Class { lv_class } not found exactly. Similar classes in TADIR:|.
+        LOOP AT lt_found INTO DATA(ls_found).
+          rv_text = rv_text && cl_abap_char_utilities=>newline
+                             && |{ ls_found-object } { ls_found-obj_name }|.
+        ENDLOOP.
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -382,7 +400,24 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         OTHERS                       = 2.
 
     IF sy-subrc <> 0.
-      rv_text = |Class { lv_class } was not found.|.
+      DATA(lv_meth_like) = |%{ lv_class }%|.
+      DATA lt_meth_found TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
+      SELECT object obj_name
+        FROM tadir
+        INTO CORRESPONDING FIELDS OF TABLE lt_meth_found
+        WHERE pgmid    = 'R3TR'
+          AND object   = 'CLAS'
+          AND obj_name LIKE lv_meth_like
+        ORDER BY obj_name.
+      IF lt_meth_found IS INITIAL.
+        rv_text = |Class { lv_class } was not found.|.
+      ELSE.
+        rv_text = |Class { lv_class } not found exactly. Similar classes in TADIR:|.
+        LOOP AT lt_meth_found INTO DATA(ls_meth_found).
+          rv_text = rv_text && cl_abap_char_utilities=>newline
+                             && |{ ls_meth_found-object } { ls_meth_found-obj_name }|.
+        ENDLOOP.
+      ENDIF.
       RETURN.
     ENDIF.
 
