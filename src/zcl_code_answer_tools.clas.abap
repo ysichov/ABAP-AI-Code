@@ -551,7 +551,16 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         ENDIF.
 
         IF ls_new-part_key CP 'METHOD:*'.
-          " Method: full replace
+          " Method: extract body between METHOD./ENDMETHOD., skip if empty
+          DATA(lv_meth_body) = ls_new-source.
+          REPLACE FIRST OCCURRENCE OF REGEX '(?i)^\s*METHOD\s+\S[^\n]*\n?' IN lv_meth_body WITH ''.
+          REPLACE FIRST OCCURRENCE OF REGEX '(?i)\n?\s*ENDMETHOD\s*\.?\s*$' IN lv_meth_body WITH ''.
+          DATA(lv_meth_body_check) = lv_meth_body.
+          CONDENSE lv_meth_body_check.
+          IF lv_meth_body_check IS INITIAL.
+            " Empty method body returned by LLM — skip, keep existing
+            CONTINUE.
+          ENDIF.
           <ls_old>-source = ls_new-source.
           <ls_old>-title  = ls_new-title.
         ELSE.
