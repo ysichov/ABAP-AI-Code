@@ -918,8 +918,10 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
             ENDIF.
           ENDIF.
           " Remove ENDCLASS. and CLASS ... IMPLEMENTATION. lines
-          REPLACE ALL OCCURRENCES OF REGEX '(?i)\nENDCLASS\s*\.' IN lv_block_source WITH ''.
-          REPLACE ALL OCCURRENCES OF REGEX '(?i)\nCLASS\s+\S+\s+IMPLEMENTATION\s*\.' IN lv_block_source WITH ''.
+          REPLACE ALL OCCURRENCES OF REGEX '\nENDCLASS\s*\.'
+            IN lv_block_source WITH '' IGNORING CASE.
+          REPLACE ALL OCCURRENCES OF REGEX '\nCLASS\s+\S+\s+IMPLEMENTATION\s*\.'
+            IN lv_block_source WITH '' IGNORING CASE.
         ENDIF.
 
         lt_source = source_to_table( lv_block_source ).
