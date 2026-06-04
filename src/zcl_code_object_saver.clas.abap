@@ -833,6 +833,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_sect_src   TYPE string.
     DATA lv_saved_any  TYPE abap_bool.
     DATA lv_errors     TYPE string.
+    DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
 
     lv_rest = i_source.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_rest WITH lv_nl.
@@ -884,7 +885,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     IF lt_blocks IS INITIAL.
       lt_source = source_to_table( i_source ).
       lv_include = cl_oo_classname_service=>get_classpool_name( lv_class ).
-      INSERT REPORT lv_include FROM lt_source STATE 'A'.
+      INSERT REPORT lv_include FROM lt_source STATE 'I'.
       IF sy-subrc <> 0.
         rv_message = |Error writing classpool { lv_include }.|.
         mv_last_log = mv_last_log && lv_nl && rv_message.
@@ -981,7 +982,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        INSERT REPORT lv_include FROM lt_source STATE 'A'.
+        INSERT REPORT lv_include FROM lt_source STATE 'I'.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
                    && |Error writing include { lv_include } for '{ ls_block-title }'.|.
@@ -989,6 +990,11 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           lv_saved_any = abap_true.
           mv_last_log = mv_last_log && lv_nl
                      && |INSERT REPORT { lv_include } for '{ ls_block-title }' OK.|.
+          " Track written include for activation
+          DATA ls_written TYPE dwinactiv.
+          ls_written-object = 'REPS'.
+          ls_written-obj_name = lv_include.
+          APPEND ls_written TO lt_act_objects.
         ENDIF.
       ENDLOOP.
     ENDIF.
@@ -1004,14 +1010,6 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
-
-    " Activate classpool
-    DATA(lv_classpool) = cl_oo_classname_service=>get_classpool_name( lv_class ).
-    DATA lt_act_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
-    DATA ls_act_object TYPE dwinactiv.
-    ls_act_object-object = 'REPS'.
-    ls_act_object-obj_name = lv_classpool.
-    APPEND ls_act_object TO lt_act_objects.
 
     TRY.
         CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
@@ -1040,7 +1038,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
             OTHERS                 = 4.
     ENDTRY.
 
-    IF sy-subrc <> 0.
+    IF sy-subrc <> 0 AND sy-subrc <> 2.
       DATA lv_act_t100 TYPE string.
       IF sy-msgid IS NOT INITIAL.
         MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
@@ -1161,7 +1159,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && |Source lines: { lines( lt_source ) }|.
 
     " Write source into method include
-    INSERT REPORT lv_include FROM lt_source STATE 'A'.
+    INSERT REPORT lv_include FROM lt_source STATE 'I'.
     IF sy-subrc <> 0.
       rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
       mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
@@ -1214,7 +1212,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
             OTHERS                 = 4.
     ENDTRY.
 
-    IF sy-subrc <> 0.
+    IF sy-subrc <> 0 AND sy-subrc <> 2.
       IF sy-msgid IS NOT INITIAL.
         MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
@@ -1228,11 +1226,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    mv_last_log = mv_last_log
-               && cl_abap_char_utilities=>newline
-               && |RS_WORKING_OBJECTS_ACTIVATE executed for { lv_include } + { lv_classpool }.|.
-
-    rv_message = |Method { i_class }=>{ i_method } was saved and activated.|.
+    rv_message = |Method { i_class }=>{ i_method } saved and activated.|.
     mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
 
   ENDMETHOD.
