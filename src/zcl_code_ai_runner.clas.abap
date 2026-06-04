@@ -1126,8 +1126,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           lv_final_user_prompt = lv_effective_prompt.
         ENDIF.
 
+        DATA(lv_final_type_up) = lv_code_change_type.
+        TRANSLATE lv_final_type_up TO UPPER CASE.
         DATA(lv_final_agent) = COND string(
-          WHEN lv_code_change_type_upper CP 'CLAS*' OR lv_code_change_type_upper = 'CLASS'
+          WHEN lv_final_type_up CP 'CLAS*' OR lv_final_type_up = 'CLASS'
           THEN zcl_ai_agents_prompts=>c_agent_class_processor
           ELSE '' ).
         DATA(lv_final_prompt) = mo_messages->build_final_request(
