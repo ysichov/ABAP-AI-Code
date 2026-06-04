@@ -1350,14 +1350,27 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_rows TYPE string.
     DATA lv_lno TYPE i.
     DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_escaped TYPE string.
 
     SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
 
     LOOP AT lt_lines INTO DATA(lv_line).
-      lv_lno = lv_lno + 1.
-      lv_rows = lv_rows
-             && |<tr><td class="ln">{ lv_lno }</td>|
-             && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+      " Section/method header line: --- Title (INCLUDE) ---
+      IF lv_line CP '---*---'.
+        lv_lno = 0.
+        lv_escaped = escape_html( i_text = lv_line ).
+        " Strip leading dashes for cleaner display
+        REPLACE ALL OCCURRENCES OF REGEX '^---\s*' IN lv_escaped WITH ''.
+        REPLACE ALL OCCURRENCES OF REGEX '\s*---$' IN lv_escaped WITH ''.
+        lv_rows = lv_rows
+               && |<tr><td class="ln"></td>|
+               && |<td class="sh">{ lv_escaped }</td></tr>|.
+      ELSE.
+        lv_lno = lv_lno + 1.
+        lv_rows = lv_rows
+               && |<tr><td class="ln">{ lv_lno }</td>|
+               && |<td class="cd">{ escape_html( i_text = lv_line ) }</td></tr>|.
+      ENDIF.
     ENDLOOP.
 
     DATA(lv_title) = escape_html( i_text = i_title ).
@@ -1374,6 +1387,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |user-select:none;min-width:42px;border-right:1px solid #e0e0e0;|
            && |white-space:nowrap;background:#fafafa\}|
            && |.cd\{padding:1px 8px;white-space:pre\}|
+           && |.sh\{padding:4px 8px;color:#0066cc;font-weight:bold;|
+           && |background:#f0f6ff;border-top:2px solid #cce0ff;white-space:pre\}|
            && |</style></head><body>|
            && |<div class="hdr"><span class="ttl">{ lv_title }</span></div>|
            && |<table><tbody>| && lv_rows && |</tbody></table></body></html>|.
