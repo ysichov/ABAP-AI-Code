@@ -186,17 +186,17 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '+' IN lv_like_pattern WITH '_'.
 
       " Map requested type to TADIR object column values
-      DATA lt_tadir_types TYPE STANDARD TABLE OF tadir-object WITH NON-UNIQUE DEFAULT KEY.
+      DATA lt_tadir_types TYPE RANGE OF trobjtype.
       DATA(lv_type_upper) = i_object_type.
       TRANSLATE lv_type_upper TO UPPER CASE.
       CASE lv_type_upper.
         WHEN 'PROG' OR 'PROGRAM' OR 'REPORT'.
-          APPEND 'PROG' TO lt_tadir_types.
-          APPEND 'REPS' TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'PROG' ) TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'REPS' ) TO lt_tadir_types.
         WHEN 'CLAS' OR 'CLASS'.
-          APPEND 'CLAS' TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'CLAS' ) TO lt_tadir_types.
         WHEN 'FUGR' OR 'FM' OR 'FUNC'.
-          APPEND 'FUGR' TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'FUGR' ) TO lt_tadir_types.
         WHEN OTHERS.
           " No filter - return all matching object names
       ENDCASE.
