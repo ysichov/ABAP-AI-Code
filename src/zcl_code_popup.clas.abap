@@ -874,18 +874,17 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     rv_html =
       |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
-      && |body { font-family: Segoe UI, Arial, sans-serif; margin: 10px; background: #f5f5f5; }|
-      && |.steps { margin-bottom: 20px; padding: 10px; background: white; border-radius: 4px; }|
-      && |.step { padding: 8px 12px; margin: 4px 0; border-radius: 3px; font-size: 14px; }|
-      && |.step.completed { background: #e8f5e9; color: #2e7d32; }|
-      && |.step.active { background: #fff3e0; color: #f57f17; animation: pulse 1s infinite; }|
-      && |@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }|
-      && |.messages { background: white; padding: 10px; border-radius: 4px; }|
-      && |.user-msg { margin: 8px 0; padding: 10px; background: #e3f2fd; border-left: 3px solid #1976d2; }|
-      && |.assistant-msg { margin: 8px 0; padding: 10px; background: #f3e5f5; border-left: 3px solid #7b1fa2; }|
-      && |.system-msg { margin: 8px 0; padding: 10px; background: #fce4ec; border-left: 3px solid #c2185b; }|
-      && |.agent { font-weight: bold; color: #0066aa; }|
-      && |.content { margin-top: 4px; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; }|
+      && |body\{font-family:Segoe UI,Arial,sans-serif;margin:10px;background:#f5f5f5\}|
+      && |.steps\{margin-bottom:20px;padding:10px;background:white;border-radius:4px\}|
+      && |.step\{padding:8px 12px;margin:4px 0;border-radius:3px;font-size:14px\}|
+      && |.step.completed\{background:#e8f5e9;color:#2e7d32\}|
+      && |.step.active\{background:#fff3e0;color:#f57f17\}|
+      && |.messages\{background:white;padding:10px;border-radius:4px\}|
+      && |.user-msg\{margin:8px 0;padding:10px;background:#e3f2fd;border-left:3px solid #1976d2\}|
+      && |.assistant-msg\{margin:8px 0;padding:10px;background:#f3e5f5;border-left:3px solid #7b1fa2\}|
+      && |.system-msg\{margin:8px 0;padding:10px;background:#fce4ec;border-left:3px solid #c2185b\}|
+      && |.agent\{font-weight:bold;color:#0066aa\}|
+      && |.content\{margin-top:4px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap\}|
       && |</style></head><body>|
       && |<div class="steps">| && lv_steps_html && |</div>|
       && |<div class="messages">| && lv_messages_html && |</div>|
