@@ -41,6 +41,7 @@ private section.
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_SPLIT type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_QUESTION type ref to CL_GUI_TEXTEDIT .
+  data MO_PROGRESS type ref to CL_GUI_HTML_VIEWER .
   data MO_ANSWER type ref to CL_GUI_HTML_VIEWER .
   data MV_DIFF_BASE_HTML type STRING .
   data MV_DIFF_KEY type STRING .
@@ -145,7 +146,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     DATA(lo_runner) = NEW zcl_code_ai_runner(
       io_llm     = mo_llm
       io_prompts = mo_prompts ).
-    lo_runner->set_html_viewer( mo_answer ).
+    lo_runner->set_html_viewer( mo_progress ).
     DATA(ls_result) = lo_runner->run(
       i_prompt     = lv_prompt
       i_session_id = mv_session_counter ).
@@ -765,28 +766,36 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     SET HANDLER on_toolbar_click FOR mo_toolbar.
 
-    " Horizontal splitter: left=question, right=answer
+    " Horizontal splitter: question | progress | answer
     CREATE OBJECT mo_split
       EXPORTING
         parent  = lo_editors_cont
         rows    = 1
-        columns = 2
+        columns = 3
       EXCEPTIONS
         OTHERS  = 1.
 
-    mo_split->set_column_width( id = 1 width = 40 ).
-    mo_split->set_column_width( id = 2 width = 60 ).
+    mo_split->set_column_width( id = 1 width = 25 ).
+    mo_split->set_column_width( id = 2 width = 25 ).
+    mo_split->set_column_width( id = 3 width = 50 ).
 
-    DATA lo_left  TYPE REF TO cl_gui_container.
-    DATA lo_right TYPE REF TO cl_gui_container.
-    lo_left  = mo_split->get_container( row = 1 column = 1 ).
-    lo_right = mo_split->get_container( row = 1 column = 2 ).
+    DATA lo_left   TYPE REF TO cl_gui_container.
+    DATA lo_middle TYPE REF TO cl_gui_container.
+    DATA lo_right  TYPE REF TO cl_gui_container.
+    lo_left   = mo_split->get_container( row = 1 column = 1 ).
+    lo_middle = mo_split->get_container( row = 1 column = 2 ).
+    lo_right  = mo_split->get_container( row = 1 column = 3 ).
 
     " Question editor (left)
     CREATE OBJECT mo_question
       EXPORTING parent = lo_left
       EXCEPTIONS OTHERS = 1.
     mo_question->set_toolbar_mode( 0 ).  " 0 = toolbar off
+
+    " Progress log viewer (middle)
+    CREATE OBJECT mo_progress
+      EXPORTING parent = lo_middle
+      EXCEPTIONS OTHERS = 1.
 
     " Answer viewer (right)
     CREATE OBJECT mo_answer
