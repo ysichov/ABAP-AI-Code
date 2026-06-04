@@ -520,20 +520,27 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
       READ TABLE lt_old_parts ASSIGNING FIELD-SYMBOL(<ls_old>)
         WITH KEY part_key = ls_new-part_key.
       IF sy-subrc = 0.
-        " If old method source had METHOD X. / ENDMETHOD. wrappers, preserve them
-        DATA(lv_old_first_line) = <ls_old>-source.
-        DATA(lv_old_first_upper) = lv_old_first_line.
+        " If old method source had METHOD X. / ENDMETHOD. wrappers and new source doesn't — add them
+        DATA(lv_new_first) = ls_new-source.
+        FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline IN lv_new_first.
         IF sy-subrc = 0.
-          FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline IN lv_old_first_line.
-          IF sy-subrc = 0.
-            lv_old_first_line = lv_old_first_line(sy-fdpos).
-          ENDIF.
+          lv_new_first = lv_new_first(sy-fdpos).
         ENDIF.
-        lv_old_first_upper = lv_old_first_line.
+        DATA(lv_new_first_upper) = lv_new_first.
+        CONDENSE lv_new_first_upper.
+        TRANSLATE lv_new_first_upper TO UPPER CASE.
+
+        DATA(lv_old_first) = <ls_old>-source.
+        FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline IN lv_old_first.
+        IF sy-subrc = 0.
+          lv_old_first = lv_old_first(sy-fdpos).
+        ENDIF.
+        DATA(lv_old_first_upper) = lv_old_first.
         CONDENSE lv_old_first_upper.
         TRANSLATE lv_old_first_upper TO UPPER CASE.
-        IF lv_old_first_upper CP 'METHOD *'.
-          " New source is body only — wrap with METHOD/ENDMETHOD
+
+        IF lv_old_first_upper CP 'METHOD *' AND NOT lv_new_first_upper CP 'METHOD *'.
+          " New source is body only — wrap with METHOD/ENDMETHOD from old
           DATA(lv_meth_name) = ls_new-part_key.
           REPLACE FIRST OCCURRENCE OF 'METHOD:' IN lv_meth_name WITH ''.
           ls_new-source = |METHOD { lv_meth_name }.|
@@ -545,16 +552,7 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
         <ls_old>-source = ls_new-source.
         <ls_old>-title  = ls_new-title.
       ELSE.
-        " New method not in old class — add METHOD/ENDMETHOD if it looks like a method body
-        IF ls_new-part_key CP 'METHOD:*'.
-          DATA(lv_new_meth_name) = ls_new-part_key.
-          REPLACE FIRST OCCURRENCE OF 'METHOD:' IN lv_new_meth_name WITH ''.
-          ls_new-source = |METHOD { lv_new_meth_name }.|
-                       && cl_abap_char_utilities=>newline
-                       && ls_new-source
-                       && cl_abap_char_utilities=>newline
-                       && |ENDMETHOD.|.
-        ENDIF.
+        " New method not in old class — no wrapping needed (LLM provides full method)
         APPEND ls_new TO lt_old_parts.
       ENDIF.
     ENDLOOP.

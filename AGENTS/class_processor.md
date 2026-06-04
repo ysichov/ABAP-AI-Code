@@ -20,7 +20,7 @@ Each changed part must be wrapped in its section marker:
 <full content of private section>
 
 --- Method <METHOD_NAME> ---
-<full method body, without METHOD and ENDMETHOD lines>
+<full method body>
 
 Only include the markers for sections/methods that were actually changed or added. Skip all others.
 

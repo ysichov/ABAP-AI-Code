@@ -65,6 +65,8 @@ CLASS zcl_ai_agents_prompts DEFINITION
       IMPORTING
         !i_language TYPE string.
 
+    METHODS reload.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     TYPES:
@@ -267,6 +269,13 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
     mv_user_language = i_language.
     CONDENSE mv_user_language.
+
+  ENDMETHOD.
+
+
+  METHOD reload.
+
+    load_agent_prompts( ).
 
   ENDMETHOD.
 

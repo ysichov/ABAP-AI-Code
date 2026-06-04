@@ -580,6 +580,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
   method RUN.
 
+    mo_prompts->reload( ).
+
     DATA(lv_prompt) = i_prompt.
     DATA(lv_user_requested_review) = is_review_requested( lv_prompt ).
 
