@@ -64,6 +64,7 @@ CLASS zcl_ai_messages DEFINITION
 
     METHODS build_final_request
       IMPORTING i_user_prompt    TYPE string OPTIONAL
+                i_agent          TYPE string OPTIONAL
       RETURNING VALUE(rv_prompt) TYPE string.
 
     METHODS get_resolved_code
@@ -546,7 +547,10 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       WHEN i_user_prompt IS NOT INITIAL THEN i_user_prompt
       ELSE mv_user_prompt ).
 
-    rv_prompt = mo_prompts->get_final_prompt( ).
+    rv_prompt = COND string(
+      WHEN i_agent = zcl_ai_agents_prompts=>c_agent_class_processor
+      THEN mo_prompts->get_class_processor_prompt( )
+      ELSE mo_prompts->get_final_prompt( ) ).
 
     rv_prompt = rv_prompt
              && cl_abap_char_utilities=>newline

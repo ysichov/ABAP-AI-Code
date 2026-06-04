@@ -1126,8 +1126,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           lv_final_user_prompt = lv_effective_prompt.
         ENDIF.
 
+        DATA(lv_final_agent) = COND string(
+          WHEN lv_code_change_type_upper CP 'CLAS*' OR lv_code_change_type_upper = 'CLASS'
+          THEN zcl_ai_agents_prompts=>c_agent_class_processor
+          ELSE '' ).
         DATA(lv_final_prompt) = mo_messages->build_final_request(
-          i_user_prompt = lv_final_user_prompt ).
+          i_user_prompt = lv_final_user_prompt
+          i_agent       = lv_final_agent ).
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).

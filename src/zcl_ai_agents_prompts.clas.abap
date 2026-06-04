@@ -17,7 +17,8 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_code_extract      TYPE string VALUE 'CODE_EXTRACT',
       c_agent_class_extract     TYPE string VALUE 'CLASS_EXTRACT',
       c_agent_code_diff         TYPE string VALUE 'CODE_DIFF',
-      c_agent_code_reader       TYPE string VALUE 'CODE_READER'.
+      c_agent_code_reader       TYPE string VALUE 'CODE_READER',
+      c_agent_class_processor   TYPE string VALUE 'CLASS_PROCESSOR'.
 
     METHODS constructor
       IMPORTING
@@ -53,6 +54,9 @@ CLASS zcl_ai_agents_prompts DEFINITION
     METHODS get_final_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_class_processor_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
     METHODS get_prompt_by_agent
       IMPORTING i_agent          TYPE string
       RETURNING VALUE(rv_prompt) TYPE string.
@@ -74,6 +78,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     DATA mv_language_detector_prompt TYPE string.
     DATA mv_code_review_prompt       TYPE string.
     DATA mv_final_prompt             TYPE string.
+    DATA mv_class_processor_prompt   TYPE string.
 
     METHODS load_agent_prompts.
 
@@ -216,6 +221,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = |CODE_DIFF is a command, not an LLM agent.|.
       WHEN c_agent_code_reader.
         rv_prompt = get_code_reader_prompt( ).
+      WHEN c_agent_class_processor.
+        rv_prompt = get_class_processor_prompt( ).
       WHEN OTHERS.
         rv_prompt = |Agent '{ i_agent }' not found|.
     ENDCASE.
@@ -227,6 +234,14 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
     rv_prompt = get_system_prompt_prefix( )
              && mv_final_prompt.
+
+  ENDMETHOD.
+
+
+  METHOD get_class_processor_prompt.
+
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_class_processor_prompt.
 
   ENDMETHOD.
 
@@ -272,6 +287,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     mv_task_orchestrator_prompt = read_prompt_file( 'task_orchestrator.md' ).
     mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
     mv_final_prompt = read_prompt_file( 'final.md' ).
+    mv_class_processor_prompt = read_prompt_file( 'class_processor.md' ).
 
   ENDMETHOD.
 
