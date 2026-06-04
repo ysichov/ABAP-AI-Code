@@ -809,8 +809,13 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_t100_msg TYPE string.
     DATA lv_nl       TYPE string.
     DATA lt_existing TYPE tt_source.
-    DATA lv_same     TYPE abap_bool.
-    DATA lv_idx      TYPE i.
+    DATA lt_old_str  TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lt_new_str  TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_clskey   TYPE seoclskey.
+    DATA lo_section  TYPE REF TO cl_oo_class_section_source.
+    DATA lv_scan_error TYPE abap_bool.
+    DATA ls_written  TYPE dwinactiv.
+    DATA lv_exposure TYPE i.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -976,27 +981,19 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        " Skip unchanged includes — compare line by line as strings
-        " (CONV string trims trailing spaces from fixed-length ABAP source lines)
-        CLEAR lt_existing.
-        READ REPORT lv_include INTO lt_existing STATE 'A'.
-        IF sy-subrc = 0 AND lines( lt_existing ) = lines( lt_source ).
-          lv_same = abap_true.
-          DO lines( lt_existing ) TIMES.
-            lv_idx = sy-index.
-            IF CONV string( lt_existing[ lv_idx ] ) <> CONV string( lt_source[ lv_idx ] ).
-              lv_same = abap_false.
-              EXIT.
-            ENDIF.
-          ENDDO.
-          IF lv_same = abap_true.
-            mv_last_log = mv_last_log && lv_nl
-                       && |Section '{ ls_block-title }' unchanged - skipped.|.
-            CONTINUE.
-          ENDIF.
+        " Skip unchanged includes — compare as string_table (like abapGit)
+        CLEAR: lt_existing, lt_old_str, lt_new_str.
+        READ REPORT lv_include INTO lt_existing.
+        lt_old_str = lt_existing.
+        lt_new_str = lt_source.
+        IF lt_old_str = lt_new_str.
+          mv_last_log = mv_last_log && lv_nl
+                     && |Section '{ ls_block-title }' unchanged - skipped.|.
+          CONTINUE.
         ENDIF.
 
-        INSERT REPORT lv_include FROM lt_source STATE 'I'.
+        " Write include (without STATE like abapGit — writes modified version)
+        INSERT REPORT lv_include FROM lt_source.
         IF sy-subrc <> 0.
           lv_errors = lv_errors && lv_nl
                    && |Error writing include { lv_include } for '{ ls_block-title }'.|.
@@ -1004,8 +1001,58 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
           lv_saved_any = abap_true.
           mv_last_log = mv_last_log && lv_nl
                      && |INSERT REPORT { lv_include } for '{ ls_block-title }' OK.|.
+
+          " Update SEO metadata for sections (like abapGit update_meta)
+          lv_exposure = 0.
+          IF lv_blk_upper CP '*PUBLIC*'.
+            lv_exposure = 2. " seoc_exposure_public
+          ELSEIF lv_blk_upper CP '*PROTECTED*'.
+            lv_exposure = 1. " seoc_exposure_protected
+          ELSEIF lv_blk_upper CP '*PRIVATE*'.
+            lv_exposure = 0. " seoc_exposure_private
+          ENDIF.
+          IF lv_blk_upper CP '*SECTION*'.
+            ls_clskey-clsname = lv_class.
+            CALL FUNCTION 'SEO_BUFFER_REFRESH'
+              EXPORTING
+                cifkey  = ls_clskey
+                version = 1. " seoc_version_active
+            TRY.
+                CREATE OBJECT lo_section
+                  EXPORTING
+                    clskey                        = ls_clskey
+                    exposure                      = lv_exposure
+                    state                         = 'A'
+                    source                        = lt_new_str
+                    suppress_constrctr_generation = abap_true
+                  EXCEPTIONS
+                    class_not_existing            = 1
+                    read_source_error             = 2
+                    OTHERS                        = 3.
+                IF sy-subrc = 0.
+                  lo_section->scan_section_source(
+                    RECEIVING  scan_error             = lv_scan_error
+                    EXCEPTIONS scan_abap_source_error = 1
+                               OTHERS                 = 2 ).
+                  IF sy-subrc = 0 AND lv_scan_error = abap_false.
+                    lo_section->revert_scan_result( ).
+                  ENDIF.
+                  IF lv_exposure = 2. " public
+                    CALL FUNCTION 'SEO_CLASS_GENERATE_CLASSPOOL'
+                      EXPORTING
+                        clskey       = ls_clskey
+                      EXCEPTIONS
+                        not_existing = 1
+                        OTHERS       = 2.
+                  ENDIF.
+                ENDIF.
+              CATCH cx_root ##CATCH_ALL.
+                " Ignore meta update errors — include is already written
+            ENDTRY.
+          ENDIF.
+
           " Track written include for activation
-          DATA ls_written TYPE dwinactiv.
+          CLEAR ls_written.
           ls_written-object = 'REPS'.
           ls_written-obj_name = lv_include.
           APPEND ls_written TO lt_act_objects.
@@ -1172,8 +1219,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                && cl_abap_char_utilities=>newline
                && |Source lines: { lines( lt_source ) }|.
 
-    " Write source into method include
-    INSERT REPORT lv_include FROM lt_source STATE 'I'.
+    " Write source into method include (without STATE like abapGit)
+    INSERT REPORT lv_include FROM lt_source.
     IF sy-subrc <> 0.
       rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
       mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
