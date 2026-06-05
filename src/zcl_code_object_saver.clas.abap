@@ -916,7 +916,7 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     "    All edits are applied on top of this, so untouched parts stay byte-exact.
     lt_cur = read_class_source( lv_class ).
     IF lt_cur IS INITIAL.
-      rv_message = |Cannot read source of class { lv_class } (exists and active?).|.
+      rv_message = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
@@ -1136,8 +1136,11 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
         li_source->set_source( source = lt_rsw ).
         li_source->save( ).
         li_source->unlock( ).
+      CATCH cx_oo_access_permission INTO DATA(lx_lock).
+        " Class is locked (someone is editing it in SE24/ADT)
+        rv_error = |Error saving class { iv_class }: locked - { lx_lock->get_text( ) }|.
       CATCH cx_root INTO lx_error.
-        rv_error = |Error writing class source { iv_class }: { lx_error->get_text( ) }|.
+        rv_error = |Error saving class { iv_class }: { lx_error->get_text( ) }|.
     ENDTRY.
 
   ENDMETHOD.
@@ -1435,7 +1438,7 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     " Everything else stays byte-exact, so the class can never be corrupted.
     lt_cur = read_class_source( lv_class ).
     IF lt_cur IS INITIAL.
-      rv_message = |Cannot read source of class { lv_class } (exists and active?).|.
+      rv_message = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
@@ -1444,8 +1447,8 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     IF replace_method_in_lines( EXPORTING iv_method = i_method
                                           it_body   = lt_body
                                 CHANGING  ct_lines  = lt_new ) = abap_false.
-      rv_message = |Method { lv_class }=>{ i_method } not found in class. |
-                && |Add its declaration first (signature change is not a body-only edit).|.
+      rv_message = |Error saving method { lv_class }=>{ i_method }: not declared in class |
+                && |(add the declaration first; a body-only edit cannot create a method).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.

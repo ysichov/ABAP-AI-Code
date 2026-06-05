@@ -483,6 +483,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     OR lv_save_message_upper CS 'ERROR CREATING'
     OR lv_save_message_upper CS 'ERROR UPDATING'
     OR lv_save_message_upper CS 'ERROR ACTIVATING'
+    OR lv_save_message_upper CS 'ERROR WRITING'
+    OR lv_save_message_upper CS 'ERROR READING'
+    OR lv_save_message_upper CS 'CANNOT READ'
+    OR lv_save_message_upper CS 'LOCKED'
     OR lv_save_message_upper CS 'WAS WRITTEN, BUT'.
       CLEAR: mv_diff_base_html,
              mv_diff_key,
