@@ -1112,6 +1112,13 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     DATA lt_lines TYPE STANDARD TABLE OF string.
     SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
     LOOP AT lt_lines INTO DATA(lv_line).
+      " Strip section/method markers added for LLM context
+      " (e.g. "--- Public section ---", "--- Method GET_NAME ---")
+      DATA(lv_trimmed) = lv_line.
+      CONDENSE lv_trimmed.
+      IF lv_trimmed CP '--- * ---'.
+        CONTINUE.
+      ENDIF.
       APPEND CONV char255( lv_line ) TO lt_src.
     ENDLOOP.
 
