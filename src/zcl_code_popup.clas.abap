@@ -169,13 +169,24 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
 
-    " Source-only result (direct lookup / SHOW command) → ABAP editor
+    " Source-only result (direct lookup / SHOW command) → ABAP editor.
+    " If is_source_code is false the result is an HTML error/suggestion page
+    " (e.g. "not found, similar classes") and goes to the HTML viewer as-is.
     IF ls_result-is_source_code = abap_true AND ls_result-has_diff = abap_false.
       display_program_source( ls_result-answer ).
       RETURN.
     ENDIF.
 
+    " Non-code source result (error / "similar classes") — convert to HTML
+    " so the object names become clickable hyperlinks as before.
     DATA(lv_display_answer) = ls_result-answer.
+    IF ls_result-is_source_code = abap_false
+    AND ls_result-has_diff = abap_false
+    AND ls_result-answer IS NOT INITIAL.
+      lv_display_answer = zcl_code_html_gen=>source_to_html(
+        i_source = ls_result-answer
+        i_title  = 'Search result' ).
+    ENDIF.
     IF ls_result-has_diff = abap_true.
       lv_display_answer = diff_to_html(
         i_old_code    = ls_result-diff_old_code

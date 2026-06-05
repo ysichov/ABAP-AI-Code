@@ -683,9 +683,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_cs_source ).
-        rs_result-answer        = lv_cs_source.
-        rs_result-is_source_code = abap_true.
-        rs_result-answer_log    = lv_cs_source.
+        DATA(lv_cs_upper) = lv_cs_source.
+        TRANSLATE lv_cs_upper TO UPPER CASE.
+        rs_result-answer         = lv_cs_source.
+        rs_result-is_source_code = xsdbool(
+          NOT ( lv_cs_upper CS 'NOT FOUND' OR lv_cs_upper CS 'SIMILAR CLASSES'
+             OR lv_cs_upper CS 'CANNOT BE READ' ) ).
+        rs_result-answer_log     = lv_cs_source.
         rs_result-messages_ref = mo_messages.
         rs_result-messages    = mo_messages->get_messages( ).
         RETURN.
@@ -706,14 +710,16 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
       DATA(lv_direct_upper) = lv_direct_source.
       TRANSLATE lv_direct_upper TO UPPER CASE.
+      DATA lv_direct_is_code TYPE abap_bool VALUE abap_true.
       IF lv_direct_source IS INITIAL OR lv_direct_upper CS 'NOT FOUND' OR lv_direct_upper CS 'SIMILAR CLASSES'.
         DATA(lv_class_err) = lv_direct_source.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
         DATA(lv_direct_upper2) = lv_direct_source.
         TRANSLATE lv_direct_upper2 TO UPPER CASE.
         IF lv_direct_source IS INITIAL OR lv_direct_upper2 CS 'NOT FOUND' OR lv_direct_upper2 CS 'CANNOT BE READ'.
-          " Neither found - show both error messages
+          " Neither found - show both error messages (HTML with hyperlinks)
           lv_direct_source = lv_class_err && cl_abap_char_utilities=>newline && lv_direct_source.
+          lv_direct_is_code = abap_false.
         ENDIF.
       ENDIF.
       IF lv_direct_source IS NOT INITIAL.
@@ -722,9 +728,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_direct_source ).
-        rs_result-answer        = lv_direct_source.
-        rs_result-is_source_code = abap_true.
-        rs_result-answer_log    = lv_direct_source.
+        rs_result-answer         = lv_direct_source.
+        rs_result-is_source_code = lv_direct_is_code.
+        rs_result-answer_log     = lv_direct_source.
         rs_result-messages_ref = mo_messages.
         rs_result-messages    = mo_messages->get_messages( ).
         RETURN.
