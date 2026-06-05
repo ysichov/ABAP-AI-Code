@@ -181,7 +181,6 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
 
     DATA(lv_text) = i_text.
     REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*' IN lv_text WITH ''.
-    REPLACE ALL OCCURRENCES OF REGEX '\s*Total tokens:[^\r\n]*' IN lv_text WITH '' IGNORING CASE.
 
     FIND FIRST OCCURRENCE OF REGEX '```\s*[Aa][Bb][Aa][Pp]\s*' IN lv_text
       MATCH OFFSET lv_start
@@ -543,8 +542,6 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
     " Strip CHANGES:YES/NO marker and lone --- (markdown hr) lines
     DATA(lv_changed) = i_changed_source.
     REPLACE ALL OCCURRENCES OF REGEX '[\r\n]+\s*CHANGES\s*:\s*(YES|NO)\s*$'
-      IN lv_changed WITH '' IGNORING CASE.
-    REPLACE ALL OCCURRENCES OF REGEX '\s*Total tokens:.*?(input|output|total)=\d[^\r\n]*'
       IN lv_changed WITH '' IGNORING CASE.
     REPLACE ALL OCCURRENCES OF REGEX '(^|\n)\s*---\s*(\n|$)'
       IN lv_changed WITH cl_abap_char_utilities=>newline IGNORING CASE.
