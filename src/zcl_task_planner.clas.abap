@@ -169,6 +169,8 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
       i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
       i_prompt_type = 'LLM_RESPONSE'
       i_duration_seconds = mo_llm->get_last_seconds( )
+      i_tok_in      = mo_llm->mv_last_tok_in
+      i_tok_out     = mo_llm->mv_last_tok_out
       i_content     = lv_task_answer ).
 
     rt_tasks = split_task_list( zcl_ai_messages=>strip_log_info( lv_task_answer ) ).

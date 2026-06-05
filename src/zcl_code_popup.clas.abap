@@ -647,6 +647,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_agent       = 'SAVE_FIX'
       i_prompt_type = 'LLM_RESPONSE'
       i_duration_seconds = mo_llm->get_last_seconds( )
+      i_tok_in      = mo_llm->mv_last_tok_in
+      i_tok_out     = mo_llm->mv_last_tok_out
       i_content     = lv_fix_answer_log ).
 
     mo_messages->add_message(

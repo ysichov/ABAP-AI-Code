@@ -177,6 +177,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
         i_prompt_type = 'LLM_RESPONSE'
         i_duration_seconds = mo_llm->get_last_seconds( )
+        i_tok_in      = mo_llm->mv_last_tok_in
+        i_tok_out     = mo_llm->mv_last_tok_out
         i_content     = lv_orchestrator_answer_log ).
     ELSE.
       DATA(lv_task_count) = lines( it_tasks ).
@@ -211,6 +213,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_orchestrator
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
+          i_tok_in      = mo_llm->mv_last_tok_in
+          i_tok_out     = mo_llm->mv_last_tok_out
           i_content     = lv_task_answer_log ).
 
         IF rv_answer IS NOT INITIAL.
@@ -260,6 +264,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_agent       = zcl_ai_agents_prompts=>c_agent_language_detector
       i_prompt_type = 'LLM_RESPONSE'
       i_duration_seconds = mo_llm->get_last_seconds( )
+      i_tok_in      = mo_llm->mv_last_tok_in
+      i_tok_out     = mo_llm->mv_last_tok_out
       i_content     = lv_language_answer_log ).
 
   endmethod.
@@ -381,6 +387,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_agent       = 'SYNTAX_FIX'
         i_prompt_type = 'LLM_RESPONSE'
         i_duration_seconds = mo_llm->get_last_seconds( )
+        i_tok_in      = mo_llm->mv_last_tok_in
+        i_tok_out     = mo_llm->mv_last_tok_out
         i_content     = lv_fix_answer_log ).
 
       IF lv_fixed_source IS INITIAL
@@ -1040,6 +1048,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = ls_agent_request-agent
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
+          i_tok_in      = mo_llm->mv_last_tok_in
+          i_tok_out     = mo_llm->mv_last_tok_out
           i_content     = lv_agent_answer_log ).
 
         IF mo_messages->has_text_after_agent_commands( lv_agent_answer ) = abap_true.
@@ -1092,6 +1102,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
           i_prompt_type = 'LLM_RESPONSE'
           i_duration_seconds = mo_llm->get_last_seconds( )
+          i_tok_in      = mo_llm->mv_last_tok_in
+          i_tok_out     = mo_llm->mv_last_tok_out
           i_content     = lv_review_answer_log ).
       ENDIF.
 
