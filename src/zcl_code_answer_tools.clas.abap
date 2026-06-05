@@ -630,8 +630,34 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
             FIND FIRST OCCURRENCE OF lv_sect_keyword
               IN lv_old_upper2 MATCH OFFSET lv_preamble_off.
             IF sy-subrc = 0 AND lv_preamble_off > 0.
-              " Keep preamble (class header), replace section body
-              <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+              " Keep preamble (class header), replace section body.
+              " Also preserve the "public/protected/private section." keyword line itself
+              " (new source from LLM in XML format skips it, legacy format includes it).
+              DATA(lv_new_up) = ls_new-source.
+              CONDENSE lv_new_up.
+              TRANSLATE lv_new_up TO UPPER CASE.
+              DATA(lv_kw_len) = strlen( lv_sect_keyword ).
+              DATA(lv_new_starts_with_kw) = abap_false.
+              IF strlen( lv_new_up ) >= lv_kw_len
+              AND lv_new_up(lv_kw_len) = lv_sect_keyword.
+                lv_new_starts_with_kw = abap_true.
+              ENDIF.
+              IF lv_new_starts_with_kw = abap_false.
+                " Find end of section keyword line in old source and include it
+                DATA(lv_sect_rest) = <ls_old>-source+lv_preamble_off.
+                DATA(lv_nl_pos)    = 0.
+                FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline
+                  IN lv_sect_rest MATCH OFFSET lv_nl_pos.
+                IF sy-subrc = 0.
+                  DATA(lv_sect_line_len) = lv_preamble_off + lv_nl_pos + 1.
+                  <ls_old>-source = <ls_old>-source(lv_sect_line_len) && ls_new-source.
+                ELSE.
+                  " No newline after section keyword — just append
+                  <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+                ENDIF.
+              ELSE.
+                <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+              ENDIF.
             ELSE.
               " No preamble found (protected/private) — direct replace
               <ls_old>-source = ls_new-source.
