@@ -819,6 +819,8 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
     DATA lv_log_str  TYPE string.
     DATA lv_old_norm TYPE string.
     DATA lv_new_norm TYPE string.
+    DATA lv_ex_line  LIKE LINE OF lt_existing.
+    DATA lv_src_line2 LIKE LINE OF lt_source.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -995,7 +997,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
         READ REPORT lv_include INTO lt_existing.
         IF sy-subrc = 0 AND lt_existing IS NOT INITIAL.
           CLEAR: lv_old_norm, lv_new_norm.
-          LOOP AT lt_existing INTO DATA(lv_ex_line).
+          LOOP AT lt_existing INTO lv_ex_line.
             lv_log_str = lv_ex_line.
             CONDENSE lv_log_str.
             TRANSLATE lv_log_str TO UPPER CASE.
@@ -1003,7 +1005,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
               lv_old_norm = lv_old_norm && lv_log_str && '|'.
             ENDIF.
           ENDLOOP.
-          LOOP AT lt_source INTO DATA(lv_src_line2).
+          LOOP AT lt_source INTO lv_src_line2.
             lv_log_str = lv_src_line2.
             CONDENSE lv_log_str.
             TRANSLATE lv_log_str TO UPPER CASE.
