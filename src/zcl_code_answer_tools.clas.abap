@@ -613,13 +613,29 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
           <ls_old>-source = ls_new-source.
           <ls_old>-title  = ls_new-title.
         ELSE.
-          " Section (public/protected/private): append delta to existing content
-          IF <ls_old>-source IS NOT INITIAL AND ls_new-source IS NOT INITIAL.
-            <ls_old>-source = <ls_old>-source
-                           && cl_abap_char_utilities=>newline
-                           && ls_new-source.
-          ELSEIF ls_new-source IS NOT INITIAL.
-            <ls_old>-source = ls_new-source.
+          " Section (public/protected/private): replace the section body with the
+          " new content from the LLM, but preserve the preamble (class header) that
+          " extract_class_parts stores before the SECTION. keyword in the old source.
+          " Example: PUBLIC section old source =
+          "   "class ZCL_AI_TEST definition\n  public\n  ...\npublic section.\n  methods x."
+          " LLM returns: "public section.\n  methods x\n  methods y."
+          " Result must be: "<class header>\npublic section.\n  methods x\n  methods y."
+          IF ls_new-source IS NOT INITIAL.
+            DATA(lv_sect_key) = ls_new-part_key.
+            REPLACE FIRST OCCURRENCE OF 'SECTION:' IN lv_sect_key WITH ''.
+            DATA(lv_sect_keyword) = lv_sect_key && | SECTION|.
+            DATA(lv_old_upper2) = <ls_old>-source.
+            TRANSLATE lv_old_upper2 TO UPPER CASE.
+            DATA(lv_preamble_off) = 0.
+            FIND FIRST OCCURRENCE OF lv_sect_keyword
+              IN lv_old_upper2 MATCH OFFSET lv_preamble_off.
+            IF sy-subrc = 0 AND lv_preamble_off > 0.
+              " Keep preamble (class header), replace section body
+              <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+            ELSE.
+              " No preamble found (protected/private) — direct replace
+              <ls_old>-source = ls_new-source.
+            ENDIF.
           ENDIF.
         ENDIF.
       ELSE.

@@ -519,12 +519,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
 
-    " Show saved notice in middle log (progress viewer)
-    DATA(lv_saved_label) = |&#x2713; { mv_diff_object_type } { mv_diff_object_name } saved|.
-    DATA(lv_saved_html) = |<!DOCTYPE html><html><head><meta charset="utf-8">|
-      && |<style>body\{font-family:Segoe UI,Arial,sans-serif;margin:12px\}|
-      && |.ok\{padding:8px 12px;border-radius:4px;font-size:13px;font-weight:bold;color:#2e7d32\}</style></head>|
-      && |<body><div class="ok">{ lv_saved_label }</div></body></html>|.
+    " Refresh the middle log (progress viewer) with the full step history
+    " including the SAVE_OBJECT step that was just added to mo_messages.
+    " This preserves all previous AI steps instead of replacing them with a
+    " minimal "saved" banner.
+    DATA(lv_saved_html) = build_steps_html( mo_messages ).
     DATA lt_saved_html TYPE tt_html.
     DATA ls_saved_html TYPE w3html.
     DATA lv_saved_off TYPE i.
