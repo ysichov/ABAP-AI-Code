@@ -1095,7 +1095,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     " Converts string source to char255 table as required by CL_GUI_ABAPEDIT.
     IF mo_code_viewer IS NOT BOUND.
       " Fallback: editor not created yet - show as HTML
-      display_answer( i_answer = zcl_code_html_gen=>source_to_html( i_source ) ).
+      display_answer( i_answer = zcl_code_html_gen=>source_to_html( i_source = i_source ) ).
       RETURN.
     ENDIF.
 
