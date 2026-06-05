@@ -18,6 +18,9 @@ public section.
       diff_object_type TYPE string,
       diff_object_name TYPE string,
       diff_package TYPE string,
+      " When abap_true the answer field contains raw ABAP source that should be
+      " shown in CL_GUI_ABAPEDIT instead of the HTML viewer.
+      is_source_code TYPE abap_bool,
     END OF ty_result .
 
   methods CONSTRUCTOR
@@ -680,10 +683,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_cs_source ).
-        rs_result-answer = zcl_code_html_gen=>source_to_html(
-          i_source = lv_cs_source
-          i_title  = lv_cs_label ).
-        rs_result-answer_log  = lv_cs_source.
+        rs_result-answer        = lv_cs_source.
+        rs_result-is_source_code = abap_true.
+        rs_result-answer_log    = lv_cs_source.
         rs_result-messages_ref = mo_messages.
         rs_result-messages    = mo_messages->get_messages( ).
         RETURN.
@@ -720,10 +722,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           i_agent       = zcl_ai_agents_prompts=>c_agent_code_search
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_direct_source ).
-        rs_result-answer = zcl_code_html_gen=>source_to_html(
-          i_source = lv_direct_source
-          i_title  = lv_word ).
-        rs_result-answer_log  = lv_direct_source.
+        rs_result-answer        = lv_direct_source.
+        rs_result-is_source_code = abap_true.
+        rs_result-answer_log    = lv_direct_source.
         rs_result-messages_ref = mo_messages.
         rs_result-messages    = mo_messages->get_messages( ).
         RETURN.
@@ -1137,9 +1138,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         IF lv_src_title IS INITIAL.
           lv_src_title = 'ABAP Source'.
         ENDIF.
-        lv_answer = zcl_code_html_gen=>source_to_html(
-          i_source = lv_code_only
-          i_title  = lv_src_title ).
+        lv_answer = lv_code_only.
+        rs_result-is_source_code = abap_true.
       ELSE.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 

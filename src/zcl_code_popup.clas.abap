@@ -169,6 +169,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 0 text = ''.
 
+    " Source-only result (direct lookup / SHOW command) → ABAP editor
+    IF ls_result-is_source_code = abap_true AND ls_result-has_diff = abap_false.
+      display_program_source( ls_result-answer ).
+      RETURN.
+    ENDIF.
+
     DATA(lv_display_answer) = ls_result-answer.
     IF ls_result-has_diff = abap_true.
       lv_display_answer = diff_to_html(

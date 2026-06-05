@@ -446,10 +446,13 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Use a clean section marker without the internal include name.
+    " The old format "--- Public section (ZCL_FOO=====CU) ---" cluttered the
+    " ABAP editor and leaked internal names to the LLM / user.
     cv_text = cv_text
            && cl_abap_char_utilities=>newline
            && cl_abap_char_utilities=>newline
-           && |--- { i_title } ({ i_include }) ---|
+           && |--- { i_title } ---|
            && cl_abap_char_utilities=>newline
            && format_source( lt_source ).
   ENDMETHOD.
