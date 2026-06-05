@@ -121,6 +121,17 @@ CLASS zcl_code_object_saver DEFINITION
         i_source  TYPE string
       RETURNING
         VALUE(rv_message) TYPE string.
+
+    " Guarantees that the source for a method include is wrapped in exactly one
+    " 'METHOD <name>. ... ENDMETHOD.' block. A method include is INCLUDEd verbatim
+    " into the generated class pool, so a missing/duplicated wrapper breaks the
+    " whole class. Accepts a body with or without an existing wrapper.
+    CLASS-METHODS ensure_method_wrapper
+      IMPORTING
+        i_method  TYPE string
+        it_source TYPE tt_source
+      RETURNING
+        VALUE(rt_source) TYPE tt_source.
 ENDCLASS.
 
 
@@ -982,6 +993,9 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
                      && |Method { lv_meth_name } include not found - skipped.|.
             CONTINUE.
           ENDIF.
+          " Method include must hold a full METHOD ... ENDMETHOD block
+          lt_source = ensure_method_wrapper( i_method  = lv_meth_name
+                                             it_source = lt_source ).
         ELSE.
           mv_last_log = mv_last_log && lv_nl && |Unknown section '{ ls_block-title }' - skipped.|.
           CONTINUE.
@@ -1139,42 +1153,12 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " If source contains full class/method wrapper - extract only the method body
-    " Look for METHOD <name>. ... ENDMETHOD. and keep only what's inside
-    DATA(lv_method_upper) = i_method.
-    TRANSLATE lv_method_upper TO UPPER CASE.
-    DATA lv_in_method   TYPE abap_bool.
-    DATA lv_depth       TYPE i.
-    DATA lt_body        TYPE tt_source.
-    DATA lv_src_upper   TYPE string.
-    LOOP AT lt_source INTO DATA(lv_src_line).
-      lv_src_upper = lv_src_line.
-      TRANSLATE lv_src_upper TO UPPER CASE.
-      CONDENSE lv_src_upper.
-      IF lv_in_method = abap_false.
-        " Detect METHOD <name>. or METHOD <name> (with/without dot)
-        IF lv_src_upper CP |METHOD { lv_method_upper }*|
-        OR lv_src_upper CP |METHOD { lv_method_upper }.|.
-          lv_in_method = abap_true.
-          lv_depth     = 1.
-          CONTINUE. " skip the METHOD line itself
-        ENDIF.
-      ELSE.
-        IF lv_src_upper CP 'METHOD *' OR lv_src_upper = 'METHOD'.
-          lv_depth = lv_depth + 1.
-        ENDIF.
-        IF lv_src_upper CP 'ENDMETHOD*'.
-          lv_depth = lv_depth - 1.
-          IF lv_depth = 0.
-            EXIT. " done
-          ENDIF.
-        ENDIF.
-        APPEND lv_src_line TO lt_body.
-      ENDIF.
-    ENDLOOP.
-    IF lt_body IS NOT INITIAL.
-      lt_source = lt_body.
-    ENDIF.
+    " The method include must contain a complete 'METHOD <name>. ... ENDMETHOD.'
+    " block, because it is INCLUDEd verbatim into the generated class pool. Writing
+    " only the inner body (or a body without the wrapper) breaks generation of the
+    " whole class. Normalize the source to a single clean wrapper.
+    lt_source = ensure_method_wrapper( i_method  = i_method
+                                       it_source = lt_source ).
 
     ls_mtdkey-clsname = i_class.
     ls_mtdkey-cpdname = i_method.
@@ -1286,6 +1270,55 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     rv_message = |Method { i_class }=>{ i_method } saved and activated.|.
     mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+
+  ENDMETHOD.
+
+
+  METHOD ensure_method_wrapper.
+
+    DATA lv_in_method TYPE abap_bool.
+    DATA lv_depth     TYPE i.
+    DATA lt_body      TYPE tt_source.
+    DATA lv_upper     TYPE string.
+    DATA lv_line      LIKE LINE OF it_source.
+
+    " Extract the inner body if the source already carries a METHOD ... ENDMETHOD
+    " block; otherwise treat the whole source as the body.
+    LOOP AT it_source INTO lv_line.
+      lv_upper = lv_line.
+      TRANSLATE lv_upper TO UPPER CASE.
+      CONDENSE lv_upper.
+      IF lv_in_method = abap_false.
+        IF lv_upper CP 'METHOD *' OR lv_upper = 'METHOD'.
+          lv_in_method = abap_true.
+          lv_depth     = 1.
+          CONTINUE. " skip the METHOD line itself
+        ENDIF.
+      ELSE.
+        IF lv_upper CP 'METHOD *' OR lv_upper = 'METHOD'.
+          lv_depth = lv_depth + 1.
+        ENDIF.
+        IF lv_upper CP 'ENDMETHOD*'.
+          lv_depth = lv_depth - 1.
+          IF lv_depth = 0.
+            EXIT. " matching ENDMETHOD reached - body collected
+          ENDIF.
+        ENDIF.
+        APPEND lv_line TO lt_body.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_in_method = abap_false.
+      " No wrapper found in the provided source - everything is the body
+      lt_body = it_source.
+    ENDIF.
+
+    " Rebuild the include with exactly one clean wrapper
+    APPEND |METHOD { to_lower( i_method ) }.| TO rt_source.
+    LOOP AT lt_body INTO lv_line.
+      APPEND lv_line TO rt_source.
+    ENDLOOP.
+    APPEND |ENDMETHOD.| TO rt_source.
 
   ENDMETHOD.
 ENDCLASS.
