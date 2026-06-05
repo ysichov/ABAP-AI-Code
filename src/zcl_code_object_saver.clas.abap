@@ -1047,15 +1047,22 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     " 6) Activate the class as a whole
     lv_err = activate_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      rv_message = lv_err.
+      " Activation failed -> rollback to original source
+      mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
+      write_class_source( iv_class = lv_class it_lines = lt_cur ).
+      activate_class( lv_class ).
+      rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    " 7) Verify
+    " 7) Verify — if broken, rollback immediately so the class stays clean
     lv_err = verify_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && |Syntax error detected, rolling back...|.
+      write_class_source( iv_class = lv_class it_lines = lt_cur ).
+      activate_class( lv_class ).
+      rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
@@ -1468,14 +1475,20 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     lv_err = activate_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
+      write_class_source( iv_class = lv_class it_lines = lt_cur ).
+      activate_class( lv_class ).
+      rv_message = |Error saving method { lv_class }=>{ i_method }: { lv_err } (rolled back).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
     lv_err = verify_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && |Syntax error detected, rolling back...|.
+      write_class_source( iv_class = lv_class it_lines = lt_cur ).
+      activate_class( lv_class ).
+      rv_message = |Error saving method { lv_class }=>{ i_method }: { lv_err } (rolled back).|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
