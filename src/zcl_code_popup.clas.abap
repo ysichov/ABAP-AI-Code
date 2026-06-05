@@ -545,7 +545,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     DATA(lv_run_type_upper) = mv_diff_object_type.
     TRANSLATE lv_run_type_upper TO UPPER CASE.
     IF lv_save_message_upper CS 'ACTIVATED'
-    AND lv_run_type_upper <> 'METH' AND lv_run_type_upper <> 'METHOD'.
+    AND lv_run_type_upper <> 'METH' AND lv_run_type_upper <> 'METHOD'
+    AND lv_run_type_upper <> 'CLAS' AND lv_run_type_upper <> 'CLASS'.
       MV_RUN_PROGRAM = CONV progname( mv_diff_object_name ).
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
