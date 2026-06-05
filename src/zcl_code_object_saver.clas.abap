@@ -134,28 +134,6 @@ protected section.
       RETURNING
         VALUE(rt_source) TYPE tt_source.
 
-    " Writes one class section include (active) and synchronizes the SEO* meta
-    " data (visibilities, component declarations) via CL_OO_CLASS_SECTION_SOURCE.
-    " This is the only correct way to update public/protected/private sections -
-    " a plain INSERT REPORT + activation of the section include alone breaks the
-    " class pool ("only classes/interfaces at top level").
-    CLASS-METHODS write_section
-      IMPORTING
-        is_clskey   TYPE seoclskey
-        iv_exposure TYPE seoexpose
-        iv_include  TYPE syrepid
-        it_source   TYPE tt_source
-      RETURNING
-        VALUE(rv_error) TYPE string.
-
-    " Regenerates the class pool (CP include) so that the sections are wrapped in
-    " a proper CLASS ... DEFINITION ... ENDCLASS again.
-    CLASS-METHODS generate_classpool
-      IMPORTING
-        iv_class TYPE seoclsname
-      RETURNING
-        VALUE(rv_error) TYPE string.
-
     " Final consistency / syntax check of the whole class after saving.
     CLASS-METHODS verify_class
       IMPORTING
@@ -163,26 +141,61 @@ protected section.
       RETURNING
         VALUE(rv_error) TYPE string.
 
-    " True if the report already holds the same source. Used to skip unchanged
-    " includes so a single-method change does not needlessly rewrite untouched
-    " sections. With iv_ignore_layout = abap_true the comparison ignores line
-    " breaks and comments (statement-level compare) - used for sections, whose
-    " declarations are often wrapped differently than what the LLM produced.
-    CLASS-METHODS source_unchanged
+    " --- Whole-class source handling (robust path) ---------------------------
+    " Reads the complete active source of a class (definition + implementation)
+    " via the standard CL_OO_FACTORY API.
+    CLASS-METHODS read_class_source
       IMPORTING
-        iv_include       TYPE syrepid
-        it_source        TYPE tt_source
-        iv_ignore_layout TYPE abap_bool DEFAULT abap_false
+        iv_class       TYPE seoclsname
       RETURNING
-        VALUE(rv_unchanged) TYPE abap_bool.
+        VALUE(rt_lines) TYPE string_table.
 
-    " Normalizes a source table into a canonical string for comparison.
-    CLASS-METHODS normalize_source
+    " Writes the complete class source back (lock/set_source/save/unlock).
+    CLASS-METHODS write_class_source
       IMPORTING
-        it_source        TYPE tt_source
-        iv_ignore_layout TYPE abap_bool
+        iv_class       TYPE seoclsname
+        it_lines       TYPE string_table
       RETURNING
-        VALUE(rv_norm)   TYPE string.
+        VALUE(rv_error) TYPE string.
+
+    " Activates a class as a whole (NOT the individual REPS includes).
+    CLASS-METHODS activate_class
+      IMPORTING
+        iv_class       TYPE seoclsname
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    " Replaces the body of one method (METHOD..ENDMETHOD) inside the full class
+    " source. Returns whether the method was found.
+    CLASS-METHODS replace_method_in_lines
+      IMPORTING
+        iv_method      TYPE string
+        it_body        TYPE tt_source
+      CHANGING
+        ct_lines       TYPE string_table
+      RETURNING
+        VALUE(rv_found) TYPE abap_bool.
+
+    " Replaces one section region (PUBLIC/PROTECTED/PRIVATE) inside the full
+    " class definition. Returns whether the section was found.
+    CLASS-METHODS replace_section_in_lines
+      IMPORTING
+        iv_section     TYPE string
+        it_body        TYPE tt_source
+      CHANGING
+        ct_lines       TYPE string_table
+      RETURNING
+        VALUE(rv_found) TYPE abap_bool.
+
+    " Extracts the clean section body (from "<sec> SECTION." up to, but not
+    " including, the next section keyword / ENDCLASS / CLASS..IMPLEMENTATION)
+    " out of a possibly messy parsed block.
+    CLASS-METHODS clean_section_body
+      IMPORTING
+        iv_section     TYPE string
+        it_block       TYPE tt_source
+      RETURNING
+        VALUE(rt_body) TYPE tt_source.
 ENDCLASS.
 
 
@@ -865,15 +878,14 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
   METHOD save_class.
 
-    DATA lv_class      TYPE seoclsname.
-    DATA lv_include    TYPE syrepid.
-    DATA lt_source     TYPE tt_source.
-    DATA lv_nl         TYPE string.
-    DATA ls_clskey     TYPE seoclskey.
-    DATA lv_exposure   TYPE seoexpose.
-    DATA lv_saved_any  TYPE abap_bool.
-    DATA lv_errors     TYPE string.
-    DATA lv_part_err   TYPE string.
+    DATA lv_class   TYPE seoclsname.
+    DATA lv_nl      TYPE string.
+    DATA lt_cur     TYPE string_table.
+    DATA lt_new     TYPE string_table.
+    DATA lt_body    TYPE tt_source.
+    DATA lv_want    TYPE string.
+    DATA lv_found   TYPE abap_bool.
+    DATA lv_err     TYPE string.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
@@ -881,22 +893,27 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     lv_class = i_class.
     TRANSLATE lv_class TO UPPER CASE.
     CONDENSE lv_class.
-
     IF lv_class IS INITIAL.
       rv_message = 'Class name is empty.'.
       mv_last_log = rv_message.
       RETURN.
     ENDIF.
 
-    ls_clskey-clsname = lv_class.
+    mv_last_log = |SAVE_CLASS diagnostics| && lv_nl && |Object: CLAS { lv_class }|.
 
-    mv_last_log = |SAVE_CLASS diagnostics|
-               && lv_nl && |Object: CLAS { lv_class }|.
+    " 1) Read the authoritative current full source (definition + implementation).
+    "    All edits are applied on top of this, so untouched parts stay byte-exact.
+    lt_cur = read_class_source( lv_class ).
+    IF lt_cur IS INITIAL.
+      rv_message = |Cannot read source of class { lv_class } (exists and active?).|.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
+      RETURN.
+    ENDIF.
+    lt_new = lt_cur.
 
-    " Parse --- title --- blocks from source
-    " Titles: Public/Protected/Private Section, Method <name>
+    " 2) Parse the proposed source into --- title --- blocks
+    "    Titles: Public/Protected/Private Section, Method <name>
     DATA lv_rest TYPE string.
-
     lv_rest = i_source.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_rest WITH lv_nl.
 
@@ -917,7 +934,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       CONDENSE lv_line_upper.
       IF lv_line_upper CP '--- * ---'.
         IF ls_block-title IS NOT INITIAL.
-          CONDENSE ls_block-source.
           APPEND ls_block TO lt_blocks.
         ENDIF.
         CLEAR ls_block.
@@ -936,7 +952,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     IF ls_block-title IS NOT INITIAL.
-      CONDENSE ls_block-source.
       APPEND ls_block TO lt_blocks.
     ENDIF.
 
@@ -946,263 +961,90 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    mv_last_log = mv_last_log && lv_nl && |Parsed { lines( lt_blocks ) } blocks:|.
+    mv_last_log = mv_last_log && lv_nl && |Parsed { lines( lt_blocks ) } blocks.|.
+
+    " 3) Apply each block onto the working copy of the full source
     LOOP AT lt_blocks INTO ls_block.
-      mv_last_log = mv_last_log && lv_nl
-                 && |  Block { sy-tabix }: "{ ls_block-title }" (len={ strlen( ls_block-source ) })|.
-    ENDLOOP.
-
-    " Refresh the class buffer, otherwise standard CLIF reads reorder methods
-    CALL FUNCTION 'SEO_BUFFER_INIT'.
-    CALL FUNCTION 'SEO_BUFFER_REFRESH'
-      EXPORTING
-        cifkey  = ls_clskey
-        version = seoc_version_active.
-
-    " 1) Sections first, in fixed order public -> protected -> private, so that
-    "    method declarations exist before method bodies are written.
-    DATA lt_order TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    DATA lv_want  TYPE string.
-    APPEND 'PUBLIC'    TO lt_order.
-    APPEND 'PROTECTED' TO lt_order.
-    APPEND 'PRIVATE'   TO lt_order.
-
-    LOOP AT lt_order INTO lv_want.
-      LOOP AT lt_blocks INTO ls_block.
-        DATA(lv_blk_upper) = ls_block-title.
-        TRANSLATE lv_blk_upper TO UPPER CASE.
-        CONDENSE lv_blk_upper.
-        IF NOT ( lv_blk_upper CP '*SECTION*' AND lv_blk_upper CP |*{ lv_want }*| ).
-          CONTINUE.
-        ENDIF.
-
-        " Clean section source: keep from the SECTION keyword, drop stray
-        " ENDCLASS / CLASS ... IMPLEMENTATION lines the agent may include
-        DATA(lv_block_source) = ls_block-source.
-        DATA(lv_sect_kw) = |{ lv_want } SECTION|.
-        DATA(lv_sect_pos) = 0.
-        DATA(lv_sect_src_upper) = lv_block_source.
-        TRANSLATE lv_sect_src_upper TO UPPER CASE.
-        FIND FIRST OCCURRENCE OF lv_sect_kw IN lv_sect_src_upper MATCH OFFSET lv_sect_pos.
-        IF sy-subrc = 0.
-          lv_block_source = substring( val = lv_block_source off = lv_sect_pos ).
-        ENDIF.
-        REPLACE ALL OCCURRENCES OF REGEX '\nENDCLASS\s*\.'
-          IN lv_block_source WITH '' IGNORING CASE.
-        REPLACE ALL OCCURRENCES OF REGEX '\nCLASS\s+\S+\s+IMPLEMENTATION\s*\.'
-          IN lv_block_source WITH '' IGNORING CASE.
-
-        lt_source = source_to_table( lv_block_source ).
-        IF lt_source IS INITIAL.
-          CONTINUE.
-        ENDIF.
-
-        CASE lv_want.
-          WHEN 'PUBLIC'.
-            lv_include  = cl_oo_classname_service=>get_pubsec_name( lv_class ).
-            lv_exposure = seoc_exposure_public.
-          WHEN 'PROTECTED'.
-            lv_include  = cl_oo_classname_service=>get_prosec_name( lv_class ).
-            lv_exposure = seoc_exposure_protected.
-          WHEN 'PRIVATE'.
-            lv_include  = cl_oo_classname_service=>get_prisec_name( lv_class ).
-            lv_exposure = seoc_exposure_private.
-        ENDCASE.
-
-        " Skip unchanged sections (do not rewrite untouched parts). Use layout-
-        " insensitive compare: declarations are often wrapped across lines
-        " differently than what the LLM produced, but are semantically identical.
-        IF source_unchanged( iv_include       = lv_include
-                             it_source         = lt_source
-                             iv_ignore_layout = abap_true ) = abap_true.
-          mv_last_log = mv_last_log && lv_nl && |{ lv_want } section unchanged - skipped.|.
-          CONTINUE.
-        ENDIF.
-
-        lv_part_err = write_section( is_clskey   = ls_clskey
-                                     iv_exposure = lv_exposure
-                                     iv_include  = lv_include
-                                     it_source   = lt_source ).
-        IF lv_part_err IS NOT INITIAL.
-          lv_errors = lv_errors && lv_nl && lv_part_err.
-        ELSE.
-          lv_saved_any = abap_true.
-          mv_last_log = mv_last_log && lv_nl && |{ lv_want } section written ({ lv_include }).|.
-        ENDIF.
-      ENDLOOP.
-    ENDLOOP.
-
-    " 2) Method bodies (each goes into its own method include, active)
-    LOOP AT lt_blocks INTO ls_block.
-      lv_blk_upper = ls_block-title.
+      DATA(lv_blk_upper) = ls_block-title.
       TRANSLATE lv_blk_upper TO UPPER CASE.
       CONDENSE lv_blk_upper.
-      IF NOT lv_blk_upper CP 'METHOD *'.
-        CONTINUE.
-      ENDIF.
 
-      DATA(lv_meth_name) = ls_block-title.
-      REPLACE FIRST OCCURRENCE OF REGEX '^METHOD\s+' IN lv_meth_name WITH '' IGNORING CASE.
-      CONDENSE lv_meth_name.
-      TRANSLATE lv_meth_name TO UPPER CASE.
+      IF lv_blk_upper CP 'METHOD *'.
+        DATA(lv_meth_name) = ls_block-title.
+        REPLACE FIRST OCCURRENCE OF REGEX '^METHOD\s+' IN lv_meth_name WITH '' IGNORING CASE.
+        CONDENSE lv_meth_name.
 
-      DATA ls_mtdkey TYPE seocpdkey.
-      ls_mtdkey-clsname = lv_class.
-      ls_mtdkey-cpdname = lv_meth_name.
-      cl_oo_classname_service=>get_method_include(
-        EXPORTING  mtdkey              = ls_mtdkey
-        RECEIVING  result              = lv_include
-        EXCEPTIONS method_not_existing = 1 ).
-      IF sy-subrc <> 0 OR lv_include IS INITIAL.
-        " New method - generate the method include first
-        CALL FUNCTION 'SEO_METHOD_GENERATE_INCLUDE'
-          EXPORTING
-            suppress_mtdkey_check = abap_true
-            mtdkey                = ls_mtdkey
-          EXCEPTIONS
-            OTHERS                = 1.
-        IF sy-subrc = 0.
-          lv_include = cl_oo_classname_service=>get_method_include( ls_mtdkey ).
-        ENDIF.
-      ENDIF.
-      IF lv_include IS INITIAL.
-        lv_errors = lv_errors && lv_nl
-                 && |Method { lv_meth_name } include not found - skipped.|.
-        CONTINUE.
-      ENDIF.
-
-      lt_source = ensure_method_wrapper( i_method  = lv_meth_name
+        lt_body = ensure_method_wrapper( i_method  = lv_meth_name
                                          it_source = source_to_table( ls_block-source ) ).
 
-      IF source_unchanged( iv_include = lv_include
-                           it_source  = lt_source ) = abap_true.
-        mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } unchanged - skipped.|.
-        CONTINUE.
-      ENDIF.
+        lv_found = replace_method_in_lines( EXPORTING iv_method = lv_meth_name
+                                                      it_body   = lt_body
+                                            CHANGING  ct_lines  = lt_new ).
+        IF lv_found = abap_true.
+          mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } applied.|.
+        ELSE.
+          mv_last_log = mv_last_log && lv_nl
+                     && |Method { lv_meth_name } not found in class - skipped (new methods need a declaration).|.
+        ENDIF.
 
-      INSERT REPORT lv_include FROM lt_source.
-      IF sy-subrc <> 0.
-        lv_errors = lv_errors && lv_nl
-                 && |Error writing method include { lv_include } ({ lv_meth_name }).|.
-      ELSE.
-        lv_saved_any = abap_true.
-        mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } written ({ lv_include }).|.
+      ELSEIF lv_blk_upper CP '*SECTION*'.
+        lv_want = COND string(
+          WHEN lv_blk_upper CP '*PUBLIC*'    THEN 'PUBLIC'
+          WHEN lv_blk_upper CP '*PROTECTED*' THEN 'PROTECTED'
+          WHEN lv_blk_upper CP '*PRIVATE*'   THEN 'PRIVATE'
+          ELSE '' ).
+        IF lv_want IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        lt_body = clean_section_body( iv_section = lv_want
+                                      it_block   = source_to_table( ls_block-source ) ).
+        IF lt_body IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        lv_found = replace_section_in_lines( EXPORTING iv_section = lv_want
+                                                       it_body    = lt_body
+                                             CHANGING  ct_lines   = lt_new ).
+        IF lv_found = abap_true.
+          mv_last_log = mv_last_log && lv_nl && |{ lv_want } section applied.|.
+        ENDIF.
       ENDIF.
     ENDLOOP.
 
-    IF lv_errors IS NOT INITIAL.
-      rv_message = |Errors saving class { lv_class }: { lv_errors }|.
+    " 4) Nothing actually changed?
+    IF lt_new = lt_cur.
+      rv_message = |Class { lv_class }: no changes detected.|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    IF lv_saved_any = abap_false.
-      rv_message = |Nothing changed for class { lv_class }.|.
+    " 5) Write the whole class source back as one consistent unit
+    lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    " Regenerate the class pool once, so the CP include wraps the (possibly
-    " updated) sections in CLASS ... DEFINITION ... ENDCLASS and picks up all
-    " method bodies.
-    lv_part_err = generate_classpool( lv_class ).
-    IF lv_part_err IS NOT INITIAL.
-      rv_message = lv_part_err.
+    " 6) Activate the class as a whole
+    lv_err = activate_class( lv_class ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    COMMIT WORK AND WAIT.
-
-    " Final whole-class consistency / syntax check
-    lv_part_err = verify_class( lv_class ).
-    IF lv_part_err IS NOT INITIAL.
-      rv_message = lv_part_err.
+    " 7) Verify
+    lv_err = verify_class( lv_class ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
     rv_message = |Class { lv_class } saved and activated.|.
     mv_last_log = mv_last_log && lv_nl && rv_message.
-
-  ENDMETHOD.
-
-
-  METHOD write_section.
-
-    DATA lo_update     TYPE REF TO cl_oo_class_section_source.
-    DATA lv_scan_error TYPE abap_bool.
-    DATA lx_error      TYPE REF TO cx_root.
-
-    " Store the section source as the active version of the section include
-    INSERT REPORT iv_include FROM it_source.
-    IF sy-subrc <> 0.
-      rv_error = |Error writing section include { iv_include }.|.
-      RETURN.
-    ENDIF.
-
-    " Synchronize SEO* metadata (visibilities, component declarations) by scanning
-    " the section source - this is what SE24 does internally and what keeps the
-    " generated class pool consistent.
-    TRY.
-        CALL FUNCTION 'SEO_BUFFER_REFRESH'
-          EXPORTING
-            cifkey  = is_clskey
-            version = seoc_version_active.
-
-        CREATE OBJECT lo_update TYPE cl_oo_class_section_source
-          EXPORTING
-            clskey                        = is_clskey
-            exposure                      = iv_exposure
-            state                         = 'A'
-            source                        = conv #( it_source )
-            suppress_constrctr_generation = abap_true
-          EXCEPTIONS
-            class_not_existing            = 1
-            read_source_error             = 2
-            OTHERS                        = 3.
-        IF sy-subrc <> 0.
-          rv_error = |Error preparing section { iv_include } (subrc { sy-subrc }).|.
-          RETURN.
-        ENDIF.
-
-        lo_update->set_dark_mode( abap_true ).
-        lo_update->scan_section_source(
-          RECEIVING
-            scan_error             = lv_scan_error
-          EXCEPTIONS
-            scan_abap_source_error = 1
-            OTHERS                 = 2 ).
-        IF sy-subrc <> 0 OR lv_scan_error = abap_true.
-          rv_error = |Scan error in section { iv_include }.|.
-          RETURN.
-        ENDIF.
-
-        " Writes the SEO* database tables from the scan result
-        lo_update->revert_scan_result( ).
-
-      CATCH cx_root INTO lx_error.
-        rv_error = |Error updating section { iv_include }: { lx_error->get_text( ) }|.
-    ENDTRY.
-
-  ENDMETHOD.
-
-
-  METHOD generate_classpool.
-
-    DATA ls_clskey TYPE seoclskey.
-
-    ls_clskey-clsname = iv_class.
-
-    CALL FUNCTION 'SEO_CLASS_GENERATE_CLASSPOOL'
-      EXPORTING
-        clskey        = ls_clskey
-        suppress_corr = abap_true
-      EXCEPTIONS
-        OTHERS        = 1.
-    IF sy-subrc <> 0.
-      rv_error = |Error generating class pool for { iv_class }.|.
-    ENDIF.
 
   ENDMETHOD.
 
@@ -1240,74 +1082,271 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD source_unchanged.
+  METHOD read_class_source.
 
-    DATA lt_existing TYPE tt_source.
+    DATA li_source TYPE REF TO if_oo_clif_source.
+    DATA lt_rsw    TYPE rswsourcet.
 
-    READ REPORT iv_include INTO lt_existing.
-    IF sy-subrc <> 0 OR lt_existing IS INITIAL.
-      RETURN. " no active version yet -> treat as changed
-    ENDIF.
+    TRY.
+        li_source = cl_oo_factory=>create_instance( )->create_clif_source(
+          clif_name = iv_class
+          version   = if_oo_clif_source=>co_version_active ).
+        li_source->get_source( IMPORTING source = lt_rsw ).
+      CATCH cx_root.
+        CLEAR rt_lines.
+        RETURN.
+    ENDTRY.
 
-    rv_unchanged = xsdbool(
-      normalize_source( it_source = lt_existing iv_ignore_layout = iv_ignore_layout )
-      = normalize_source( it_source = it_source  iv_ignore_layout = iv_ignore_layout ) ).
+    " rswsourcet is a table of STRING, so it is assignment-compatible
+    rt_lines = lt_rsw.
 
   ENDMETHOD.
 
 
-  METHOD normalize_source.
+  METHOD write_class_source.
 
-    DATA lv_line  TYPE string.
-    DATA lv_check TYPE string.
+    DATA li_source TYPE REF TO if_oo_clif_source.
+    DATA lt_rsw    TYPE rswsourcet.
+    DATA lx_error  TYPE REF TO cx_root.
 
-    LOOP AT it_source INTO DATA(ls_line).
-      lv_line = ls_line.
-      CONDENSE lv_line.
-      IF lv_line IS INITIAL.
-        CONTINUE. " skip blank lines
-      ENDIF.
+    " rswsourcet is a table of STRING, so it is assignment-compatible
+    lt_rsw = it_lines.
 
-      IF iv_ignore_layout = abap_true.
-        " Statement-level compare: drop full-line comments and join everything
-        " into one stream, so different line wrapping does not count as a change.
-        lv_check = lv_line.
-        IF lv_check(1) = '*' OR lv_check(1) = '"'.
-          CONTINUE. " skip comment lines
-        ENDIF.
-        TRANSLATE lv_line TO UPPER CASE.
-        IF rv_norm IS INITIAL.
-          rv_norm = lv_line.
-        ELSE.
-          rv_norm = rv_norm && ` ` && lv_line.
-        ENDIF.
+    TRY.
+        li_source = cl_oo_factory=>create_instance( )->create_clif_source(
+          clif_name = iv_class ).
+        li_source->lock( ).
+        li_source->set_source( source = lt_rsw ).
+        li_source->save( ).
+        li_source->unlock( ).
+      CATCH cx_root INTO lx_error.
+        rv_error = |Error writing class source { iv_class }: { lx_error->get_text( ) }|.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD activate_class.
+
+    DATA lt_objects TYPE STANDARD TABLE OF dwinactiv WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_object  TYPE dwinactiv.
+    DATA lv_msg     TYPE string.
+    DATA lv_subrc   TYPE string.
+
+    ls_object-object   = 'CLAS'.
+    ls_object-obj_name = iv_class.
+    APPEND ls_object TO lt_objects.
+
+    TRY.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+            ui_decoupled           = abap_true
+          TABLES
+            objects                = lt_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+      CATCH cx_sy_dyn_call_param_not_found.
+        CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+          EXPORTING
+            activate_ddic_objects  = abap_false
+            with_popup             = abap_false
+          TABLES
+            objects                = lt_objects
+          EXCEPTIONS
+            excecution_error       = 1
+            cancelled              = 2
+            insert_into_corr_error = 3
+            OTHERS                 = 4.
+    ENDTRY.
+
+    IF sy-subrc <> 0 AND sy-subrc <> 2.
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_msg.
       ELSE.
-        " Line-level compare: keep comments (e.g. a comment added to a method
-        " body is a real change), only normalize case and spacing.
-        TRANSLATE lv_line TO UPPER CASE.
-        rv_norm = rv_norm && lv_line && '|'.
+        lv_subrc = sy-subrc.
+        lv_msg = |subrc { lv_subrc }|.
+      ENDIF.
+      rv_error = |Error activating class { iv_class }: { lv_msg }|.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD replace_method_in_lines.
+
+    DATA lv_start TYPE i.
+    DATA lv_end   TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_upper TYPE string.
+    DATA lt_new   TYPE string_table.
+    DATA lv_line  TYPE string.
+
+    " Locate "METHOD <name>." (case-insensitive, ignoring leading spaces)
+    LOOP AT ct_lines INTO lv_line.
+      lv_index = sy-tabix.
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP |METHOD { to_upper( iv_method ) } .|
+      OR lv_upper CP |METHOD { to_upper( iv_method ) }.|
+      OR lv_upper = |METHOD { to_upper( iv_method ) }|.
+        lv_start = lv_index.
+        EXIT.
       ENDIF.
     ENDLOOP.
 
-    IF iv_ignore_layout = abap_true.
-      " Collapse remaining multiple spaces introduced by joining
-      CONDENSE rv_norm.
-      " Drop the leading section keyword so the comparison is independent of
-      " whether the physical section include stores it or not.
-      REPLACE FIRST OCCURRENCE OF REGEX '^(PUBLIC|PROTECTED|PRIVATE)\s+SECTION\s*\.\s*'
-        IN rv_norm WITH ''.
+    IF lv_start = 0.
+      rv_found = abap_false.
+      RETURN.
     ENDIF.
+
+    " Locate the matching ENDMETHOD.
+    lv_index = lv_start.
+    WHILE lv_index <= lines( ct_lines ).
+      lv_line = ct_lines[ lv_index ].
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP 'ENDMETHOD*'.
+        lv_end = lv_index.
+        EXIT.
+      ENDIF.
+      lv_index = lv_index + 1.
+    ENDWHILE.
+
+    IF lv_end = 0.
+      rv_found = abap_false.
+      RETURN.
+    ENDIF.
+
+    " Rebuild: keep lines before start, insert new body, keep lines after end
+    LOOP AT ct_lines INTO lv_line FROM 1 TO lv_start - 1.
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+    LOOP AT it_body INTO DATA(lv_body_line).
+      APPEND CONV string( lv_body_line ) TO lt_new.
+    ENDLOOP.
+    LOOP AT ct_lines INTO lv_line FROM lv_end + 1 TO lines( ct_lines ).
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+
+    ct_lines = lt_new.
+    rv_found = abap_true.
+
+  ENDMETHOD.
+
+
+  METHOD replace_section_in_lines.
+
+    DATA lv_start TYPE i.
+    DATA lv_end   TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_upper TYPE string.
+    DATA lt_new   TYPE string_table.
+    DATA lv_line  TYPE string.
+
+    " Locate "<section> SECTION."
+    LOOP AT ct_lines INTO lv_line.
+      lv_index = sy-tabix.
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP |{ to_upper( iv_section ) } SECTION.*|.
+        lv_start = lv_index.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_start = 0.
+      rv_found = abap_false.
+      RETURN.
+    ENDIF.
+
+    " Section region ends right before the next section keyword or the
+    " definition-closing ENDCLASS.
+    lv_index = lv_start + 1.
+    lv_end   = lines( ct_lines ).
+    WHILE lv_index <= lines( ct_lines ).
+      lv_line = ct_lines[ lv_index ].
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP 'PUBLIC SECTION.*'
+      OR lv_upper CP 'PROTECTED SECTION.*'
+      OR lv_upper CP 'PRIVATE SECTION.*'
+      OR lv_upper CP 'ENDCLASS*'.
+        lv_end = lv_index - 1.
+        EXIT.
+      ENDIF.
+      lv_index = lv_index + 1.
+    ENDWHILE.
+
+    LOOP AT ct_lines INTO lv_line FROM 1 TO lv_start - 1.
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+    LOOP AT it_body INTO DATA(lv_body_line).
+      APPEND CONV string( lv_body_line ) TO lt_new.
+    ENDLOOP.
+    LOOP AT ct_lines INTO lv_line FROM lv_end + 1 TO lines( ct_lines ).
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+
+    ct_lines = lt_new.
+    rv_found = abap_true.
+
+  ENDMETHOD.
+
+
+  METHOD clean_section_body.
+
+    DATA lv_started TYPE abap_bool.
+    DATA lv_upper   TYPE string.
+
+    LOOP AT it_block INTO DATA(lv_line).
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+
+      IF lv_started = abap_false.
+        IF lv_upper CP |{ to_upper( iv_section ) } SECTION.*|.
+          lv_started = abap_true.
+          APPEND lv_line TO rt_body.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      " Stop at the next structural keyword
+      IF lv_upper CP 'PUBLIC SECTION.*'
+      OR lv_upper CP 'PROTECTED SECTION.*'
+      OR lv_upper CP 'PRIVATE SECTION.*'
+      OR lv_upper CP 'ENDCLASS*'
+      OR lv_upper CP 'CLASS *IMPLEMENTATION*'.
+        EXIT.
+      ENDIF.
+
+      APPEND lv_line TO rt_body.
+    ENDLOOP.
 
   ENDMETHOD.
 
 
   METHOD save_method.
 
-    DATA lv_include   TYPE syrepid.
-    DATA ls_mtdkey    TYPE seocpdkey.
-    DATA lt_source    TYPE tt_source.
+    DATA lv_class TYPE seoclsname.
+    DATA lv_nl    TYPE string.
+    DATA lt_cur   TYPE string_table.
+    DATA lt_new   TYPE string_table.
+    DATA lt_body  TYPE tt_source.
+    DATA lv_err   TYPE string.
 
     CLEAR mv_last_log.
+    lv_nl = cl_abap_char_utilities=>newline.
 
     IF i_class IS INITIAL OR i_method IS INITIAL.
       rv_message = |Method name is incomplete: class={ i_class } method={ i_method }.|.
@@ -1315,113 +1354,73 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    lt_source = source_to_table( i_source ).
-    IF lt_source IS INITIAL.
+    lt_body = source_to_table( i_source ).
+    IF lt_body IS INITIAL.
       rv_message = |No source code to save for method { i_class }=>{ i_method }.|.
       mv_last_log = rv_message.
       RETURN.
     ENDIF.
 
-    " The method include must contain a complete 'METHOD <name>. ... ENDMETHOD.'
-    " block, because it is INCLUDEd verbatim into the generated class pool. Writing
-    " only the inner body (or a body without the wrapper) breaks generation of the
-    " whole class. Normalize the source to a single clean wrapper.
-    lt_source = ensure_method_wrapper( i_method  = i_method
-                                       it_source = lt_source ).
+    lv_class = i_class.
+    TRANSLATE lv_class TO UPPER CASE.
+    CONDENSE lv_class.
 
-    ls_mtdkey-clsname = i_class.
-    ls_mtdkey-cpdname = i_method.
+    mv_last_log = |SAVE_METHOD diagnostics| && lv_nl
+               && |Object: METH { lv_class }=>{ i_method }|.
 
-    " Get include name for the method
-    cl_oo_classname_service=>get_method_include(
-      EXPORTING
-        mtdkey              = ls_mtdkey
-      RECEIVING
-        result              = lv_include
-      EXCEPTIONS
-        method_not_existing = 1 ).
+    " The method body written into the class must be a complete
+    " 'METHOD <name>. ... ENDMETHOD.' block.
+    lt_body = ensure_method_wrapper( i_method  = i_method
+                                     it_source = lt_body ).
 
-    IF sy-subrc <> 0 OR lv_include IS INITIAL.
-      " New method - generate include first
-      DATA ls_mtdkey_new TYPE seocpdkey.
-      ls_mtdkey_new-clsname = i_class.
-      ls_mtdkey_new-cpdname = i_method.
-      CALL FUNCTION 'SEO_METHOD_GENERATE_INCLUDE'
-        EXPORTING
-          suppress_mtdkey_check = abap_true
-          mtdkey                = ls_mtdkey_new
-        EXCEPTIONS
-          OTHERS                = 1.
-      IF sy-subrc = 0.
-        lv_include = cl_oo_classname_service=>get_method_include( ls_mtdkey_new ).
-      ENDIF.
+    " Read current full source, replace just this one method, write back whole.
+    " Everything else stays byte-exact, so the class can never be corrupted.
+    lt_cur = read_class_source( lv_class ).
+    IF lt_cur IS INITIAL.
+      rv_message = |Cannot read source of class { lv_class } (exists and active?).|.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
+      RETURN.
     ENDIF.
-    IF lv_include IS INITIAL.
-      rv_message = |Method { i_class }=>{ i_method } not found. Cannot determine include.|.
-      mv_last_log = rv_message.
+    lt_new = lt_cur.
+
+    IF replace_method_in_lines( EXPORTING iv_method = i_method
+                                          it_body   = lt_body
+                                CHANGING  ct_lines  = lt_new ) = abap_false.
+      rv_message = |Method { lv_class }=>{ i_method } not found in class. |
+                && |Add its declaration first (signature change is not a body-only edit).|.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    mv_last_log = |SAVE_METHOD diagnostics|
-               && cl_abap_char_utilities=>newline
-               && |Object: METH { i_class }=>{ i_method }|
-               && cl_abap_char_utilities=>newline
-               && |Include: { lv_include }|
-               && cl_abap_char_utilities=>newline
-               && |Source lines: { lines( lt_source ) }|.
-
-    " Skip if the method body is already identical
-    IF source_unchanged( iv_include = lv_include
-                         it_source  = lt_source ) = abap_true.
-      rv_message = |Method { i_class }=>{ i_method } unchanged - nothing to save.|.
-      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+    IF lt_new = lt_cur.
+      rv_message = |Method { lv_class }=>{ i_method } unchanged - nothing to save.|.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    " Refresh the class buffer so standard reads don't reorder methods
-    DATA ls_clskey TYPE seoclskey.
-    ls_clskey-clsname = i_class.
-    CALL FUNCTION 'SEO_BUFFER_INIT'.
-    CALL FUNCTION 'SEO_BUFFER_REFRESH'
-      EXPORTING
-        cifkey  = ls_clskey
-        version = seoc_version_active.
-
-    " Write the method body as the ACTIVE version of the method include.
-    " A method include is INCLUDEd into the class pool, so it must NOT be
-    " activated standalone (that fails with "only classes/interfaces at top
-    " level"); instead we regenerate the class pool below.
-    INSERT REPORT lv_include FROM lt_source.
-    IF sy-subrc <> 0.
-      rv_message = |Error writing include { lv_include } for method { i_class }=>{ i_method }.|.
-      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+    lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    mv_last_log = mv_last_log
-               && cl_abap_char_utilities=>newline
-               && |INSERT REPORT { lv_include } executed.|.
-
-    " Regenerate the class pool so the new method body is picked up
-    DATA(lv_gen_err) = generate_classpool( CONV seoclsname( i_class ) ).
-    IF lv_gen_err IS NOT INITIAL.
-      rv_message = lv_gen_err.
-      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+    lv_err = activate_class( lv_class ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    COMMIT WORK AND WAIT.
-
-    " Final whole-class consistency / syntax check
-    DATA(lv_chk_err) = verify_class( CONV seoclsname( i_class ) ).
-    IF lv_chk_err IS NOT INITIAL.
-      rv_message = lv_chk_err.
-      mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+    lv_err = verify_class( lv_class ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    rv_message = |Method { i_class }=>{ i_method } saved and activated.|.
-    mv_last_log = mv_last_log && cl_abap_char_utilities=>newline && rv_message.
+    rv_message = |Method { lv_class }=>{ i_method } saved and activated.|.
+    mv_last_log = mv_last_log && lv_nl && rv_message.
 
   ENDMETHOD.
 
