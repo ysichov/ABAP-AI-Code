@@ -18,6 +18,7 @@ CLASS zcl_code_object_saver DEFINITION
         i_source TYPE string
       RETURNING
         VALUE(rv_message) TYPE string.
+protected section.
   PRIVATE SECTION.
     TYPES:
       BEGIN OF ty_progdir,
@@ -175,7 +176,7 @@ ENDCLASS.
 
 
 
-CLASS zcl_code_object_saver IMPLEMENTATION.
+CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
 
   METHOD get_program_dir.
@@ -1115,9 +1116,7 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
   METHOD write_section.
 
-    " Dynamic ref so that the class compiles on releases where some constructor
-    " parameters (e.g. SOURCE) do not exist yet - exactly like abapGit does.
-    DATA lo_update     TYPE REF TO object.
+    DATA lo_update     TYPE REF TO cl_oo_class_section_source.
     DATA lv_scan_error TYPE abap_bool.
     DATA lx_error      TYPE REF TO cx_root.
 
@@ -1130,65 +1129,43 @@ CLASS zcl_code_object_saver IMPLEMENTATION.
 
     " Synchronize SEO* metadata (visibilities, component declarations) by scanning
     " the section source - this is what SE24 does internally and what keeps the
-    " generated class pool consistent. (See ABAP_CLASSES.md, update_meta.)
+    " generated class pool consistent.
     TRY.
         CALL FUNCTION 'SEO_BUFFER_REFRESH'
           EXPORTING
             cifkey  = is_clskey
             version = seoc_version_active.
 
-        TRY.
-            CREATE OBJECT lo_update TYPE ('CL_OO_CLASS_SECTION_SOURCE')
-              EXPORTING
-                clskey                        = is_clskey
-                exposure                      = iv_exposure
-                state                         = 'A'
-                source                        = it_source
-                suppress_constrctr_generation = abap_true
-              EXCEPTIONS
-                class_not_existing            = 1
-                read_source_error             = 2
-                OTHERS                        = 3.
-          CATCH cx_sy_dyn_call_param_not_found.
-            " Older release: SOURCE not supported -> object reads it from the
-            " section include we just wrote above.
-            CREATE OBJECT lo_update TYPE ('CL_OO_CLASS_SECTION_SOURCE')
-              EXPORTING
-                clskey             = is_clskey
-                exposure           = iv_exposure
-                state              = 'A'
-              EXCEPTIONS
-                class_not_existing = 1
-                read_source_error  = 2
-                OTHERS             = 3.
-        ENDTRY.
+        CREATE OBJECT lo_update TYPE cl_oo_class_section_source
+          EXPORTING
+            clskey                        = is_clskey
+            exposure                      = iv_exposure
+            state                         = 'A'
+            source                        = conv #( it_source )
+            suppress_constrctr_generation = abap_true
+          EXCEPTIONS
+            class_not_existing            = 1
+            read_source_error             = 2
+            OTHERS                        = 3.
         IF sy-subrc <> 0.
           rv_error = |Error preparing section { iv_include } (subrc { sy-subrc }).|.
           RETURN.
         ENDIF.
 
-        " Best-effort: keep the source verbatim during scanning. Ignored if the
-        " method/parameter is not available on this release.
-        TRY.
-            CALL METHOD lo_update->('SET_DARK_MODE')
-              EXPORTING
-                status = abap_true.
-          CATCH cx_root ##NO_HANDLER.
-        ENDTRY.
-
-        CALL METHOD lo_update->('SCAN_SECTION_SOURCE')
+        lo_update->set_dark_mode( abap_true ).
+        lo_update->scan_section_source(
           RECEIVING
             scan_error             = lv_scan_error
           EXCEPTIONS
             scan_abap_source_error = 1
-            OTHERS                 = 2.
+            OTHERS                 = 2 ).
         IF sy-subrc <> 0 OR lv_scan_error = abap_true.
           rv_error = |Scan error in section { iv_include }.|.
           RETURN.
         ENDIF.
 
         " Writes the SEO* database tables from the scan result
-        CALL METHOD lo_update->('REVERT_SCAN_RESULT').
+        lo_update->revert_scan_result( ).
 
       CATCH cx_root INTO lx_error.
         rv_error = |Error updating section { iv_include }: { lx_error->get_text( ) }|.
