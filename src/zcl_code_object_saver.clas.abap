@@ -1068,32 +1068,32 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
   METHOD verify_class.
 
-    DATA lv_cp       TYPE program.
-    DATA lt_src      TYPE string_table.
-    DATA lv_msg      TYPE string.
-    DATA lv_line     TYPE i.
-    DATA lv_word     TYPE string.
-    DATA lv_line_txt TYPE string.
+    DATA ls_clskey      TYPE seoclskey.
+    DATA lv_syntaxerror TYPE abap_bool.
 
-    " Read the generated class pool and run a real syntax check so we can report
-    " the concrete error (message, line, word) instead of a generic flag.
-    lv_cp = cl_oo_classname_service=>get_classpool_name( iv_class ).
+    " Use the class-aware syntax check. A plain SYNTAX-CHECK FOR on the generated
+    " class pool fails with a false "CLASS-POOL is only allowed in a class pool"
+    " error, because the pool can only be checked inside a real class-pool context.
+    ls_clskey-clsname = iv_class.
 
-    READ REPORT lv_cp INTO lt_src.
+    CALL FUNCTION 'SEO_CLASS_CHECK_CLASSPOOL'
+      EXPORTING
+        clskey                       = ls_clskey
+        suppress_error_popup         = abap_true
+      IMPORTING
+        syntaxerror                  = lv_syntaxerror
+      EXCEPTIONS
+        _internal_class_not_existing = 1
+        error_message                = 2
+        OTHERS                       = 3.
     IF sy-subrc <> 0.
-      rv_error = |Class { iv_class }: cannot read class pool { lv_cp } after save.|.
+      " The check itself could not run -> don't fail a successful save with a
+      " false error (activation above already validated the class).
       RETURN.
     ENDIF.
 
-    SYNTAX-CHECK FOR lt_src
-      MESSAGE lv_msg
-      LINE    lv_line
-      WORD    lv_word.
-    IF sy-subrc <> 0.
-      lv_line_txt = lv_line.
-      CONDENSE lv_line_txt.
-      rv_error = |Class { iv_class } syntax error after save: { lv_msg }|
-              && | (line { lv_line_txt }, word "{ lv_word }").|.
+    IF lv_syntaxerror = abap_true.
+      rv_error = |Class { iv_class } has syntax errors after save (check in SE24/ADT).|.
     ENDIF.
 
   ENDMETHOD.
