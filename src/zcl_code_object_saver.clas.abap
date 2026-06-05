@@ -163,15 +163,26 @@ protected section.
       RETURNING
         VALUE(rv_error) TYPE string.
 
-    " True if the report already holds the same source (case/whitespace/blank-line
-    " insensitive). Used to skip unchanged includes so a single-method change does
-    " not needlessly rewrite untouched sections.
+    " True if the report already holds the same source. Used to skip unchanged
+    " includes so a single-method change does not needlessly rewrite untouched
+    " sections. With iv_ignore_layout = abap_true the comparison ignores line
+    " breaks and comments (statement-level compare) - used for sections, whose
+    " declarations are often wrapped differently than what the LLM produced.
     CLASS-METHODS source_unchanged
       IMPORTING
-        iv_include TYPE syrepid
-        it_source  TYPE tt_source
+        iv_include       TYPE syrepid
+        it_source        TYPE tt_source
+        iv_ignore_layout TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(rv_unchanged) TYPE abap_bool.
+
+    " Normalizes a source table into a canonical string for comparison.
+    CLASS-METHODS normalize_source
+      IMPORTING
+        it_source        TYPE tt_source
+        iv_ignore_layout TYPE abap_bool
+      RETURNING
+        VALUE(rv_norm)   TYPE string.
 ENDCLASS.
 
 
@@ -998,9 +1009,12 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
             lv_exposure = seoc_exposure_private.
         ENDCASE.
 
-        " Skip unchanged sections (do not rewrite untouched parts)
-        IF source_unchanged( iv_include = lv_include
-                             it_source  = lt_source ) = abap_true.
+        " Skip unchanged sections (do not rewrite untouched parts). Use layout-
+        " insensitive compare: declarations are often wrapped across lines
+        " differently than what the LLM produced, but are semantically identical.
+        IF source_unchanged( iv_include       = lv_include
+                             it_source         = lt_source
+                             iv_ignore_layout = abap_true ) = abap_true.
           mv_last_log = mv_last_log && lv_nl && |{ lv_want } section unchanged - skipped.|.
           CONTINUE.
         ENDIF.
@@ -1195,25 +1209,32 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
   METHOD verify_class.
 
-    DATA ls_clskey      TYPE seoclskey.
-    DATA lv_syntaxerror TYPE abap_bool.
+    DATA lv_cp       TYPE program.
+    DATA lt_src      TYPE string_table.
+    DATA lv_msg      TYPE string.
+    DATA lv_line     TYPE i.
+    DATA lv_word     TYPE string.
+    DATA lv_line_txt TYPE string.
 
-    ls_clskey-clsname = iv_class.
+    " Read the generated class pool and run a real syntax check so we can report
+    " the concrete error (message, line, word) instead of a generic flag.
+    lv_cp = cl_oo_classname_service=>get_classpool_name( iv_class ).
 
-    CALL FUNCTION 'SEO_CLASS_CHECK_CLASSPOOL'
-      EXPORTING
-        clskey                       = ls_clskey
-        suppress_error_popup         = abap_true
-      IMPORTING
-        syntaxerror                  = lv_syntaxerror
-      EXCEPTIONS
-        _internal_class_not_existing = 1
-        error_message                = 2
-        OTHERS                       = 3.
+    READ REPORT lv_cp INTO lt_src.
     IF sy-subrc <> 0.
-      rv_error = |Error syntax-checking class { iv_class }.|.
-    ELSEIF lv_syntaxerror = abap_true.
-      rv_error = |Class { iv_class } has syntax errors after save.|.
+      rv_error = |Class { iv_class }: cannot read class pool { lv_cp } after save.|.
+      RETURN.
+    ENDIF.
+
+    SYNTAX-CHECK FOR lt_src
+      MESSAGE lv_msg
+      LINE    lv_line
+      WORD    lv_word.
+    IF sy-subrc <> 0.
+      lv_line_txt = lv_line.
+      CONDENSE lv_line_txt.
+      rv_error = |Class { iv_class } syntax error after save: { lv_msg }|
+              && | (line { lv_line_txt }, word "{ lv_word }").|.
     ENDIF.
 
   ENDMETHOD.
@@ -1222,35 +1243,60 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
   METHOD source_unchanged.
 
     DATA lt_existing TYPE tt_source.
-    DATA lv_old      TYPE string.
-    DATA lv_new      TYPE string.
-    DATA lv_norm     TYPE string.
-    DATA lv_line     LIKE LINE OF it_source.
 
     READ REPORT iv_include INTO lt_existing.
     IF sy-subrc <> 0 OR lt_existing IS INITIAL.
       RETURN. " no active version yet -> treat as changed
     ENDIF.
 
-    LOOP AT lt_existing INTO lv_line.
-      lv_norm = lv_line.
-      CONDENSE lv_norm.
-      TRANSLATE lv_norm TO UPPER CASE.
-      IF lv_norm IS NOT INITIAL.
-        lv_old = lv_old && lv_norm && '|'.
+    rv_unchanged = xsdbool(
+      normalize_source( it_source = lt_existing iv_ignore_layout = iv_ignore_layout )
+      = normalize_source( it_source = it_source  iv_ignore_layout = iv_ignore_layout ) ).
+
+  ENDMETHOD.
+
+
+  METHOD normalize_source.
+
+    DATA lv_line  TYPE string.
+    DATA lv_check TYPE string.
+
+    LOOP AT it_source INTO DATA(ls_line).
+      lv_line = ls_line.
+      CONDENSE lv_line.
+      IF lv_line IS INITIAL.
+        CONTINUE. " skip blank lines
+      ENDIF.
+
+      IF iv_ignore_layout = abap_true.
+        " Statement-level compare: drop full-line comments and join everything
+        " into one stream, so different line wrapping does not count as a change.
+        lv_check = lv_line.
+        IF lv_check(1) = '*' OR lv_check(1) = '"'.
+          CONTINUE. " skip comment lines
+        ENDIF.
+        TRANSLATE lv_line TO UPPER CASE.
+        IF rv_norm IS INITIAL.
+          rv_norm = lv_line.
+        ELSE.
+          rv_norm = rv_norm && ` ` && lv_line.
+        ENDIF.
+      ELSE.
+        " Line-level compare: keep comments (e.g. a comment added to a method
+        " body is a real change), only normalize case and spacing.
+        TRANSLATE lv_line TO UPPER CASE.
+        rv_norm = rv_norm && lv_line && '|'.
       ENDIF.
     ENDLOOP.
 
-    LOOP AT it_source INTO lv_line.
-      lv_norm = lv_line.
-      CONDENSE lv_norm.
-      TRANSLATE lv_norm TO UPPER CASE.
-      IF lv_norm IS NOT INITIAL.
-        lv_new = lv_new && lv_norm && '|'.
-      ENDIF.
-    ENDLOOP.
-
-    rv_unchanged = xsdbool( lv_old = lv_new ).
+    IF iv_ignore_layout = abap_true.
+      " Collapse remaining multiple spaces introduced by joining
+      CONDENSE rv_norm.
+      " Drop the leading section keyword so the comparison is independent of
+      " whether the physical section include stores it or not.
+      REPLACE FIRST OCCURRENCE OF REGEX '^(PUBLIC|PROTECTED|PRIVATE)\s+SECTION\s*\.\s*'
+        IN rv_norm WITH ''.
+    ENDIF.
 
   ENDMETHOD.
 
