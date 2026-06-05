@@ -43,6 +43,12 @@ private section.
   data MO_QUESTION type ref to CL_GUI_TEXTEDIT .
   data MO_PROGRESS type ref to CL_GUI_HTML_VIEWER .
   data MO_ANSWER type ref to CL_GUI_HTML_VIEWER .
+  " Right panel split: HTML viewer on top, ABAP editor on bottom.
+  " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
+  data MO_ANSWER_SPLIT type ref to CL_GUI_SPLITTER_CONTAINER .
+  data MO_ANSWER_CONT_HTML type ref to CL_GUI_CONTAINER .
+  data MO_ANSWER_CONT_CODE type ref to CL_GUI_CONTAINER .
+  data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
   data MV_DIFF_BASE_HTML type STRING .
   data MV_DIFF_KEY type STRING .
   data MV_DIFF_OBJECT_TYPE type STRING .
@@ -110,6 +116,11 @@ private section.
     importing
       !I_SAVE_LOG type STRING .
   methods SYNC_MESSAGE_HISTORY .
+  " Show ABAP program source in the ABAP editor (right panel, bottom row).
+  " Used after saving/creating a program so the user sees syntax-highlighted code.
+  methods DISPLAY_PROGRAM_SOURCE
+    importing
+      !I_SOURCE type STRING .
 ENDCLASS.
 
 
@@ -265,6 +276,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     mo_answer->show_url(
       EXPORTING url = lv_url
       EXCEPTIONS OTHERS = 1 ).
+
+    " Switch right panel back to HTML viewer (in case ABAP editor was shown before)
+    IF mo_answer_split IS BOUND.
+      mo_answer_split->set_row_height( id = 1 height = 100 ).
+      mo_answer_split->set_row_height( id = 2 height = 0 ).
+    ENDIF.
 
     CALL METHOD cl_gui_cfw=>flush.
 
@@ -545,9 +562,18 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       WHEN OTHERS.
         lv_saved_source = zcl_ai_code_reader=>read_program( mv_diff_object_name ).
     ENDCASE.
-    display_answer( i_answer = zcl_code_html_gen=>source_to_html(
-      i_source = lv_saved_source
-      i_title  = |{ mv_diff_object_type } { mv_diff_object_name }| ) ).
+    " For programs/reports show source in the ABAP editor (syntax-highlighted,
+    " native SAP editor). For classes/methods keep the HTML view.
+    DATA(lv_show_type) = mv_diff_object_type.
+    TRANSLATE lv_show_type TO UPPER CASE.
+    IF lv_show_type = 'PROG' OR lv_show_type = 'REPS'
+    OR lv_show_type = 'PROGRAM' OR lv_show_type = 'REPORT'.
+      display_program_source( lv_saved_source ).
+    ELSE.
+      display_answer( i_answer = zcl_code_html_gen=>source_to_html(
+        i_source = lv_saved_source
+        i_title  = |{ mv_diff_object_type } { mv_diff_object_name }| ) ).
+    ENDIF.
 
     cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
@@ -882,15 +908,35 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       EXPORTING parent = lo_middle
       EXCEPTIONS OTHERS = 1.
 
-    " Answer viewer (right)
+    " Right panel: split into HTML viewer (top) + ABAP editor (bottom).
+    " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
+    CREATE OBJECT mo_answer_split
+      EXPORTING parent = lo_right rows = 2 columns = 1
+      EXCEPTIONS OTHERS = 1.
+    mo_answer_cont_html = mo_answer_split->get_container( row = 1 column = 1 ).
+    mo_answer_cont_code = mo_answer_split->get_container( row = 2 column = 1 ).
+    mo_answer_split->set_row_height( id = 1 height = 100 ).
+    mo_answer_split->set_row_height( id = 2 height = 0 ).
+
+    " HTML viewer (top row — default visible)
     CREATE OBJECT mo_answer
-      EXPORTING parent = lo_right
+      EXPORTING parent = mo_answer_cont_html
       EXCEPTIONS OTHERS = 1.
 
     DATA lt_html_events TYPE cntl_simple_events.
     APPEND VALUE #( eventid = cl_gui_html_viewer=>m_id_sapevent ) TO lt_html_events.
     mo_answer->set_registered_events( events = lt_html_events ).
     SET HANDLER on_answer_sapevent FOR mo_answer.
+
+    " ABAP editor (bottom row — shown only for program source)
+    CREATE OBJECT mo_code_viewer
+      EXPORTING parent = mo_answer_cont_code max_number_chars = 255
+      EXCEPTIONS OTHERS = 1.
+    mo_code_viewer->upload_properties( EXCEPTIONS OTHERS = 1 ).
+    mo_code_viewer->set_statusbar_mode(
+      statusbar_mode = cl_gui_abapedit=>true ).
+    mo_code_viewer->create_document( ).
+    mo_code_viewer->set_readonly_mode( 1 ).
 
     CALL METHOD cl_gui_cfw=>flush.
 
@@ -1041,6 +1087,37 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     CALL METHOD cl_gui_cfw=>flush.
 
   endmethod.
+
+
+  METHOD display_program_source.
+
+    " Show ABAP program source in the ABAP editor panel (right, bottom row).
+    " Converts string source to char255 table as required by CL_GUI_ABAPEDIT.
+    IF mo_code_viewer IS NOT BOUND.
+      " Fallback: editor not created yet - show as HTML
+      display_answer( i_answer = zcl_code_html_gen=>source_to_html( i_source ) ).
+      RETURN.
+    ENDIF.
+
+    DATA lt_src   TYPE STANDARD TABLE OF char255.
+    DATA lt_lines TYPE STANDARD TABLE OF string.
+    SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+    LOOP AT lt_lines INTO DATA(lv_line).
+      APPEND CONV char255( lv_line ) TO lt_src.
+    ENDLOOP.
+
+    mo_code_viewer->set_text( table = lt_src ).
+    mo_code_viewer->set_readonly_mode( 1 ).
+
+    " Switch right panel to ABAP editor row
+    IF mo_answer_split IS BOUND.
+      mo_answer_split->set_row_height( id = 1 height = 0 ).
+      mo_answer_split->set_row_height( id = 2 height = 100 ).
+    ENDIF.
+
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
 
 
 ENDCLASS.
