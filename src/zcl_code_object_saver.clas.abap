@@ -176,6 +176,17 @@ protected section.
       RETURNING
         VALUE(rv_found) TYPE abap_bool.
 
+    " Adds a new method implementation (METHOD..ENDMETHOD) right before the last
+    " ENDCLASS (the one closing the IMPLEMENTATION part). Used when a brand-new
+    " method is declared in a section but has no implementation yet.
+    CLASS-METHODS add_method_in_lines
+      IMPORTING
+        it_body        TYPE tt_source
+      CHANGING
+        ct_lines       TYPE string_table
+      RETURNING
+        VALUE(rv_added) TYPE abap_bool.
+
     " Replaces one section region (PUBLIC/PROTECTED/PRIVATE) inside the full
     " class definition. Returns whether the section was found.
     CLASS-METHODS replace_section_in_lines
@@ -983,8 +994,14 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
         IF lv_found = abap_true.
           mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } applied.|.
         ELSE.
-          mv_last_log = mv_last_log && lv_nl
-                     && |Method { lv_meth_name } not found in class - skipped (new methods need a declaration).|.
+          " New method: not in the implementation yet -> add it before ENDCLASS.
+          " The matching declaration is added by the corresponding section block.
+          IF add_method_in_lines( EXPORTING it_body  = lt_body
+                                  CHANGING  ct_lines = lt_new ) = abap_true.
+            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } added (new implementation).|.
+          ELSE.
+            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } could not be added.|.
+          ENDIF.
         ENDIF.
 
       ELSEIF lv_blk_upper CP '*SECTION*'.
@@ -1238,6 +1255,47 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     ct_lines = lt_new.
     rv_found = abap_true.
+
+  ENDMETHOD.
+
+
+  METHOD add_method_in_lines.
+
+    DATA lv_last  TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_upper TYPE string.
+    DATA lt_new   TYPE string_table.
+    DATA lv_line  TYPE string.
+
+    " Find the LAST ENDCLASS (closes CLASS ... IMPLEMENTATION)
+    LOOP AT ct_lines INTO lv_line.
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP 'ENDCLASS*'.
+        lv_last = sy-tabix.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_last = 0.
+      rv_added = abap_false.
+      RETURN.
+    ENDIF.
+
+    " Insert the new method body just before that ENDCLASS
+    LOOP AT ct_lines INTO lv_line FROM 1 TO lv_last - 1.
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+    APPEND `` TO lt_new. " blank separator
+    LOOP AT it_body INTO DATA(lv_body_line).
+      APPEND CONV string( lv_body_line ) TO lt_new.
+    ENDLOOP.
+    LOOP AT ct_lines INTO lv_line FROM lv_last TO lines( ct_lines ).
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+
+    ct_lines = lt_new.
+    rv_added = abap_true.
 
   ENDMETHOD.
 
