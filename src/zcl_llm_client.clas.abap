@@ -51,35 +51,21 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
     GET RUN TIME FIELD mv_start.
 
     rv_answer = zcl_code_ai_api=>ask(
-      i_prompt           = i_prompt
-      i_dest             = mv_dest
-      i_model            = mv_model
-      i_apikey           = mv_apikey
-      i_provider         = mv_provider
-      i_prompt_cache_key = mv_prompt_cache_key ).
+      EXPORTING
+        i_prompt           = i_prompt
+        i_dest             = mv_dest
+        i_model            = mv_model
+        i_apikey           = mv_apikey
+        i_provider         = mv_provider
+        i_prompt_cache_key = mv_prompt_cache_key
+      IMPORTING
+        ev_tok_in  = mv_last_tok_in
+        ev_tok_out = mv_last_tok_out ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.
     mv_last_seconds = |{ mv_elapsed }|.
     CONDENSE mv_last_seconds.
-
-    " Parse token counts from embedded usage info in the answer
-    CLEAR mv_tok_in_str.
-    CLEAR mv_tok_out_str.
-    FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)' IN rv_answer SUBMATCHES mv_tok_in_str.
-    IF mv_tok_in_str IS INITIAL.
-      FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)' IN rv_answer SUBMATCHES mv_tok_in_str.
-    ENDIF.
-    FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)' IN rv_answer SUBMATCHES mv_tok_out_str.
-    IF mv_tok_out_str IS INITIAL.
-      FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)' IN rv_answer SUBMATCHES mv_tok_out_str.
-    ENDIF.
-    IF mv_tok_in_str IS NOT INITIAL.
-      mv_last_tok_in = mv_tok_in_str.
-    ENDIF.
-    IF mv_tok_out_str IS NOT INITIAL.
-      mv_last_tok_out = mv_tok_out_str.
-    ENDIF.
 
   endmethod.
 

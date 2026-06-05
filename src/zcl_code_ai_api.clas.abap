@@ -12,6 +12,11 @@ public section.
       !I_APIKEY type STRING
       !I_PROVIDER type STRING default 'ANTHROPIC'
       !I_PROMPT_CACHE_KEY type STRING optional
+    exporting
+      !EV_TOK_IN     type I
+      !EV_TOK_OUT    type I
+      !EV_TOK_TOTAL  type I
+      !EV_TOK_CACHED type I
     returning
       value(RV_ANSWER) type STRING .
 protected section.
@@ -29,6 +34,11 @@ private section.
     importing
       !I_JSON type STRING
       !I_PROVIDER type STRING
+    exporting
+      !EV_TOK_IN     type I
+      !EV_TOK_OUT    type I
+      !EV_TOK_TOTAL  type I
+      !EV_TOK_CACHED type I
     returning
       value(RV_ANSWER) type STRING .
 ENDCLASS.
@@ -100,7 +110,15 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
                  OTHERS                     = 4 ).
 
     DATA(lv_response) = o_client->response->get_cdata( ).
-    rv_answer = parse_response( i_json = lv_response i_provider = lv_provider ).
+    rv_answer = parse_response(
+      EXPORTING
+        i_json     = lv_response
+        i_provider = lv_provider
+      IMPORTING
+        ev_tok_in     = ev_tok_in
+        ev_tok_out    = ev_tok_out
+        ev_tok_total  = ev_tok_total
+        ev_tok_cached = ev_tok_cached ).
 
   endmethod.
 
@@ -146,6 +164,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
              completion_tokens     TYPE string,
              total_tokens          TYPE string,
              prompt_tokens_details TYPE t_prompt_tokens_details,
+             input_tokens          TYPE string,
+             output_tokens         TYPE string,
            END OF t_usage,
            BEGIN OF t_content_block,
              type TYPE string,
@@ -184,41 +204,42 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     DATA: lv_provider     TYPE string,
           response        TYPE t_anthropic_res,
-          openai_response TYPE t_openai_res,
-          lv_text         TYPE string,
-          lv_usage_info   TYPE string.
+          openai_response TYPE t_openai_res.
+
+    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached.
 
     lv_provider = i_provider.
     TRANSLATE lv_provider TO UPPER CASE.
 
     IF lv_provider = 'OPENAI'.
       /ui2/cl_json=>deserialize( EXPORTING json = i_json CHANGING data = openai_response ).
+      IF openai_response-usage-prompt_tokens IS NOT INITIAL.
+        ev_tok_in     = openai_response-usage-prompt_tokens.
+        ev_tok_out    = openai_response-usage-completion_tokens.
+        ev_tok_total  = openai_response-usage-total_tokens.
+        ev_tok_cached = openai_response-usage-prompt_tokens_details-cached_tokens.
+      ENDIF.
       IF openai_response-choices IS NOT INITIAL.
-        lv_text = openai_response-choices[ 1 ]-message-content.
-*        IF openai_response-usage-total_tokens IS NOT INITIAL.
-*          lv_usage_info = |---| && cl_abap_char_utilities=>newline
-*                       && |Tokens: prompt={ openai_response-usage-prompt_tokens } completion={ openai_response-usage-completion_tokens } total={ openai_response-usage-total_tokens } cached={ openai_response-usage-prompt_tokens_details-cached_tokens }|.
-*          rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
-*        ELSE.
-          rv_answer = lv_text.
-*        ENDIF.
+        rv_answer = openai_response-choices[ 1 ]-message-content.
       ELSE.
         rv_answer = i_json.
       ENDIF.
       RETURN.
     ENDIF.
 
+    " Anthropic
     /ui2/cl_json=>deserialize( EXPORTING json = i_json CHANGING data = response ).
-
+    IF response-usage-input_tokens IS NOT INITIAL.
+      ev_tok_in    = response-usage-input_tokens.
+      ev_tok_out   = response-usage-output_tokens.
+      ev_tok_total = ev_tok_in + ev_tok_out.
+    ELSEIF response-usage-prompt_tokens IS NOT INITIAL.
+      ev_tok_in    = response-usage-prompt_tokens.
+      ev_tok_out   = response-usage-completion_tokens.
+      ev_tok_total = response-usage-total_tokens.
+    ENDIF.
     IF response-content IS NOT INITIAL.
-      lv_text = response-content[ 1 ]-text.
-*      IF response-usage-total_tokens IS NOT INITIAL.
-*        lv_usage_info = |---| && cl_abap_char_utilities=>newline
-*                     && |Tokens: input={ response-usage-prompt_tokens } output={ response-usage-completion_tokens } total={ response-usage-total_tokens }|.
-*        rv_answer = lv_text && cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline && lv_usage_info.
-*      ELSE.
-        rv_answer = lv_text.
-*      ENDIF.
+      rv_answer = response-content[ 1 ]-text.
     ELSE.
       rv_answer = i_json.
     ENDIF.
