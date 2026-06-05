@@ -630,10 +630,35 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
             FIND FIRST OCCURRENCE OF lv_sect_keyword
               IN lv_old_upper2 MATCH OFFSET lv_preamble_off.
             IF sy-subrc = 0 AND lv_preamble_off > 0.
-              " Keep preamble (class header), replace section body.
-              " Also preserve the "public/protected/private section." keyword line itself
-              " (new source from LLM in XML format skips it, legacy format includes it).
-              DATA(lv_new_up) = ls_new-source.
+              " Keep preamble (class header) from OLD source — LLM sometimes
+              " repeats the class header inside the section: strip it from new source.
+              DATA(lv_new_stripped) = ls_new-source.
+              DATA(lv_new_stripped_up) = lv_new_stripped.
+              TRANSLATE lv_new_stripped_up TO UPPER CASE.
+              FIND FIRST OCCURRENCE OF REGEX '^\s*CLASS\s+\S' IN lv_new_stripped_up.
+              IF sy-subrc = 0.
+                " LLM included class header — strip everything up to (and including)
+                " the section keyword line, leaving only the section body.
+                DATA(lv_strip_kw_off) = 0.
+                FIND FIRST OCCURRENCE OF lv_sect_keyword
+                  IN lv_new_stripped_up MATCH OFFSET lv_strip_kw_off.
+                IF sy-subrc = 0.
+                  DATA(lv_strip_rest) = lv_new_stripped+lv_strip_kw_off.
+                  DATA(lv_strip_nl)   = 0.
+                  FIND FIRST OCCURRENCE OF cl_abap_char_utilities=>newline
+                    IN lv_strip_rest MATCH OFFSET lv_strip_nl.
+                  IF sy-subrc = 0.
+                    lv_new_stripped = lv_new_stripped+(lv_strip_kw_off).  " use preamble from old
+                    " advance past section keyword line
+                    DATA(lv_body_off) = lv_strip_kw_off + lv_strip_nl + 1.
+                    lv_new_stripped = ls_new-source+lv_body_off.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+
+              " Ensure the section keyword line itself is present in merged source.
+              " LLM in XML format omits it; legacy format includes it.
+              DATA(lv_new_up) = lv_new_stripped.
               CONDENSE lv_new_up.
               TRANSLATE lv_new_up TO UPPER CASE.
               DATA(lv_kw_len) = strlen( lv_sect_keyword ).
@@ -650,13 +675,12 @@ CLASS ZCL_CODE_ANSWER_TOOLS IMPLEMENTATION.
                   IN lv_sect_rest MATCH OFFSET lv_nl_pos.
                 IF sy-subrc = 0.
                   DATA(lv_sect_line_len) = lv_preamble_off + lv_nl_pos + 1.
-                  <ls_old>-source = <ls_old>-source(lv_sect_line_len) && ls_new-source.
+                  <ls_old>-source = <ls_old>-source(lv_sect_line_len) && lv_new_stripped.
                 ELSE.
-                  " No newline after section keyword — just append
-                  <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+                  <ls_old>-source = <ls_old>-source(lv_preamble_off) && lv_new_stripped.
                 ENDIF.
               ELSE.
-                <ls_old>-source = <ls_old>-source(lv_preamble_off) && ls_new-source.
+                <ls_old>-source = <ls_old>-source(lv_preamble_off) && lv_new_stripped.
               ENDIF.
             ELSE.
               " No preamble found (protected/private) — direct replace
