@@ -519,25 +519,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       SHOW_RUN_PROGRAM_BUTTON( ).
     ENDIF.
 
-    " Refresh the middle log (progress viewer) with the full step history
-    " including the SAVE_OBJECT step that was just added to mo_messages.
-    " This preserves all previous AI steps instead of replacing them with a
-    " minimal "saved" banner.
-    DATA(lv_saved_html) = build_steps_html( mo_messages ).
-    DATA lt_saved_html TYPE tt_html.
-    DATA ls_saved_html TYPE w3html.
-    DATA lv_saved_off TYPE i.
-    WHILE lv_saved_off < strlen( lv_saved_html ).
-      CLEAR ls_saved_html.
-      ls_saved_html-line = substring( val = lv_saved_html off = lv_saved_off
-        len = nmin( val1 = 255 val2 = strlen( lv_saved_html ) - lv_saved_off ) ).
-      APPEND ls_saved_html TO lt_saved_html.
-      lv_saved_off = lv_saved_off + 255.
-    ENDWHILE.
-    DATA lv_saved_url TYPE c LENGTH 255.
-    mo_progress->load_data( EXPORTING type = 'text' subtype = 'html'
-      IMPORTING assigned_url = lv_saved_url CHANGING data_table = lt_saved_html EXCEPTIONS OTHERS = 1 ).
-    mo_progress->show_url( EXPORTING url = lv_saved_url EXCEPTIONS OTHERS = 1 ).
+    " Do NOT overwrite mo_progress here - the runner already filled it with
+    " the correct step chips (✓ OBJECT_DETECTOR, ✓ TASK_ORCHESTRATOR, etc.).
+    " Replacing it would either erase those steps (old "✓ saved" banner) or
+    " show raw message internals (build_steps_html). Just leave it as-is.
 
     " Read saved object and show in answer viewer (right)
     DATA(lv_saved_type_upper) = mv_diff_object_type.

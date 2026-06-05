@@ -225,8 +225,13 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = get_code_reader_prompt( ).
       WHEN c_agent_class_processor.
         rv_prompt = get_class_processor_prompt( ).
+      WHEN 'FINAL' OR '' OR space.
+        rv_prompt = get_final_prompt( ).
       WHEN OTHERS.
-        rv_prompt = |Agent '{ i_agent }' not found|.
+        " Unknown agent name from LLM - log it but fall back to final prompt
+        " so the session doesn't get a broken system prompt.
+        rv_prompt = get_final_prompt( ).
+        rv_prompt = |" Note: unknown agent '{ i_agent }' - using FINAL prompt instead.\n| && rv_prompt.
     ENDCASE.
 
   ENDMETHOD.

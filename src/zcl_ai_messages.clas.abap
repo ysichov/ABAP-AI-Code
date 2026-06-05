@@ -297,6 +297,16 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
 
       TRANSLATE ls_request-agent TO UPPER CASE.
 
+      " Normalize LLM aliases to canonical agent names
+      CASE ls_request-agent.
+        WHEN 'CODE_CREATE' OR 'CREATE_OBJ' OR 'CREATE_PROGRAM' OR 'CREATE_CLASS'.
+          ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj.  " CREATE_OBJECT
+        WHEN 'CODE_MODIFY' OR 'CODE_EDIT' OR 'MODIFY_CODE'.
+          ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_change.  " CODE_CHANGE
+        WHEN 'SAVE' OR 'SAVE_CODE' OR 'SAVE_OBJECT'.
+          ls_request-agent = zcl_ai_agents_prompts=>c_agent_save.         " AGENT_SAVE
+      ENDCASE.
+
       IF ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_search
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_change
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
@@ -352,9 +362,15 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
               ENDLOOP.
             ENDIF.
           ELSE.
-            ls_request-object_type = lv_part2_upper.
-            IF lines( lt_parts ) >= 3.
-              ls_request-object_name = lt_parts[ 3 ].
+            " Support both "PROG NAME" (normal) and "PROG~NAME" (LLM sometimes
+            " concatenates type and name with ~).
+            IF lv_part2_upper CS '~'.
+              SPLIT lv_part2_upper AT '~' INTO ls_request-object_type ls_request-object_name.
+            ELSE.
+              ls_request-object_type = lv_part2_upper.
+              IF lines( lt_parts ) >= 3.
+                ls_request-object_name = lt_parts[ 3 ].
+              ENDIF.
             ENDIF.
             IF lines( lt_parts ) >= 4.
               LOOP AT lt_parts INTO lv_part FROM 4.
