@@ -394,10 +394,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
             ENDIF.
           ENDIF.
           IF lv_open_source IS NOT INITIAL.
-            display_answer(
-              i_answer = zcl_code_html_gen=>source_to_html(
-                i_source = lv_open_source
-                i_title  = |{ lv_open_type } { lv_open_name }| ) ).
+            display_program_source( lv_open_source ).
           ENDIF.
         ENDIF.
         RETURN.
@@ -566,14 +563,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     " native SAP editor). For classes/methods keep the HTML view.
     DATA(lv_show_type) = mv_diff_object_type.
     TRANSLATE lv_show_type TO UPPER CASE.
-    IF lv_show_type = 'PROG' OR lv_show_type = 'REPS'
-    OR lv_show_type = 'PROGRAM' OR lv_show_type = 'REPORT'.
-      display_program_source( lv_saved_source ).
-    ELSE.
-      display_answer( i_answer = zcl_code_html_gen=>source_to_html(
-        i_source = lv_saved_source
-        i_title  = |{ mv_diff_object_type } { mv_diff_object_name }| ) ).
-    ENDIF.
+    " Show all code types in the ABAP editor (programs, classes, methods, interfaces)
+    display_program_source( lv_saved_source ).
 
     cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
