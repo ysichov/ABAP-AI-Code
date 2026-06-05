@@ -155,13 +155,10 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
         IF ls_row-session_id IS INITIAL.
           ls_row-session_id = lv_request_session.
         ENDIF.
-        IF ls_row-answer_type = 'LLM'
-        OR ls_row-duration_seconds IS NOT INITIAL.
-          extract_usage(
-            EXPORTING
-              i_text = ls_row-answer
-            CHANGING
-              cs_row = ls_row ).
+        IF ls_message-tok_in > 0 OR ls_message-tok_out > 0.
+          ls_row-prompt_tokens     = CONV string( ls_message-tok_in ).
+          ls_row-completion_tokens = CONV string( ls_message-tok_out ).
+          ls_row-total_tokens      = CONV string( ls_message-tok_in + ls_message-tok_out ).
         ENDIF.
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.

@@ -12,6 +12,8 @@ CLASS zcl_ai_messages DEFINITION
         agent       TYPE string,
         prompt_type TYPE string,
         duration_seconds TYPE string,
+        tok_in      TYPE i,
+        tok_out     TYPE i,
         content     TYPE string,
       END OF ty_message,
       tt_messages TYPE STANDARD TABLE OF ty_message WITH NON-UNIQUE DEFAULT KEY,
@@ -35,11 +37,13 @@ CLASS zcl_ai_messages DEFINITION
     METHODS build_orchestrator_request
       RETURNING VALUE(rv_prompt) TYPE string.
 
-    METHODS add_message
+     METHODS add_message
       IMPORTING i_role    TYPE string
                 i_agent   TYPE string OPTIONAL
                 i_prompt_type TYPE string OPTIONAL
                 i_duration_seconds TYPE string OPTIONAL
+                i_tok_in  TYPE i OPTIONAL
+                i_tok_out TYPE i OPTIONAL
                 i_content TYPE string.
 
     METHODS parse_agent_requests
@@ -90,7 +94,6 @@ CLASS zcl_ai_messages DEFINITION
 
     METHODS get_messages
       RETURNING VALUE(rt_messages) TYPE tt_messages.
-
 protected section.
   PRIVATE SECTION.
     DATA mv_user_prompt TYPE string.
@@ -143,103 +146,40 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       agent       = i_agent
       prompt_type = i_prompt_type
       duration_seconds = i_duration_seconds
+      tok_in      = i_tok_in
+      tok_out     = i_tok_out
       content     = i_content ) TO mt_messages.
   ENDMETHOD.
 
 
-  METHOD get_total_token_usage.
+METHOD get_total_token_usage.
 
-    DATA lv_prompt_tokens TYPE i.
+    DATA lv_prompt_tokens    TYPE i.
     DATA lv_completion_tokens TYPE i.
-    DATA lv_total_tokens TYPE i.
-    DATA lv_cached_tokens TYPE i.
-    DATA lv_prompt_text TYPE string.
-    DATA lv_completion_text TYPE string.
-    DATA lv_total_text TYPE string.
-    DATA lv_cached_text TYPE string.
 
     LOOP AT mt_messages INTO DATA(ls_message).
-      CLEAR: lv_prompt_text,
-             lv_completion_text,
-             lv_total_text,
-             lv_cached_text.
-
-      FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)'
-        IN ls_message-content SUBMATCHES lv_prompt_text.
-      IF lv_prompt_text IS INITIAL.
-        FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)'
-          IN ls_message-content SUBMATCHES lv_prompt_text.
-      ENDIF.
-
-      FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)'
-        IN ls_message-content SUBMATCHES lv_completion_text.
-      IF lv_completion_text IS INITIAL.
-        FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)'
-          IN ls_message-content SUBMATCHES lv_completion_text.
-      ENDIF.
-
-      FIND FIRST OCCURRENCE OF REGEX 'total=([0-9]+)'
-        IN ls_message-content SUBMATCHES lv_total_text.
-
-      FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)'
-        IN ls_message-content SUBMATCHES lv_cached_text.
-
-      IF lv_prompt_text IS NOT INITIAL.
-        lv_prompt_tokens = lv_prompt_tokens + lv_prompt_text.
-      ENDIF.
-      IF lv_completion_text IS NOT INITIAL.
-        lv_completion_tokens = lv_completion_tokens + lv_completion_text.
-      ENDIF.
-      IF lv_total_text IS NOT INITIAL.
-        lv_total_tokens = lv_total_tokens + lv_total_text.
-      ENDIF.
-      IF lv_cached_text IS NOT INITIAL.
-        lv_cached_tokens = lv_cached_tokens + lv_cached_text.
-      ENDIF.
+      lv_prompt_tokens     = lv_prompt_tokens     + ls_message-tok_in.
+      lv_completion_tokens = lv_completion_tokens + ls_message-tok_out.
     ENDLOOP.
 
     IF i_extra_text IS NOT INITIAL.
-      CLEAR: lv_prompt_text,
-             lv_completion_text,
-             lv_total_text,
-             lv_cached_text.
-
-      FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)'
-        IN i_extra_text SUBMATCHES lv_prompt_text.
-      IF lv_prompt_text IS INITIAL.
-        FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)'
-          IN i_extra_text SUBMATCHES lv_prompt_text.
+      DATA lv_in_str  TYPE string.
+      DATA lv_out_str TYPE string.
+      FIND FIRST OCCURRENCE OF REGEX 'input=([0-9]+)'  IN i_extra_text SUBMATCHES lv_in_str.
+      IF lv_in_str IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'prompt=([0-9]+)' IN i_extra_text SUBMATCHES lv_in_str.
       ENDIF.
-
-      FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)'
-        IN i_extra_text SUBMATCHES lv_completion_text.
-      IF lv_completion_text IS INITIAL.
-        FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)'
-          IN i_extra_text SUBMATCHES lv_completion_text.
+      FIND FIRST OCCURRENCE OF REGEX 'output=([0-9]+)' IN i_extra_text SUBMATCHES lv_out_str.
+      IF lv_out_str IS INITIAL.
+        FIND FIRST OCCURRENCE OF REGEX 'completion=([0-9]+)' IN i_extra_text SUBMATCHES lv_out_str.
       ENDIF.
-
-      FIND FIRST OCCURRENCE OF REGEX 'total=([0-9]+)'
-        IN i_extra_text SUBMATCHES lv_total_text.
-
-      FIND FIRST OCCURRENCE OF REGEX 'cached=([0-9]+)'
-        IN i_extra_text SUBMATCHES lv_cached_text.
-
-      IF lv_prompt_text IS NOT INITIAL.
-        lv_prompt_tokens = lv_prompt_tokens + lv_prompt_text.
-      ENDIF.
-      IF lv_completion_text IS NOT INITIAL.
-        lv_completion_tokens = lv_completion_tokens + lv_completion_text.
-      ENDIF.
-      IF lv_total_text IS NOT INITIAL.
-        lv_total_tokens = lv_total_tokens + lv_total_text.
-      ENDIF.
-      IF lv_cached_text IS NOT INITIAL.
-        lv_cached_tokens = lv_cached_tokens + lv_cached_text.
-      ENDIF.
+      IF lv_in_str  IS NOT INITIAL. lv_prompt_tokens     = lv_prompt_tokens     + lv_in_str.  ENDIF.
+      IF lv_out_str IS NOT INITIAL. lv_completion_tokens = lv_completion_tokens + lv_out_str. ENDIF.
     ENDIF.
 
-    IF lv_total_tokens IS NOT INITIAL.
-      rv_usage = |Total tokens: input={ lv_prompt_tokens } output={ lv_completion_tokens } total={ lv_total_tokens } cached={ lv_cached_tokens }|.
+    DATA(lv_total) = lv_prompt_tokens + lv_completion_tokens.
+    IF lv_total > 0.
+      rv_usage = |Total tokens: input={ lv_prompt_tokens } output={ lv_completion_tokens } total={ lv_total }|.
     ENDIF.
 
   ENDMETHOD.
@@ -474,7 +414,8 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       i_role        = 'user'
       i_agent       = is_request-agent
       i_prompt_type = 'AGENT_PROMPT'
-      i_content     = rv_prompt ).
+      i_content     = rv_prompt
+      ).
   ENDMETHOD.
 
 
