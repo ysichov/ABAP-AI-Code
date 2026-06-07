@@ -207,14 +207,20 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       DATA lt_prompt_file TYPE TABLE OF string.
       APPEND lv_json_prompt TO lt_prompt_file.
       cl_gui_frontend_services=>gui_download(
-        EXPORTING filename = mv_stream_prompt_file filetype = 'ASC'
+        EXPORTING filename             = mv_stream_prompt_file
+                  filetype             = 'ASC'
+                  confirm_overwrite    = ' '
+                  show_transfer_status = ' '
         CHANGING  data_tab = lt_prompt_file
         EXCEPTIONS OTHERS  = 1 ).
 
       " Clear previous response file
       DATA lt_empty TYPE TABLE OF string.
       cl_gui_frontend_services=>gui_download(
-        EXPORTING filename = mv_stream_response_file filetype = 'ASC'
+        EXPORTING filename             = mv_stream_response_file
+                  filetype             = 'ASC'
+                  confirm_overwrite    = ' '
+                  show_transfer_status = ' '
         CHANGING  data_tab = lt_empty
         EXCEPTIONS OTHERS  = 1 ).
 
@@ -229,17 +235,41 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           synchronous       = ' '
         EXCEPTIONS OTHERS   = 1 ).
 
-      " Poll response file every second until Python writes ##DONE## or ##ERROR##.
-      " WAIT UP TO pauses ABAP but Python continues writing to the file independently.
-      DATA lv_stream_done TYPE abap_bool.
-      DO 180 TIMES.  " max 3 minutes
-        WAIT UP TO 1 SECONDS.
+      " Show paths in status so user can debug if Python does not start
+      display_status( |Stream started. Files: { mv_stream_prompt_file } / { mv_stream_response_file }| ).
+      cl_gui_cfw=>flush( ).
+
+      " Poll response file using timestamps — no WAIT, so GUI stays responsive.
+      " GET RUN TIME returns microseconds. Check file every 500ms, timeout after 30s.
+      DATA lv_stream_done  TYPE abap_bool.
+      DATA lv_ts_start     TYPE i.
+      DATA lv_ts_now       TYPE i.
+      DATA lv_ts_last_read TYPE i.
+      GET RUN TIME FIELD lv_ts_start.
+      lv_ts_last_read = lv_ts_start.
+
+      WHILE abap_true = abap_true.
+        GET RUN TIME FIELD lv_ts_now.
+
+        " Timeout after 30 seconds
+        IF ( lv_ts_now - lv_ts_start ) > 30000000.
+          EXIT.
+        ENDIF.
+
+        " Read file every 500ms
+        IF ( lv_ts_now - lv_ts_last_read ) < 500000.
+          cl_gui_cfw=>flush( ).   " keep GUI alive between checks
+          CONTINUE.
+        ENDIF.
+        lv_ts_last_read = lv_ts_now.
 
         " Read current content from client file
         DATA lt_resp_lines TYPE TABLE OF string.
         CLEAR lt_resp_lines.
         cl_gui_frontend_services=>gui_upload(
-          EXPORTING filename = mv_stream_response_file filetype = 'ASC'
+          EXPORTING filename             = mv_stream_response_file
+                    filetype             = 'ASC'
+                    show_transfer_status = ' '
           CHANGING  data_tab = lt_resp_lines
           EXCEPTIONS OTHERS  = 1 ).
 
@@ -322,7 +352,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         IF lv_stream_done = abap_true OR lv_stream_error = abap_true.
           EXIT.
         ENDIF.
-      ENDDO.
+      ENDWHILE.
 
       IF lv_stream_done = abap_true.
         display_status( 'Done' ).

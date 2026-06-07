@@ -84,19 +84,32 @@ def main() -> None:
     except OSError:
         pass
 
+    # Write log file next to response file for debugging
+    log_file = response_file + ".log"
+    import datetime
+    def log(msg):
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now():%H:%M:%S}] {msg}\n")
+
+    log(f"START provider={provider} model={model}")
+
     # Clear response file before writing
     open(response_file, "w", encoding="utf-8").close()
 
     try:
         with open(response_file, "a", encoding="utf-8") as out:
             if provider == "ANTHROPIC":
+                log("calling anthropic stream...")
                 stream_anthropic(prompt, model, api_key, temperature, out)
             else:
+                log("calling openai stream...")
                 stream_openai(prompt, model, api_key, temperature, out)
 
             out.write("\n##DONE##")
+            log("DONE")
 
     except Exception as exc:
+        log(f"ERROR: {exc}")
         with open(response_file, "a", encoding="utf-8") as out:
             out.write(f"\n##ERROR## {exc}")
 
