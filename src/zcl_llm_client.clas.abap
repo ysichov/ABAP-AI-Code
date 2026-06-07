@@ -13,6 +13,8 @@ public section.
   methods ASK
     importing
       !I_PROMPT type STRING
+      !I_SYSTEM_PROMPT type STRING optional
+      !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
       !I_JSON_SCHEMA type STRING optional
     returning
       value(RV_ANSWER) type STRING .
@@ -54,6 +56,8 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
     rv_answer = zcl_code_ai_api=>ask(
       EXPORTING
         i_prompt           = i_prompt
+        i_system_prompt    = i_system_prompt
+        it_history         = it_history
         i_dest             = mv_dest
         i_model            = mv_model
         i_apikey           = mv_apikey

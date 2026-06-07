@@ -330,6 +330,18 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
     lv_source = i_source.
 
+    " System prompt for syntax fix agent (sent separately for proper role separation)
+    DATA(lv_fix_system) = |You are a Senior ABAP syntax-fix agent.|
+                       && cl_abap_char_utilities=>newline
+                       && |Return the complete corrected ABAP program source only in one abap fenced code block.|
+                       && cl_abap_char_utilities=>newline
+                       && |Do not explain. Keep the object name and intent. Fix the syntax error before code review.|
+                       && cl_abap_char_utilities=>newline
+                       && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long.|.
+
+    " History accumulates across fix attempts so LLM knows what it tried before
+    DATA lt_fix_history TYPE zcl_ai_messages=>tt_messages.
+
     DO 5 TIMES.
       DATA(lv_attempt) = sy-index.
       lv_syntax_error = zcl_code_object_saver=>check_program_syntax( lv_source ).
@@ -349,29 +361,32 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           percentage = 75
           text       = |Fixing extracted code before review, attempt { lv_attempt } of 5...|.
 
-      lv_fix_prompt = |You are a Senior ABAP syntax-fix agent.|
-                   && cl_abap_char_utilities=>newline
-                   && |Return the complete corrected ABAP program source only in one abap fenced code block.|
-                   && cl_abap_char_utilities=>newline
-                   && |Do not explain. Keep the object name and intent. Fix the syntax error before code review.|
-                   && cl_abap_char_utilities=>newline
-                   && |For selection screens, PARAMETERS and SELECT-OPTIONS names must be at most 8 characters long.|
-                   && cl_abap_char_utilities=>newline
-                   && cl_abap_char_utilities=>newline
-                   && |OBJECT: { i_object_type } { i_object_name }|
-                   && cl_abap_char_utilities=>newline
-                   && |SYNTAX ERROR:|
-                   && cl_abap_char_utilities=>newline
-                   && lv_syntax_error
-                   && cl_abap_char_utilities=>newline
-                   && cl_abap_char_utilities=>newline
-                   && |SOURCE TO FIX:|
-                   && cl_abap_char_utilities=>newline
-                   && |```abap|
-                   && cl_abap_char_utilities=>newline
-                   && lv_source
-                   && cl_abap_char_utilities=>newline
-                   && |```|.
+      " First attempt: full source in user message.
+      " Subsequent attempts: LLM already sees its previous answer via history,
+      " so user message only contains the new error (no need to re-send full source).
+      IF lv_attempt = 1.
+        lv_fix_prompt = |OBJECT: { i_object_type } { i_object_name }|
+                     && cl_abap_char_utilities=>newline
+                     && |SYNTAX ERROR:|
+                     && cl_abap_char_utilities=>newline
+                     && lv_syntax_error
+                     && cl_abap_char_utilities=>newline
+                     && cl_abap_char_utilities=>newline
+                     && |SOURCE TO FIX:|
+                     && cl_abap_char_utilities=>newline
+                     && |```abap|
+                     && cl_abap_char_utilities=>newline
+                     && lv_source
+                     && cl_abap_char_utilities=>newline
+                     && |```|.
+      ELSE.
+        " LLM sees its previous code via [assistant] in history - just send new error
+        lv_fix_prompt = |Your fix still has a syntax error. Try again.|
+                     && cl_abap_char_utilities=>newline
+                     && |SYNTAX ERROR:|
+                     && cl_abap_char_utilities=>newline
+                     && lv_syntax_error.
+      ENDIF.
 
       mo_messages->add_message(
         i_role        = 'user'
@@ -379,7 +394,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_prompt_type = 'AGENT_PROMPT'
         i_content     = lv_fix_prompt ).
 
-      lv_fix_answer_log = mo_llm->ask( lv_fix_prompt ).
+      lv_fix_answer_log = mo_llm->ask(
+        i_prompt        = lv_fix_prompt
+        i_system_prompt = lv_fix_system
+        it_history      = lt_fix_history ).
       lv_fixed_source = zcl_code_answer_tools=>extract_code_from_answer( lv_fix_answer_log ).
 
       mo_messages->add_message(
@@ -390,6 +408,14 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         i_tok_in      = mo_llm->mv_last_tok_in
         i_tok_out     = mo_llm->mv_last_tok_out
         i_content     = lv_fix_answer_log ).
+
+      " Accumulate this turn into history for next iteration (multi-turn awareness)
+      APPEND VALUE zcl_ai_messages=>ty_message(
+        role    = 'user'
+        content = lv_fix_prompt ) TO lt_fix_history.
+      APPEND VALUE zcl_ai_messages=>ty_message(
+        role    = 'assistant'
+        content = lv_fix_answer_log ) TO lt_fix_history.
 
       IF lv_fixed_source IS INITIAL
       OR lv_fixed_source = lv_source.

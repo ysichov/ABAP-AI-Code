@@ -55,6 +55,7 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
     " Types matching task_orchestrator.JSON schema
     TYPES: BEGIN OF ty_task,
              task_id                TYPE string,
+             target_tool            TYPE string,
              sap_object_type        TYPE string,
              sap_object_name        TYPE string,
              action_description     TYPE string,
@@ -127,10 +128,24 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " Determine appropriate agent command from action description keywords
-      DATA(lv_agent) = determine_agent( ls_task-action_description ).
-      DATA(lv_type)  = ls_task-sap_object_type.
-      DATA(lv_name)  = ls_task-sap_object_name.
+      " Map target_tool to agent command
+      DATA lv_agent TYPE string.
+      CASE ls_task-target_tool.
+        WHEN 'ZCL_AI_TOOL=>READ'.
+          lv_agent = 'CODE_SEARCH'.
+        WHEN 'ZCL_AI_TOOL=>SAVE'.
+          lv_agent = 'CODE_CHANGE'.
+        WHEN 'NONE' OR ''.
+          " No SAP object involved - skip as standalone task text
+          APPEND ls_task-action_description TO rt_tasks.
+          CONTINUE.
+        WHEN OTHERS.
+          " Fallback: infer from action description keywords
+          lv_agent = determine_agent( ls_task-action_description ).
+      ENDCASE.
+
+      DATA(lv_type) = ls_task-sap_object_type.
+      DATA(lv_name) = ls_task-sap_object_name.
       CONDENSE lv_type.
       CONDENSE lv_name.
 
@@ -262,20 +277,29 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
     CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
       EXPORTING percentage = 10 text = 'Asking task orchestrator...'.
 
-    DATA(lv_task_prompt) = mo_prompts->get_task_orchestrator_prompt( )
-                          && cl_abap_char_utilities=>newline
-                          && i_prompt.
+    " System prompt (persona/rules) goes to system role
+    " User prompt (actual request) goes to user role - separated for better model behavior
+    DATA(lv_system_prompt) = mo_prompts->get_task_orchestrator_prompt( ).
+    DATA(lv_user_prompt)   = i_prompt.
+
+    mo_messages->add_message(
+      i_role        = 'system'
+      i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+      i_prompt_type = 'SYSTEM_PROMPT'
+      i_content     = lv_system_prompt ).
+
     mo_messages->add_message(
       i_role        = 'user'
       i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
       i_prompt_type = 'AGENT_PROMPT'
-      i_content     = lv_task_prompt ).
+      i_content     = lv_user_prompt ).
 
     " Load JSON schema for this agent (optional - empty if no .JSON file exists)
     DATA(lv_schema) = mo_prompts->get_schema_by_agent( zcl_ai_agents_prompts=>c_agent_task_orchestrator ).
     DATA(lv_task_answer) = mo_llm->ask(
-      i_prompt      = lv_task_prompt
-      i_json_schema = lv_schema ).
+      i_prompt        = lv_user_prompt
+      i_system_prompt = lv_system_prompt
+      i_json_schema   = lv_schema ).
 
     mo_messages->add_message(
       i_role        = 'assistant'

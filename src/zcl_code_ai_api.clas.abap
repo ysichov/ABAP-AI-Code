@@ -7,6 +7,8 @@ public section.
   class-methods ASK
     importing
       !I_PROMPT type STRING
+      !I_SYSTEM_PROMPT type STRING optional
+      !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
       !I_DEST type TEXT255
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
@@ -26,6 +28,8 @@ private section.
   class-methods BUILD_PAYLOAD
     importing
       !I_PROMPT type STRING
+      !I_SYSTEM_PROMPT type STRING optional
+      !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
       !I_MODEL type TEXT255
       !I_PROVIDER type STRING
       !I_PROMPT_CACHE_KEY type STRING optional
@@ -65,6 +69,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     payload = build_payload(
       i_prompt           = i_prompt
+      i_system_prompt    = i_system_prompt
+      it_history         = it_history
       i_model            = i_model
       i_provider         = lv_provider
       i_prompt_cache_key = i_prompt_cache_key
@@ -129,6 +135,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
   method BUILD_PAYLOAD.
 
     DATA: lv_prompt           TYPE string,
+          lv_system_prompt    TYPE string,
           lv_prompt_cache_key TYPE string,
           lv_provider         TYPE string,
           lv_cr               TYPE c LENGTH 1.
@@ -137,6 +144,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     TRANSLATE lv_provider TO UPPER CASE.
     lv_cr = cl_abap_char_utilities=>cr_lf(1).
 
+    " Escape user prompt for JSON
     lv_prompt = i_prompt.
     REPLACE ALL OCCURRENCES OF '\' IN lv_prompt WITH '\\'.
     REPLACE ALL OCCURRENCES OF '"' IN lv_prompt WITH '\"'.
@@ -146,17 +154,74 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>form_feed IN lv_prompt WITH '\f'.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_prompt WITH '\t'.
 
-    DATA lv_response_format TYPE string.
-    IF i_json_schema IS NOT INITIAL.
-      lv_response_format = |, "response_format": { i_json_schema }|.
+    " Escape system prompt for JSON (same rules)
+    lv_system_prompt = i_system_prompt.
+    REPLACE ALL OCCURRENCES OF '\' IN lv_system_prompt WITH '\\'.
+    REPLACE ALL OCCURRENCES OF '"' IN lv_system_prompt WITH '\"'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_system_prompt WITH '\n'.
+    REPLACE ALL OCCURRENCES OF lv_cr IN lv_system_prompt WITH '\r'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_system_prompt WITH '\n'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>form_feed IN lv_system_prompt WITH '\f'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_system_prompt WITH '\t'.
+
+    " Anthropic: system is top-level field
+    " OpenAI:    system is first message with role "system"
+    DATA lv_system_field TYPE string.
+    IF lv_system_prompt IS NOT INITIAL.
+      IF lv_provider = 'ANTHROPIC'.
+        lv_system_field = |, "system": "{ lv_system_prompt }"|.
+      ENDIF.
     ENDIF.
 
-    rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000{ lv_response_format }{ '}' }|.
+    " Build provider-specific structured output field from raw JSON schema
+    " OpenAI:    response_format -> json_schema wrapper with strict:true
+    " Anthropic: output_config  -> format wrapper (no name/strict needed)
+    DATA lv_response_format TYPE string.
+    IF i_json_schema IS NOT INITIAL.
+      IF lv_provider = 'OPENAI'.
+        lv_response_format = |, "response_format": { '{' }"type": "json_schema", "json_schema": { '{' }"name": "schema", "strict": true, "schema": { i_json_schema }{ '}' }{ '}' }|.
+      ELSEIF lv_provider = 'ANTHROPIC'.
+        lv_response_format = |, "output_config": { '{' }"format": { '{' }"type": "json_schema", "schema": { i_json_schema }{ '}' }{ '}' }|.
+      ENDIF.
+    ENDIF.
+
+    " Build messages array: system + history turns + current user message
+    DATA lv_messages TYPE string.
+    DATA lv_msg_sep  TYPE string.
+
+    " OpenAI: system as first message in array
+    IF lv_provider = 'OPENAI' AND lv_system_prompt IS NOT INITIAL.
+      lv_messages = |{ '{' }"role": "system", "content": "{ lv_system_prompt }"{ '}' }|.
+      lv_msg_sep = ', '.
+    ENDIF.
+
+    " Append conversation history (user/assistant turns for multi-turn context)
+    LOOP AT it_history INTO DATA(ls_hist).
+      CHECK ls_hist-role = 'user' OR ls_hist-role = 'assistant'.
+      DATA lv_hist_content TYPE string.
+      lv_hist_content = ls_hist-content.
+      REPLACE ALL OCCURRENCES OF '\' IN lv_hist_content WITH '\\'.
+      REPLACE ALL OCCURRENCES OF '"' IN lv_hist_content WITH '\"'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_hist_content WITH '\n'.
+      REPLACE ALL OCCURRENCES OF lv_cr IN lv_hist_content WITH '\r'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_hist_content WITH '\n'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>form_feed IN lv_hist_content WITH '\f'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_hist_content WITH '\t'.
+      lv_messages = lv_messages && lv_msg_sep
+        && |{ '{' }"role": "{ ls_hist-role }", "content": "{ lv_hist_content }"{ '}' }|.
+      lv_msg_sep = ', '.
+    ENDLOOP.
+
+    " Current user message (always last)
+    lv_messages = lv_messages && lv_msg_sep
+      && |{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }|.
+
+    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_response_format }{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_prompt_cache_key WITH '\"'.
-      rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_response_format }{ '}' }|.
+      rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_response_format }{ '}' }|.
     ENDIF.
 
   endmethod.

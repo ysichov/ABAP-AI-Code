@@ -107,8 +107,17 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
     DATA lv_request_message_id TYPE i.
     DATA lv_has_request TYPE abap_bool.
 
+    DATA lv_system_content TYPE string.  " accumulated system prompt for next user msg
+
     LOOP AT mt_messages INTO DATA(ls_message).
-      IF ls_message-role = 'user'.
+      IF ls_message-role = 'system'.
+        " System prompt - buffer it; will be shown together with next user message
+        lv_system_content = ls_message-content.
+        lv_request_agent   = ls_message-agent.
+        lv_request_session = ls_message-session_id.
+        CONTINUE.
+
+      ELSEIF ls_message-role = 'user'.
         IF lv_has_request = abap_true.
           CLEAR ls_row.
           ls_row-session_id = lv_request_session.
@@ -125,9 +134,20 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           APPEND ls_row TO mt_history.
         ENDIF.
 
-        lv_request = ls_message-content.
+        " Prepend system prompt block if present
+        IF lv_system_content IS NOT INITIAL.
+          lv_request = |=== SYSTEM ===| && cl_abap_char_utilities=>newline
+                    && lv_system_content && cl_abap_char_utilities=>newline
+                    && cl_abap_char_utilities=>newline
+                    && |=== USER ===| && cl_abap_char_utilities=>newline
+                    && ls_message-content.
+          CLEAR lv_system_content.
+        ELSE.
+          lv_request = ls_message-content.
+        ENDIF.
+
         CASE ls_message-prompt_type.
-          WHEN 'SYSTEM_PROMPT' OR 'USER_PROMPT'. lv_request_type = 'USER'.
+          WHEN 'USER_PROMPT'. lv_request_type = 'USER'.
           WHEN 'AGENT_PROMPT'.  lv_request_type = 'AGENT'.
           WHEN 'COMMAND'.       lv_request_type = 'COMMAND'.
           WHEN OTHERS.          lv_request_type = ls_message-prompt_type.
