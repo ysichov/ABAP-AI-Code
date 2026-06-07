@@ -16,11 +16,15 @@ public section.
       !I_SYSTEM_PROMPT type STRING optional
       !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
       !I_JSON_SCHEMA type STRING optional
+      !I_TEMPERATURE type STRING optional
     returning
       value(RV_ANSWER) type STRING .
   methods GET_LAST_SECONDS
     returning
       value(RV_SECONDS) type STRING .
+  methods SET_TEMPERATURE
+    importing
+      !I_TEMPERATURE type STRING .
 
   data MV_LAST_TOK_IN  type I .
   data MV_LAST_TOK_OUT type I .
@@ -39,6 +43,7 @@ private section.
   data MV_ELAPSED type P LENGTH 16 DECIMALS 2 .
   data MV_TOK_IN_STR type STRING .
   data MV_TOK_OUT_STR type STRING .
+  data MV_TEMPERATURE type STRING .
 ENDCLASS.
 
 
@@ -53,6 +58,11 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
     CLEAR mv_last_tok_out.
     GET RUN TIME FIELD mv_start.
 
+    " Use explicitly passed temperature, fall back to client-level default
+    DATA(lv_temperature) = COND string(
+      WHEN i_temperature IS NOT INITIAL THEN i_temperature
+      ELSE mv_temperature ).
+
     rv_answer = zcl_code_ai_api=>ask(
       EXPORTING
         i_prompt           = i_prompt
@@ -64,6 +74,7 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
         i_provider         = mv_provider
         i_prompt_cache_key = mv_prompt_cache_key
         i_json_schema      = i_json_schema
+        i_temperature      = lv_temperature
       IMPORTING
         ev_tok_in  = mv_last_tok_in
         ev_tok_out = mv_last_tok_out ).
@@ -90,6 +101,13 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
   method GET_LAST_SECONDS.
 
     rv_seconds = mv_last_seconds.
+
+  endmethod.
+
+
+  method SET_TEMPERATURE.
+
+    mv_temperature = i_temperature.
 
   endmethod.
 ENDCLASS.

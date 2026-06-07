@@ -10,7 +10,8 @@ public section.
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
       !I_PROVIDER type STRING
-      !I_AGENTS_PATH type STRING .
+      !I_AGENTS_PATH type STRING
+      !I_TEMPERATURE type STRING optional .
   methods SHOW .
   class-methods BUILD_STEPS_HTML
     importing
@@ -57,6 +58,7 @@ private section.
   data MV_DIFF_NEW_CODE type STRING .
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
   data MV_SAVE_FIX_ATTEMPTS type I .
+  data MV_TEMPERATURE type STRING .
   data MV_RUN_PROGRAM type PROGNAME .
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
@@ -217,6 +219,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       i_model    = i_model
       i_apikey   = i_apikey
       i_provider = i_provider ).
+
+    " Apply initial temperature (default 0.1 from selection screen)
+    mv_temperature = COND string( WHEN i_temperature IS NOT INITIAL THEN i_temperature ELSE '0.1' ).
+    mo_llm->set_temperature( mv_temperature ).
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 
@@ -790,6 +796,28 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ask_ai( ).
       WHEN 'HISTORY'.
         show_history( ).
+      WHEN 'SET_TEMP'.
+        " Popup to enter temperature value 0.0 - 1.0
+        DATA lt_temp_fields TYPE TABLE OF sval.
+        APPEND VALUE #(
+          tabname   = 'TLINE'
+          fieldname = 'TDLINE'
+          fieldtext = 'Temperature (0.0-1.0)'
+          value     = mv_temperature ) TO lt_temp_fields.
+        CALL FUNCTION 'POPUP_GET_VALUES'
+          EXPORTING  popup_title     = 'Set LLM Temperature'
+          TABLES     fields          = lt_temp_fields
+          EXCEPTIONS error_in_fields = 1  OTHERS = 2.
+        IF sy-subrc = 0.
+          READ TABLE lt_temp_fields INTO DATA(ls_temp_field) INDEX 1.
+          DATA(lv_new_temp) = CONV string( ls_temp_field-value ).
+          CONDENSE lv_new_temp.
+          IF lv_new_temp IS NOT INITIAL.
+            mv_temperature = lv_new_temp.
+            mo_llm->set_temperature( mv_temperature ).
+            MESSAGE |Temperature set to { mv_temperature }| TYPE 'S'.
+          ENDIF.
+        ENDIF.
       WHEN 'RUN_PROGRAM'.
         run_program( ).
     ENDCASE.
@@ -884,6 +912,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
                     butn_type = cntb_btype_button
                     text      = 'History'
                     quickinfo = 'Show message history' ) TO lt_buttons.
+    APPEND VALUE #( function  = 'SET_TEMP'
+                    icon      = CONV #( icon_temperature )
+                    butn_type = cntb_btype_button
+                    text      = |Temp: { mv_temperature }|
+                    quickinfo = 'Set LLM temperature (0.0 = deterministic, 1.0 = creative)' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
 
     SET HANDLER on_toolbar_click FOR mo_toolbar.

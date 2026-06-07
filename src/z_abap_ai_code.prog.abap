@@ -13,7 +13,8 @@ PARAMETERS: p_anth RADIOBUTTON GROUP api,
 PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api,
-            p_agents TYPE text255 OBLIGATORY.
+            p_agents TYPE text255 OBLIGATORY,
+            p_temp   TYPE text10  DEFAULT '0.1'.
 SELECTION-SCREEN END OF BLOCK b_api.
 
 *----------------------------------------------------------------------*
@@ -35,10 +36,11 @@ AT SELECTION-SCREEN.
   CHECK sy-ucomm IS INITIAL OR sy-ucomm = 'UCCHECK'.
 
   go_popup = NEW zcl_code_popup(
-    i_dest   = p_dest
-    i_model  = p_model
-    i_apikey = CONV string( p_apikey )
-    i_provider = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
-    i_agents_path = CONV string( p_agents ) ).
+    i_dest        = p_dest
+    i_model       = p_model
+    i_apikey      = CONV string( p_apikey )
+    i_provider    = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
+    i_agents_path = CONV string( p_agents )
+    i_temperature = CONV string( p_temp ) ).
 
   go_popup->show( ).
