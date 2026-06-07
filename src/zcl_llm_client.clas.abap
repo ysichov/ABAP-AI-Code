@@ -13,6 +13,7 @@ public section.
   methods ASK
     importing
       !I_PROMPT type STRING
+      !I_JSON_SCHEMA type STRING optional
     returning
       value(RV_ANSWER) type STRING .
   methods GET_LAST_SECONDS
@@ -58,6 +59,7 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
         i_apikey           = mv_apikey
         i_provider         = mv_provider
         i_prompt_cache_key = mv_prompt_cache_key
+        i_json_schema      = i_json_schema
       IMPORTING
         ev_tok_in  = mv_last_tok_in
         ev_tok_out = mv_last_tok_out ).

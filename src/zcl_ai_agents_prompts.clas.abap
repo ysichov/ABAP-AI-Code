@@ -33,6 +33,13 @@ CLASS zcl_ai_agents_prompts DEFINITION
     METHODS get_task_orchestrator_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_task_orchestrator_schema
+      RETURNING VALUE(rv_schema) TYPE string.
+
+    METHODS get_schema_by_agent
+      IMPORTING i_agent          TYPE string
+      RETURNING VALUE(rv_schema) TYPE string.
+
     METHODS get_language_detector_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
@@ -77,6 +84,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     DATA mv_user_language            TYPE string.
     DATA mv_orchestrator_prompt      TYPE string.
     DATA mv_task_orchestrator_prompt TYPE string.
+    DATA mv_task_orchestrator_schema TYPE string.
     DATA mv_language_detector_prompt TYPE string.
     DATA mv_code_review_prompt       TYPE string.
     DATA mv_final_prompt             TYPE string.
@@ -293,12 +301,44 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_task_orchestrator_schema.
+
+    rv_schema = mv_task_orchestrator_schema.
+
+  ENDMETHOD.
+
+
+  METHOD get_schema_by_agent.
+
+    " Load <agent_name_lowercase>.JSON from agents folder
+    " Returns empty string if file does not exist (schema is optional)
+    DATA lv_agent TYPE string.
+    lv_agent = i_agent.
+    TRANSLATE lv_agent TO LOWER CASE.
+    DATA(lv_filename) = lv_agent && '.JSON'.
+
+    rv_schema = read_prompt_file( lv_filename ).
+
+    " If file not found - read_prompt_file returns error text, not empty string
+    " Treat any result that doesn't start with '{' or '[' as "no schema"
+    DATA lv_trimmed TYPE string.
+    lv_trimmed = rv_schema.
+    CONDENSE lv_trimmed.
+    IF lv_trimmed IS INITIAL
+    OR ( lv_trimmed(1) <> '{' AND lv_trimmed(1) <> '[' ).
+      CLEAR rv_schema.
+    ENDIF.
+
+  ENDMETHOD.
+
+
   METHOD load_agent_prompts.
 
     mv_system_prompt = read_prompt_file( 'system.md' ).
     mv_language_detector_prompt = read_prompt_file( 'language_detector.md' ).
     mv_orchestrator_prompt = read_prompt_file( 'object_detector.md' ).
     mv_task_orchestrator_prompt = read_prompt_file( 'task_orchestrator.md' ).
+    mv_task_orchestrator_schema = read_prompt_file( 'task_orchestrator.JSON' ).
     mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
     mv_final_prompt = read_prompt_file( 'final.md' ).
     mv_class_processor_prompt = read_prompt_file( 'class_processor.md' ).

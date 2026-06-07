@@ -759,9 +759,39 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_prompt  = lv_prompt
       it_tasks  = lt_tasks ).
 
-    " If task orchestrator returned a single pure CODE_SEARCH command - skip main orchestrator
+    " If task orchestrator returned pre-built agent commands (JSON schema mode) - skip object detector
     DATA lv_orchestrator_answer TYPE string.
-    IF lines( lt_tasks ) = 1.
+    IF lt_tasks IS NOT INITIAL.
+      DATA lv_all_commands TYPE abap_bool VALUE abap_true.
+      LOOP AT lt_tasks INTO DATA(lv_chk_task).
+        DATA lv_chk_upper TYPE string.
+        lv_chk_upper = lv_chk_task.
+        TRANSLATE lv_chk_upper TO UPPER CASE.
+        CONDENSE lv_chk_upper.
+        IF NOT lv_chk_upper CP '{AGENT:*'.
+          lv_all_commands = abap_false.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+
+      IF lv_all_commands = abap_true.
+        " All tasks are already agent commands - concatenate and skip object detector
+        LOOP AT lt_tasks INTO DATA(lv_cmd_task).
+          IF lv_orchestrator_answer IS NOT INITIAL.
+            lv_orchestrator_answer = lv_orchestrator_answer && cl_abap_char_utilities=>newline.
+          ENDIF.
+          lv_orchestrator_answer = lv_orchestrator_answer && lv_cmd_task.
+        ENDLOOP.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = zcl_ai_agents_prompts=>c_agent_task_orchestrator
+          i_prompt_type = 'AGENT_RESPONSE'
+          i_content     = lv_orchestrator_answer ).
+      ENDIF.
+    ENDIF.
+
+    " Fallback: single pure CODE_SEARCH task - also skip object detector
+    IF lv_orchestrator_answer IS INITIAL AND lines( lt_tasks ) = 1.
       DATA(lv_single_task) = lt_tasks[ 1 ].
       DATA(lv_single_requests) = mo_messages->parse_agent_requests( lv_single_task ).
       IF lines( lv_single_requests ) = 1
@@ -770,6 +800,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         lv_orchestrator_answer = lv_single_task.
       ENDIF.
     ENDIF.
+
     IF lv_orchestrator_answer IS INITIAL.
       show_step( i_text = 'Object detector' i_prompt_type = 'LLM' i_pct = 20 ).
       lv_orchestrator_answer = ask_orchestrator( lt_tasks ).
@@ -1037,7 +1068,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         show_step( i_agent = ls_agent_request-agent i_prompt_type = 'LLM' i_pct = lv_percentage ).
 
         DATA(lv_agent_prompt) = mo_messages->build_agent_request( ls_agent_request ).
-        DATA(lv_agent_answer) = mo_llm->ask( lv_agent_prompt ).
+        DATA(lv_agent_schema) = mo_prompts->get_schema_by_agent( ls_agent_request-agent ).
+        DATA(lv_agent_answer) = mo_llm->ask(
+          i_prompt      = lv_agent_prompt
+          i_json_schema = lv_agent_schema ).
         DATA(lv_agent_answer_log) = lv_agent_answer.
         lv_agent_answer = zcl_ai_messages=>strip_log_info( lv_agent_answer ).
 

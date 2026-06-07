@@ -1,0 +1,47 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "sap_task_orchestrator",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "is_pure_code_request": { 
+          "type": "boolean"
+        },
+        "pure_code_object_type": { 
+          "type": "string",
+          "enum": ["PROG", "METH", "CLAS", "FUNC", "REPS", ""]
+        },
+        "pure_code_object_name": { 
+          "type": "string"
+        },
+        "summary": { 
+          "type": "string" 
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task_id": { "type": "string" },
+              "sap_object_type": { 
+                "type": "string",
+                "enum": ["PROG", "METH", "CLAS", "FUNC", "REPS", "OTHER"]
+              },
+              "sap_object_name": { "type": "string" },
+              "action_description": { "type": "string" },
+              "depends_on_task_id": { "type": "string" },
+              "requires_clarification": { "type": "boolean" },
+              "clarification_question": { "type": "string" }
+            },
+            "required": ["task_id", "sap_object_type", "sap_object_name", "action_description", "depends_on_task_id", "requires_clarification", "clarification_question"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["is_pure_code_request", "pure_code_object_type", "pure_code_object_name", "summary", "tasks"],
+      "additionalProperties": false
+    }
+  }
+}

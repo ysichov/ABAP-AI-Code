@@ -12,6 +12,7 @@ public section.
       !I_APIKEY type STRING
       !I_PROVIDER type STRING default 'ANTHROPIC'
       !I_PROMPT_CACHE_KEY type STRING optional
+      !I_JSON_SCHEMA type STRING optional
     exporting
       !EV_TOK_IN     type I
       !EV_TOK_OUT    type I
@@ -28,6 +29,7 @@ private section.
       !I_MODEL type TEXT255
       !I_PROVIDER type STRING
       !I_PROMPT_CACHE_KEY type STRING optional
+      !I_JSON_SCHEMA type STRING optional
     returning
       value(RV_JSON) type STRING .
   class-methods PARSE_RESPONSE
@@ -65,7 +67,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_prompt           = i_prompt
       i_model            = i_model
       i_provider         = lv_provider
-      i_prompt_cache_key = i_prompt_cache_key ).
+      i_prompt_cache_key = i_prompt_cache_key
+      i_json_schema      = i_json_schema ).
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING  destination              = i_dest
@@ -143,12 +146,17 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>form_feed IN lv_prompt WITH '\f'.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_prompt WITH '\t'.
 
-    rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000{ '}' }|.
+    DATA lv_response_format TYPE string.
+    IF i_json_schema IS NOT INITIAL.
+      lv_response_format = |, "response_format": { i_json_schema }|.
+    ENDIF.
+
+    rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000{ lv_response_format }{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_prompt_cache_key WITH '\"'.
-      rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ '}' }|.
+      rv_json = |{ '{' }"model": "{ i_model }", "messages": [{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_response_format }{ '}' }|.
     ENDIF.
 
   endmethod.
