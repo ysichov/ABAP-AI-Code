@@ -312,18 +312,18 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         " Build and show HTML with current content
         DATA lv_color TYPE string.
         IF lv_stream_done = abap_true.
-          lv_color = '#4ec94e'.  " green when done
+          lv_color = '#1a7f1a'.  " dark green when done
         ELSEIF lv_stream_error = abap_true.
-          lv_color = '#e05252'.  " red on error
+          lv_color = '#cc0000'.  " dark red on error
         ELSE.
-          lv_color = '#d4d4d4'.  " grey while streaming
+          lv_color = '#1a1a1a'.  " near-black while streaming
         ENDIF.
 
         DATA lv_stream_html TYPE string.
         lv_stream_html =
           '<html><head><meta charset="UTF-8"><style>'
-          && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e}'
-          && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5}'
+          && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#ffffff}'
+          && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:#1a1a1a}'
           && '</style></head><body>'
           && |<pre style="color:{ lv_color }">{ lv_resp_html }|.
         IF lv_stream_done = abap_false AND lv_stream_error = abap_false.
@@ -363,12 +363,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ENDIF.
       ENDWHILE.
 
-      IF lv_stream_done = abap_true.
-        display_status( 'Done' ).
-      ELSEIF lv_stream_error = abap_true.
-        display_status( 'Stream error' ).
-      ELSE.
-        display_status( 'Stream timeout' ).
+      " Do NOT call display_status here — it would overwrite the streamed answer.
+      " The final HTML is already green (done) / red (error) — no extra message needed.
+      IF lv_stream_error = abap_true.
+        MESSAGE 'Stream error — check C:\soft\stream\llm_stream.log' TYPE 'S'.
+      ELSEIF lv_stream_done = abap_false.
+        MESSAGE 'Stream timeout (30s)' TYPE 'S'.
       ENDIF.
       RETURN.
     ENDIF.
