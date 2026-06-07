@@ -123,6 +123,10 @@ private section.
   methods DISPLAY_PROGRAM_SOURCE
     importing
       !I_SOURCE type STRING .
+  " Show plain text with typewriter animation (streaming effect).
+  methods DISPLAY_STREAMING
+    importing
+      !I_TEXT type STRING .
 ENDCLASS.
 
 
@@ -179,35 +183,34 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Non-code source result (error / "similar classes") — convert to HTML
-    " so the object names become clickable hyperlinks as before.
-    DATA(lv_display_answer) = ls_result-answer.
-    IF ls_result-is_source_code = abap_false
-    AND ls_result-has_diff = abap_false
-    AND ls_result-answer IS NOT INITIAL.
-      lv_display_answer = zcl_code_html_gen=>source_to_html(
-        i_source = ls_result-answer
-        i_title  = 'Search result' ).
-    ENDIF.
+    " Diff result → diff viewer (approve/decline UI)
     IF ls_result-has_diff = abap_true.
-      lv_display_answer = diff_to_html(
+      DATA(lv_diff_html) = diff_to_html(
         i_old_code    = ls_result-diff_old_code
         i_new_code    = ls_result-diff_new_code
         i_object_type = ls_result-diff_object_type
         i_object_name = ls_result-diff_object_name
         i_package     = ls_result-diff_package
         i_usage_text  = ls_result-answer_log ).
+
+      REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*$'
+        IN lv_diff_html WITH '' IGNORING CASE.
+      REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
+        IN lv_diff_html WITH '' IGNORING CASE.
+
+      display_answer(
+        i_answer = lv_diff_html
+        i_source = ls_result-resolved_code
+        i_title  = ls_result-source_title ).
+      RETURN.
     ENDIF.
 
-    REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*$'
-      IN lv_display_answer WITH '' IGNORING CASE.
-    REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
-      IN lv_display_answer WITH '' IGNORING CASE.
-
-    display_answer(
-      i_answer = lv_display_answer
-      i_source = ls_result-resolved_code
-      i_title  = ls_result-source_title ).
+    " Pure AI text answer (code review, explanation, summary etc.)
+    " Show with typewriter animation for streaming feel.
+    " Source-search "not found" pages also land here - still readable as plain text.
+    IF ls_result-answer IS NOT INITIAL.
+      display_streaming( ls_result-answer ).
+    ENDIF.
 
   endmethod.
 
@@ -815,6 +818,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           IF lv_new_temp IS NOT INITIAL.
             mv_temperature = lv_new_temp.
             mo_llm->set_temperature( mv_temperature ).
+            " Update button label to show current temperature value
+            mo_toolbar->set_button_info(
+              EXPORTING fcode = 'SET_TEMP'
+                        text  = |Temp: { mv_temperature }| ).
+            cl_gui_cfw=>flush( ).
             MESSAGE |Temperature set to { mv_temperature }| TYPE 'S'.
           ENDIF.
         ENDIF.
@@ -1165,6 +1173,92 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     IF mo_answer_split IS BOUND.
       mo_answer_split->set_row_height( id = 1 height = 0 ).
       mo_answer_split->set_row_height( id = 2 height = 100 ).
+    ENDIF.
+
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
+
+  METHOD display_streaming.
+
+    " Show plain text with JS typewriter animation (streaming effect).
+    " The full response is already received; animation gives a "live" feel.
+    " Animation speed auto-scales: always ~2-3 seconds regardless of text length.
+
+    DATA lv_js_text TYPE string.
+    DATA lv_cr      TYPE c LENGTH 1.
+    lv_cr = cl_abap_char_utilities=>cr_lf(1).
+
+    " Escape text for embedding inside a JS double-quoted string literal
+    lv_js_text = i_text.
+    REPLACE ALL OCCURRENCES OF '\' IN lv_js_text WITH '\\'.
+    REPLACE ALL OCCURRENCES OF '"' IN lv_js_text WITH '\"'.
+    REPLACE ALL OCCURRENCES OF '`' IN lv_js_text WITH '\`'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_js_text WITH '\n'.
+    REPLACE ALL OCCURRENCES OF lv_cr IN lv_js_text WITH ''.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_js_text WITH '\n'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_js_text WITH '\t'.
+
+    " Build HTML page with embedded typewriter JavaScript
+    DATA lv_html TYPE string.
+    lv_html = |<!DOCTYPE html>| &&
+      |<html><head><meta charset="UTF-8">| &&
+      |<style>| &&
+      |  body { margin:0; padding:8px; font-family:Consolas,monospace; background:#1e1e1e; color:#d4d4d4; }| &&
+      |  #out { white-space:pre-wrap; word-break:break-word; font-size:13px; line-height:1.5; }| &&
+      |  #cursor { display:inline-block; width:2px; height:1em; background:#d4d4d4; vertical-align:text-bottom; animation:blink 0.7s step-end infinite; }| &&
+      |  @keyframes blink { 0%,100%{ opacity:1 } 50%{ opacity:0 } }| &&
+      |</style></head><body>| &&
+      |<pre id="out"></pre><span id="cursor"></span>| &&
+      |<script>| &&
+      |  var full = "{ lv_js_text }";| &&
+      |  var i = 0;| &&
+      |  var el = document.getElementById("out");| &&
+      |  var cur = document.getElementById("cursor");| &&
+      |  var total = full.length;| &&
+      |  var batch = Math.max(1, Math.ceil(total / 80));| &&
+      |  function type() {| &&
+      |    if (i < total) {| &&
+      |      el.textContent += full.substr(i, batch);| &&
+      |      i += batch;| &&
+      |      setTimeout(type, 30);| &&
+      |    } else {| &&
+      |      cur.style.display = "none";| &&
+      |    }| &&
+      |  }| &&
+      |  type();| &&
+      |</script></body></html>|.
+
+    " Load HTML into the answer viewer
+    DATA lt_html TYPE tt_html.
+    DATA ls_html TYPE w3html.
+    DATA lv_offset TYPE i.
+    WHILE lv_offset < strlen( lv_html ).
+      CLEAR ls_html.
+      ls_html-line = substring(
+        val = lv_html
+        off = lv_offset
+        len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
+      APPEND ls_html TO lt_html.
+      lv_offset = lv_offset + 255.
+    ENDWHILE.
+
+    DATA lv_url TYPE c LENGTH 255.
+    mo_answer->load_data(
+      EXPORTING type = 'text' subtype = 'html'
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS = 1 ).
+
+    mo_answer->show_url(
+      EXPORTING url = lv_url
+      EXCEPTIONS OTHERS = 1 ).
+
+    " Switch right panel to HTML viewer row
+    IF mo_answer_split IS BOUND.
+      mo_answer_split->set_row_height( id = 1 height = 100 ).
+      mo_answer_split->set_row_height( id = 2 height = 0 ).
     ENDIF.
 
     cl_gui_cfw=>flush( ).
