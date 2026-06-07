@@ -169,14 +169,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     " --- Streaming path: delegate HTTP call to local Python client ---
     IF mv_stream = abap_true.
-      " Get client temp directory for exchange files
+      " Fixed exchange folder — easy to find and monitor
       DATA lv_temp_dir TYPE string.
-      cl_gui_frontend_services=>get_temp_directory(
-        CHANGING  temp_dir = lv_temp_dir
-        EXCEPTIONS OTHERS  = 1 ).
-      IF lv_temp_dir IS INITIAL.
-        lv_temp_dir = 'C:\temp'.
-      ENDIF.
+      lv_temp_dir = 'C:\soft\stream'.
 
       mv_stream_prompt_file   = lv_temp_dir && '\abap_ai_prompt.json'.
       mv_stream_response_file = lv_temp_dir && '\abap_ai_response.txt'.
