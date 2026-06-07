@@ -1329,21 +1329,22 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '<'  IN lv_html_text WITH '&lt;'.
       REPLACE ALL OCCURRENCES OF '>'  IN lv_html_text WITH '&gt;'.
 
+      " Static cursor — Unicode block character, visible during streaming
       DATA lv_cursor TYPE string.
       IF lv_done = abap_true OR lv_error = abap_true.
         lv_cursor = ''.
       ELSE.
-        lv_cursor = |<span style="display:inline-block;width:2px;height:1em;background:{ lv_status_color };vertical-align:text-bottom;animation:blink 0.7s step-end infinite"></span>|.
+        lv_cursor = '&#9608;'.  " █ block cursor, no animation needed
       ENDIF.
 
-      lv_html = |<!DOCTYPE html><html><head><meta charset="UTF-8">| &&
-        |<style>| &&
-        |  body { margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e;color:#d4d4d4; }| &&
-        |  pre { white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:{ lv_status_color }; }| &&
-        |  @keyframes blink { 0%,100%{ opacity:1 } 50%{ opacity:0 } }| &&
-        |</style></head><body>| &&
-        |<pre>{ lv_html_text }{ lv_cursor }</pre>| &&
-        |</body></html>|.
+      " Note: CSS { } inside ABAP template strings | | would be parsed as variable refs.
+      " Use string concatenation with regular literals for the static CSS parts.
+      lv_html = '<html><head><meta charset="UTF-8"><style>'
+        && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e;color:#d4d4d4}'
+        && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5}'
+        && '</style></head><body>'
+        && |<pre style="color:{ lv_status_color }">{ lv_html_text }{ lv_cursor }</pre>|
+        && '</body></html>'.
 
       " Load into HTML viewer
       DATA lt_html TYPE tt_html.
@@ -1378,11 +1379,8 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     IF lv_done = abap_true OR lv_error = abap_true.
       mo_timer->stop( ).
 
-      " Delete response file on client — API key already gone (Python deleted prompt file)
-      " cl_gui_frontend_services has no delete; use file_delete if available
-      cl_gui_frontend_services=>file_delete(
-        EXPORTING filename   = mv_stream_response_file
-        EXCEPTIONS file_delete_failed = 1 OTHERS = 2 ).
+      " Response file stays on disk — it contains only LLM text (no API key).
+      " API key was already deleted by Python right after reading prompt file.
 
       IF lv_error = abap_true.
         display_status( |Stream error - see response panel| ).
@@ -1414,35 +1412,27 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_js_text WITH '\n'.
     REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_js_text WITH '\t'.
 
-    " Build HTML page with embedded typewriter JavaScript
+    " Build HTML page with embedded typewriter JavaScript.
+    " IMPORTANT: CSS/JS curly braces { } cannot be inside ABAP template strings | |
+    " because ABAP interprets { as start of variable reference.
+    " Use '...' literals for static HTML/CSS/JS, | | only where ABAP vars are embedded.
     DATA lv_html TYPE string.
-    lv_html = |<!DOCTYPE html>| &&
-      |<html><head><meta charset="UTF-8">| &&
-      |<style>| &&
-      |  body { margin:0; padding:8px; font-family:Consolas,monospace; background:#1e1e1e; color:#d4d4d4; }| &&
-      |  #out { white-space:pre-wrap; word-break:break-word; font-size:13px; line-height:1.5; }| &&
-      |  #cursor { display:inline-block; width:2px; height:1em; background:#d4d4d4; vertical-align:text-bottom; animation:blink 0.7s step-end infinite; }| &&
-      |  @keyframes blink { 0%,100%{ opacity:1 } 50%{ opacity:0 } }| &&
-      |</style></head><body>| &&
-      |<pre id="out"></pre><span id="cursor"></span>| &&
-      |<script>| &&
-      |  var full = "{ lv_js_text }";| &&
-      |  var i = 0;| &&
-      |  var el = document.getElementById("out");| &&
-      |  var cur = document.getElementById("cursor");| &&
-      |  var total = full.length;| &&
-      |  var batch = Math.max(1, Math.ceil(total / 80));| &&
-      |  function type() {| &&
-      |    if (i < total) {| &&
-      |      el.textContent += full.substr(i, batch);| &&
-      |      i += batch;| &&
-      |      setTimeout(type, 30);| &&
-      |    } else {| &&
-      |      cur.style.display = "none";| &&
-      |    }| &&
-      |  }| &&
-      |  type();| &&
-      |</script></body></html>|.
+    lv_html =
+      '<html><head><meta charset="UTF-8"><style>'
+      && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e;color:#d4d4d4}'
+      && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5}'
+      && '</style></head><body>'
+      && '<pre id="out"></pre><span id="cur">&#9608;</span>'
+      && '<script>'
+      && |var full="{ lv_js_text }";|
+      && 'var i=0,el=document.getElementById("out"),cur=document.getElementById("cur");'
+      && 'var total=full.length,batch=Math.max(1,Math.ceil(total/80));'
+      && 'function type(){'
+      &&   'if(i<total){el.innerText+=full.substr(i,batch);i+=batch;setTimeout(type,30);}'
+      &&   'else{cur.style.display="none";}'
+      && '}'
+      && 'type();'
+      && '</script></body></html>'.
 
     " Load HTML into the answer viewer
     DATA lt_html TYPE tt_html.
