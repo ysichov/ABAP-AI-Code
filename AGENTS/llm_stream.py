@@ -106,11 +106,17 @@ def main() -> None:
 
     log(f"START provider={provider} model={model}")
 
+    # Use system locale encoding so SAP GUI gui_upload can read the file correctly.
+    # On Russian/Ukrainian Windows this is cp1251; on Western Windows cp1252.
+    import locale
+    file_encoding = locale.getpreferredencoding(False) or "utf-8"
+    log(f"file_encoding={file_encoding}")
+
     # Clear response file before writing
-    open(response_file, "w", encoding="utf-8").close()
+    open(response_file, "w", encoding=file_encoding).close()
 
     try:
-        with open(response_file, "a", encoding="utf-8") as out:
+        with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             if provider == "ANTHROPIC":
                 log("calling anthropic stream...")
                 stream_anthropic(prompt, model, api_key, temperature, out)
@@ -123,7 +129,7 @@ def main() -> None:
 
     except Exception as exc:
         log(f"ERROR: {exc}")
-        with open(response_file, "a", encoding="utf-8") as out:
+        with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             out.write(f"\n##ERROR## {exc}")
 
 

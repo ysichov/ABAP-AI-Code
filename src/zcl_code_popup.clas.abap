@@ -236,13 +236,13 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         CHANGING  data_tab = lt_empty
         EXCEPTIONS OTHERS  = 1 ).
 
-      " Launch Python script via PowerShell hidden — no console window appears.
-      " -WindowStyle Hidden suppresses both the PowerShell and child Python window.
+      " Launch Python via cmd.exe (trusted by SAP GUI Security).
+      " "start /b" runs Python without opening a new console window.
       DATA(lv_script) = mv_agents_path && '\llm_stream.py'.
-      DATA(lv_params) = |-WindowStyle Hidden -Command "python '{ lv_script }' '{ mv_stream_prompt_file }' '{ mv_stream_response_file }'"|.
+      DATA(lv_params) = |/c start "" /b python "{ lv_script }" "{ mv_stream_prompt_file }" "{ mv_stream_response_file }"|.
       cl_gui_frontend_services=>execute(
         EXPORTING
-          application       = 'powershell.exe'
+          application       = 'cmd.exe'
           parameter         = lv_params
           default_directory = lv_temp_dir
           synchronous       = ' '
