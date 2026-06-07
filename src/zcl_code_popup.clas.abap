@@ -272,9 +272,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         CLEAR lt_resp_lines.
         " Check file size first — skip upload if file still empty (avoids "0 of 0" dialog)
         DATA lv_resp_fsize TYPE i.
-        cl_gui_frontend_services=>get_file_size(
-          EXPORTING filename   = mv_stream_response_file
-          CHANGING  file_size  = lv_resp_fsize
+        cl_gui_frontend_services=>file_get_size(
+          EXPORTING file_name  = mv_stream_response_file
+          IMPORTING file_size  = lv_resp_fsize
           EXCEPTIONS OTHERS    = 1 ).
         IF lv_resp_fsize > 0.
           cl_gui_frontend_services=>gui_upload(
