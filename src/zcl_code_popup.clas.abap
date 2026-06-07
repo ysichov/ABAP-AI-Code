@@ -219,12 +219,14 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         CHANGING  data_tab = lt_empty
         EXCEPTIONS OTHERS  = 1 ).
 
-      " Launch Python script asynchronously on client machine
+      " Launch Python script via cmd.exe asynchronously on client machine.
+      " cmd /c ensures python is found via PATH; stderr redirected to log file.
       DATA(lv_script) = mv_agents_path && '\llm_stream.py'.
-      DATA(lv_params) = |"{ lv_script }" "{ mv_stream_prompt_file }" "{ mv_stream_response_file }"|.
+      DATA(lv_log)    = mv_stream_response_file && '.log'.
+      DATA(lv_params) = |/c python "{ lv_script }" "{ mv_stream_prompt_file }" "{ mv_stream_response_file }" 2>>"{ lv_log }"|.
       cl_gui_frontend_services=>execute(
         EXPORTING
-          application       = 'python'
+          application       = 'cmd.exe'
           parameter         = lv_params
           default_directory = lv_temp_dir
           synchronous       = ' '
