@@ -257,7 +257,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         " Read file every 500ms
         lv_ts_elapsed = cl_abap_tstmp=>subtract( tstmp1 = lv_ts_now tstmp2 = lv_ts_last_read ).
-        IF lv_ts_elapsed < '0.5'.
+        IF lv_ts_elapsed < '0.1'.
           cl_gui_cfw=>flush( ).  " keep GUI alive between half-second checks
           CONTINUE.
         ENDIF.
@@ -299,10 +299,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           lv_stream_error = abap_true.
           REPLACE ALL OCCURRENCES OF '##ERROR##' IN lv_resp_text WITH ''.
         ENDIF.
-        CONDENSE lv_resp_text.
+        " Do NOT condense — preserves code indentation and formatting
 
         " Escape for HTML
         DATA lv_resp_html TYPE string.
+        CLEAR lv_resp_html.
         lv_resp_html = lv_resp_text.
         REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
         REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
@@ -334,6 +335,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         DATA ls_stream_html TYPE w3html.
         DATA lv_stream_off  TYPE i.
         CLEAR lt_stream_html.
+        CLEAR lv_stream_off.
         WHILE lv_stream_off < strlen( lv_stream_html ).
           CLEAR ls_stream_html.
           ls_stream_html-line = substring(
