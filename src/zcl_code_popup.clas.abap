@@ -239,39 +239,50 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       display_status( |Stream started. Files: { mv_stream_prompt_file } / { mv_stream_response_file }| ).
       cl_gui_cfw=>flush( ).
 
-      " Poll response file using timestamps — no WAIT, so GUI stays responsive.
-      " GET RUN TIME returns microseconds. Check file every 500ms, timeout after 30s.
+      " Poll response file using wall-clock timestamps (TIMESTAMPL = real time, not CPU time).
+      " cl_abap_tstmp=>subtract returns seconds as decimal.
+      " Check file every 0.5s, timeout after 30s, flush() keeps GUI alive between checks.
       DATA lv_stream_done  TYPE abap_bool.
-      DATA lv_ts_start     TYPE i.
-      DATA lv_ts_now       TYPE i.
-      DATA lv_ts_last_read TYPE i.
-      GET RUN TIME FIELD lv_ts_start.
+      DATA lv_ts_start     TYPE timestampl.
+      DATA lv_ts_now       TYPE timestampl.
+      DATA lv_ts_last_read TYPE timestampl.
+      DATA lv_ts_elapsed   TYPE p DECIMALS 3.
+      GET TIME STAMP FIELD lv_ts_start.
       lv_ts_last_read = lv_ts_start.
 
       WHILE abap_true = abap_true.
-        GET RUN TIME FIELD lv_ts_now.
+        GET TIME STAMP FIELD lv_ts_now.
 
         " Timeout after 30 seconds
-        IF ( lv_ts_now - lv_ts_start ) > 30000000.
+        lv_ts_elapsed = cl_abap_tstmp=>subtract( tstmp1 = lv_ts_now tstmp2 = lv_ts_start ).
+        IF lv_ts_elapsed > 30.
           EXIT.
         ENDIF.
 
         " Read file every 500ms
-        IF ( lv_ts_now - lv_ts_last_read ) < 500000.
-          cl_gui_cfw=>flush( ).   " keep GUI alive between checks
+        lv_ts_elapsed = cl_abap_tstmp=>subtract( tstmp1 = lv_ts_now tstmp2 = lv_ts_last_read ).
+        IF lv_ts_elapsed < '0.5'.
+          cl_gui_cfw=>flush( ).  " keep GUI alive between half-second checks
           CONTINUE.
         ENDIF.
-        lv_ts_last_read = lv_ts_now.
+        GET TIME STAMP FIELD lv_ts_last_read.  " reset half-second counter
 
         " Read current content from client file
         DATA lt_resp_lines TYPE TABLE OF string.
         CLEAR lt_resp_lines.
-        cl_gui_frontend_services=>gui_upload(
-          EXPORTING filename             = mv_stream_response_file
-                    filetype             = 'ASC'
-                    show_transfer_status = ' '
-          CHANGING  data_tab = lt_resp_lines
-          EXCEPTIONS OTHERS  = 1 ).
+        " Check file size first — skip upload if file still empty (avoids "0 of 0" dialog)
+        DATA lv_resp_fsize TYPE i.
+        cl_gui_frontend_services=>get_file_size(
+          EXPORTING filename   = mv_stream_response_file
+          CHANGING  file_size  = lv_resp_fsize
+          EXCEPTIONS OTHERS    = 1 ).
+        IF lv_resp_fsize > 0.
+          cl_gui_frontend_services=>gui_upload(
+            EXPORTING filename = mv_stream_response_file
+                      filetype = 'ASC'
+            CHANGING  data_tab = lt_resp_lines
+            EXCEPTIONS OTHERS  = 1 ).
+        ENDIF.
 
         " Concatenate lines
         DATA lv_resp_text TYPE string.
@@ -439,6 +450,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     mv_apikey      = i_apikey.
     mv_model       = i_model.
     mv_provider    = i_provider.
+
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 

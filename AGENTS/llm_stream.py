@@ -42,10 +42,24 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
             out_file.flush()
 
 
-def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out_file) -> None:
+def get_base_url(model: str, base_url: str) -> str:
+    """Determine base_url from model name if not explicitly provided."""
+    if base_url:
+        return base_url
+    m = model.lower()
+    if "codestral" in m:
+        return "https://codestral.mistral.ai/v1"
+    if "mistral" in m or "mixtral" in m or "devstral" in m:
+        return "https://api.mistral.ai/v1"
+    return None  # default OpenAI
+
+
+def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out_file,
+                  base_url: str = None) -> None:
     from openai import OpenAI  # pip install openai
 
-    client = OpenAI(api_key=api_key)
+    url = get_base_url(model, base_url)
+    client = OpenAI(api_key=api_key, base_url=url) if url else OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
         max_tokens=8096,
@@ -77,12 +91,10 @@ def main() -> None:
     provider    = cfg.get("provider", "ANTHROPIC").upper()
     api_key     = cfg.get("api_key", "")
     temperature = float(cfg.get("temperature", "0.1"))
+    base_url    = cfg.get("base_url", None)  # optional: for OpenAI-compatible APIs (Mistral etc.)
 
-    # Delete prompt file immediately — it contains the API key
-    try:
-        os.remove(prompt_file)
-    except OSError:
-        pass
+    # Note: prompt file is NOT deleted — useful for local debugging.
+    # In production, consider deleting it here to protect the API key.
 
     # Write log file next to response file for debugging
     log_file = response_file + ".log"
@@ -102,8 +114,8 @@ def main() -> None:
                 log("calling anthropic stream...")
                 stream_anthropic(prompt, model, api_key, temperature, out)
             else:
-                log("calling openai stream...")
-                stream_openai(prompt, model, api_key, temperature, out)
+                log(f"calling openai stream... base_url={base_url}")
+                stream_openai(prompt, model, api_key, temperature, out, base_url)
 
             out.write("\n##DONE##")
             log("DONE")
