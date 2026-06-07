@@ -65,7 +65,6 @@ private section.
   data MV_APIKEY type STRING .
   data MV_MODEL type TEXT255 .
   data MV_PROVIDER type STRING .
-  data MO_TIMER type ref to CL_GUI_TIMER .
   data MV_STREAM_PROMPT_FILE type STRING .
   data MV_STREAM_RESPONSE_FILE type STRING .
   data MV_RUN_PROGRAM type PROGNAME .
@@ -87,9 +86,6 @@ private section.
       !FCODE .
   methods ON_DIALOG_CLOSE
     for event CLOSE of CL_GUI_DIALOGBOX_CONTAINER .
-  " Timer handler: polls client-side response file during Python streaming.
-  methods ON_TIMER
-    for event ACTION of CL_GUI_TIMER .
   methods ON_ANSWER_SAPEVENT
     for event SAPEVENT of CL_GUI_HTML_VIEWER
     importing
@@ -233,15 +229,108 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           synchronous       = ' '
         EXCEPTIONS OTHERS   = 1 ).
 
-      " Start polling timer (100ms interval)
-      IF mo_timer IS NOT BOUND.
-        mo_timer = NEW cl_gui_timer( ).
-        SET HANDLER on_timer FOR mo_timer.
-      ENDIF.
-      mo_timer->interval = 100.
-      mo_timer->run( ).
+      " Poll response file every second until Python writes ##DONE## or ##ERROR##.
+      " WAIT UP TO pauses ABAP but Python continues writing to the file independently.
+      DATA lv_stream_done TYPE abap_bool.
+      DO 180 TIMES.  " max 3 minutes
+        WAIT UP TO 1 SECONDS.
 
-      display_status( |Streaming... (Python client active)| ).
+        " Read current content from client file
+        DATA lt_resp_lines TYPE TABLE OF string.
+        CLEAR lt_resp_lines.
+        cl_gui_frontend_services=>gui_upload(
+          EXPORTING filename = mv_stream_response_file filetype = 'ASC'
+          CHANGING  data_tab = lt_resp_lines
+          EXCEPTIONS OTHERS  = 1 ).
+
+        " Concatenate lines
+        DATA lv_resp_text TYPE string.
+        CLEAR lv_resp_text.
+        LOOP AT lt_resp_lines INTO DATA(lv_resp_line).
+          IF lv_resp_text IS NOT INITIAL.
+            lv_resp_text = lv_resp_text && cl_abap_char_utilities=>newline.
+          ENDIF.
+          lv_resp_text = lv_resp_text && lv_resp_line.
+        ENDLOOP.
+
+        " Check terminal markers
+        DATA lv_stream_error TYPE abap_bool.
+        IF lv_resp_text CS '##DONE##'.
+          lv_stream_done = abap_true.
+          REPLACE ALL OCCURRENCES OF '##DONE##' IN lv_resp_text WITH ''.
+        ELSEIF lv_resp_text CS '##ERROR##'.
+          lv_stream_error = abap_true.
+          REPLACE ALL OCCURRENCES OF '##ERROR##' IN lv_resp_text WITH ''.
+        ENDIF.
+        CONDENSE lv_resp_text.
+
+        " Escape for HTML
+        DATA lv_resp_html TYPE string.
+        lv_resp_html = lv_resp_text.
+        REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
+        REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
+        REPLACE ALL OCCURRENCES OF '>' IN lv_resp_html WITH '&gt;'.
+
+        " Build and show HTML with current content
+        DATA lv_color TYPE string.
+        IF lv_stream_done = abap_true.
+          lv_color = '#4ec94e'.  " green when done
+        ELSEIF lv_stream_error = abap_true.
+          lv_color = '#e05252'.  " red on error
+        ELSE.
+          lv_color = '#d4d4d4'.  " grey while streaming
+        ENDIF.
+
+        DATA lv_stream_html TYPE string.
+        lv_stream_html =
+          '<html><head><meta charset="UTF-8"><style>'
+          && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e}'
+          && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5}'
+          && '</style></head><body>'
+          && |<pre style="color:{ lv_color }">{ lv_resp_html }|.
+        IF lv_stream_done = abap_false AND lv_stream_error = abap_false.
+          lv_stream_html = lv_stream_html && '&#9608;'.  " block cursor while in progress
+        ENDIF.
+        lv_stream_html = lv_stream_html && '</pre></body></html>'.
+
+        DATA lt_stream_html TYPE tt_html.
+        DATA ls_stream_html TYPE w3html.
+        DATA lv_stream_off  TYPE i.
+        CLEAR lt_stream_html.
+        WHILE lv_stream_off < strlen( lv_stream_html ).
+          CLEAR ls_stream_html.
+          ls_stream_html-line = substring(
+            val = lv_stream_html off = lv_stream_off
+            len = nmin( val1 = 255 val2 = strlen( lv_stream_html ) - lv_stream_off ) ).
+          APPEND ls_stream_html TO lt_stream_html.
+          lv_stream_off = lv_stream_off + 255.
+        ENDWHILE.
+
+        DATA lv_stream_url TYPE c LENGTH 255.
+        mo_answer->load_data(
+          EXPORTING type = 'text' subtype = 'html'
+          IMPORTING assigned_url = lv_stream_url
+          CHANGING  data_table   = lt_stream_html
+          EXCEPTIONS OTHERS = 1 ).
+        mo_answer->show_url( EXPORTING url = lv_stream_url EXCEPTIONS OTHERS = 1 ).
+        IF mo_answer_split IS BOUND.
+          mo_answer_split->set_row_height( id = 1 height = 100 ).
+          mo_answer_split->set_row_height( id = 2 height = 0 ).
+        ENDIF.
+        cl_gui_cfw=>flush( ).
+
+        IF lv_stream_done = abap_true OR lv_stream_error = abap_true.
+          EXIT.
+        ENDIF.
+      ENDDO.
+
+      IF lv_stream_done = abap_true.
+        display_status( 'Done' ).
+      ELSEIF lv_stream_error = abap_true.
+        display_status( 'Stream error' ).
+      ELSE.
+        display_status( 'Stream timeout' ).
+      ENDIF.
       RETURN.
     ENDIF.
     " --- End streaming path ---
@@ -1274,122 +1363,6 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD on_timer.
-
-    " Poll client-side response file written by Python llm_stream.py.
-    " Called every 100ms while streaming is active.
-    IF mv_stream_response_file IS INITIAL.
-      mo_timer->stop( ).
-      RETURN.
-    ENDIF.
-
-    " Read current content of response file from client machine
-    DATA lt_lines TYPE TABLE OF string.
-    cl_gui_frontend_services=>gui_upload(
-      EXPORTING filename = mv_stream_response_file filetype = 'ASC'
-      CHANGING  data_tab = lt_lines
-      EXCEPTIONS OTHERS  = 1 ).
-
-    " Join lines into single string
-    DATA lv_text TYPE string.
-    LOOP AT lt_lines INTO DATA(lv_line).
-      IF lv_text IS NOT INITIAL.
-        lv_text = lv_text && cl_abap_char_utilities=>newline.
-      ENDIF.
-      lv_text = lv_text && lv_line.
-    ENDLOOP.
-
-    " Check for terminal markers written by Python script
-    DATA lv_done  TYPE abap_bool.
-    DATA lv_error TYPE abap_bool.
-    IF lv_text CS '##DONE##'.
-      lv_done = abap_true.
-      REPLACE ALL OCCURRENCES OF REGEX '\n?##DONE##' IN lv_text WITH ''.
-    ELSEIF lv_text CS '##ERROR##'.
-      lv_error = abap_true.
-      REPLACE ALL OCCURRENCES OF REGEX '\n?##ERROR##' IN lv_text WITH ''.
-    ENDIF.
-
-    " Update HTML viewer with current accumulated text
-    IF lv_text IS NOT INITIAL OR lv_done = abap_true OR lv_error = abap_true.
-      DATA lv_html TYPE string.
-      DATA lv_status_color TYPE string.
-      IF lv_done = abap_true.
-        lv_status_color = '#4ec94e'.  " green - complete
-      ELSEIF lv_error = abap_true.
-        lv_status_color = '#e05252'.  " red - error
-      ELSE.
-        lv_status_color = '#d4d4d4'.  " grey - in progress (cursor blinks)
-      ENDIF.
-
-      " Escape text for HTML display
-      DATA lv_html_text TYPE string.
-      lv_html_text = lv_text.
-      REPLACE ALL OCCURRENCES OF '&'  IN lv_html_text WITH '&amp;'.
-      REPLACE ALL OCCURRENCES OF '<'  IN lv_html_text WITH '&lt;'.
-      REPLACE ALL OCCURRENCES OF '>'  IN lv_html_text WITH '&gt;'.
-
-      " Static cursor — Unicode block character, visible during streaming
-      DATA lv_cursor TYPE string.
-      IF lv_done = abap_true OR lv_error = abap_true.
-        lv_cursor = ''.
-      ELSE.
-        lv_cursor = '&#9608;'.  " █ block cursor, no animation needed
-      ENDIF.
-
-      " Note: CSS { } inside ABAP template strings | | would be parsed as variable refs.
-      " Use string concatenation with regular literals for the static CSS parts.
-      lv_html = '<html><head><meta charset="UTF-8"><style>'
-        && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e;color:#d4d4d4}'
-        && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5}'
-        && '</style></head><body>'
-        && |<pre style="color:{ lv_status_color }">{ lv_html_text }{ lv_cursor }</pre>|
-        && '</body></html>'.
-
-      " Load into HTML viewer
-      DATA lt_html TYPE tt_html.
-      DATA ls_html TYPE w3html.
-      DATA lv_offset TYPE i.
-      WHILE lv_offset < strlen( lv_html ).
-        CLEAR ls_html.
-        ls_html-line = substring(
-          val = lv_html off = lv_offset
-          len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
-        APPEND ls_html TO lt_html.
-        lv_offset = lv_offset + 255.
-      ENDWHILE.
-
-      DATA lv_url TYPE c LENGTH 255.
-      mo_answer->load_data(
-        EXPORTING type = 'text' subtype = 'html'
-        IMPORTING assigned_url = lv_url
-        CHANGING  data_table   = lt_html
-        EXCEPTIONS OTHERS = 1 ).
-      mo_answer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
-
-      " Switch panel to HTML viewer
-      IF mo_answer_split IS BOUND.
-        mo_answer_split->set_row_height( id = 1 height = 100 ).
-        mo_answer_split->set_row_height( id = 2 height = 0 ).
-      ENDIF.
-      cl_gui_cfw=>flush( ).
-    ENDIF.
-
-    " Stop timer when Python script signals completion
-    IF lv_done = abap_true OR lv_error = abap_true.
-      mo_timer->stop( ).
-
-      " Response file stays on disk — it contains only LLM text (no API key).
-      " API key was already deleted by Python right after reading prompt file.
-
-      IF lv_error = abap_true.
-        display_status( |Stream error - see response panel| ).
-      ELSE.
-        display_status( |Done| ).
-      ENDIF.
-    ENDIF.
-
-  ENDMETHOD.
 
 
   METHOD display_streaming.
