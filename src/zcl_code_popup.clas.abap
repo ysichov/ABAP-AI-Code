@@ -913,7 +913,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
                     text      = 'History'
                     quickinfo = 'Show message history' ) TO lt_buttons.
     APPEND VALUE #( function  = 'SET_TEMP'
-                    icon      = CONV #( icon_temperature )
+                    icon      = CONV #( icon_start_viewer )
                     butn_type = cntb_btype_button
                     text      = |Temp: { mv_temperature }|
                     quickinfo = 'Set LLM temperature (0.0 = deterministic, 1.0 = creative)' ) TO lt_buttons.
