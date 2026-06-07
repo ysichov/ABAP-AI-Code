@@ -97,7 +97,8 @@ def main() -> None:
     # In production, consider deleting it here to protect the API key.
 
     # Write log file next to response file for debugging
-    log_file = response_file + ".log"
+    import os
+    log_file = os.path.join(os.path.dirname(response_file), "llm_stream.log")
     import datetime
     def log(msg):
         with open(log_file, "a", encoding="utf-8") as f:
