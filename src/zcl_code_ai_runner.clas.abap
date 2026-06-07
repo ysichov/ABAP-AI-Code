@@ -45,6 +45,11 @@ public section.
   methods SET_HTML_VIEWER
     importing
       !IO_VIEWER type ref to CL_GUI_HTML_VIEWER .
+  " Call after Python finishes streaming: logs the answer in mo_messages and
+  " marks the Final answer step as completed in the progress panel.
+  methods REGISTER_STREAM_ANSWER
+    importing
+      !I_ANSWER type STRING .
 protected section.
 private section.
 
@@ -1829,5 +1834,28 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
     ENDIF.
 
   ENDMETHOD.
+
+
+  METHOD register_stream_answer.
+
+    " Log the streamed LLM answer in mo_messages and mark the Final answer step done.
+    IF mo_messages IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    mo_messages->add_message(
+      i_role        = 'assistant'
+      i_agent       = 'FINAL'
+      i_prompt_type = 'FINAL_ANSWER'
+      i_content     = i_answer ).
+
+    complete_last_step(
+      i_is_llm = abap_true
+      i_seconds = 0 ).
+
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
 
 ENDCLASS.

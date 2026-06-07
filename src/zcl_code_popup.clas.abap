@@ -380,8 +380,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ENDIF.
       ENDWHILE.
 
-      " Do NOT call display_status here — it would overwrite the streamed answer.
-      " The final HTML is already green (done) / red (error) — no extra message needed.
+      " Register streamed answer in message history (so it appears in History popup).
+      IF lv_stream_done = abap_true.
+        lo_runner_s->register_stream_answer( lv_resp_text ).
+        APPEND LINES OF lo_runner_s->get_messages( )->get_messages( ) TO mt_message_history.
+      ENDIF.
+      " Do NOT call display_status — it would overwrite the streamed answer.
       IF lv_stream_error = abap_true.
         MESSAGE 'Stream error — check C:\soft\stream\llm_stream.log' TYPE 'S'.
       ELSEIF lv_stream_done = abap_false.
