@@ -106,10 +106,10 @@ def main() -> None:
 
     log(f"START provider={provider} model={model}")
 
-    # Use system locale encoding so SAP GUI gui_upload can read the file correctly.
-    # On Russian/Ukrainian Windows this is cp1251; on Western Windows cp1252.
-    import locale
-    file_encoding = locale.getpreferredencoding(False) or "utf-8"
+    # Write response in cp1251 (Windows Cyrillic codepage).
+    # SAP GUI gui_upload(filetype='ASC') reads files in the local ANSI codepage.
+    # On Russian/Ukrainian Windows that is cp1251.
+    file_encoding = "cp1251"
     log(f"file_encoding={file_encoding}")
 
     # Clear response file before writing
@@ -131,6 +131,7 @@ def main() -> None:
         log(f"ERROR: {exc}")
         with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             out.write(f"\n##ERROR## {exc}")
+
 
 
 if __name__ == "__main__":
