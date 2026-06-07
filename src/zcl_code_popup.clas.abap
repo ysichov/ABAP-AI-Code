@@ -318,13 +318,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ENDIF.
         " Do NOT condense — preserves code indentation and formatting
 
-        " Escape for HTML
+        " Python already wrote HTML-safe content (entities for non-ASCII, escaped & < >).
+        " Do NOT re-escape here — it would corrupt &amp; into &amp;amp; etc.
         DATA lv_resp_html TYPE string.
-        CLEAR lv_resp_html.
         lv_resp_html = lv_resp_text.
-        REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
-        REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
-        REPLACE ALL OCCURRENCES OF '>' IN lv_resp_html WITH '&gt;'.
 
         " Build and show HTML with current content
         DATA lv_color TYPE string.

@@ -55,11 +55,18 @@ def get_base_url(model: str, base_url: str) -> str:
 
 
 def to_ascii_html(text: str) -> str:
-    """Convert non-ASCII characters to HTML entities so the file stays pure ASCII.
-    This avoids all encoding issues when SAP GUI reads and displays the file."""
+    """Escape HTML special chars and convert non-ASCII to numeric HTML entities.
+    Result is pure ASCII, safe to embed directly in a <pre> HTML block.
+    ABAP must NOT re-escape the content after reading this file."""
     result = []
     for ch in text:
-        if ord(ch) > 127:
+        if ch == '&':
+            result.append('&amp;')
+        elif ch == '<':
+            result.append('&lt;')
+        elif ch == '>':
+            result.append('&gt;')
+        elif ord(ch) > 127:
             result.append(f'&#{ord(ch)};')
         else:
             result.append(ch)
