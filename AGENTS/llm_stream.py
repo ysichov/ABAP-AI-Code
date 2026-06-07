@@ -37,9 +37,11 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
         temperature=temperature,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
+        import time
         for text in stream.text_stream:
             out_file.write(to_ascii_html(text))
             out_file.flush()
+            time.sleep(0.04)
 
 
 def get_base_url(model: str, base_url: str) -> str:
@@ -86,11 +88,13 @@ def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out
         messages=[{"role": "user", "content": prompt}],
         stream=True,
     )
+    import time
     for chunk in response:
         delta = chunk.choices[0].delta.content
         if delta:
             out_file.write(to_ascii_html(delta))
             out_file.flush()
+            time.sleep(0.04)  # 40ms pause — makes streaming visible in SAP GUI
 
 
 def main() -> None:

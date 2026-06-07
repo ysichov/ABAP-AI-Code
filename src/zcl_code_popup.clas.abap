@@ -378,8 +378,29 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       ENDWHILE.
 
       " Register streamed answer in message history (so it appears in History popup).
+      " Decode HTML entities back to readable text before storing.
       IF lv_stream_done = abap_true.
-        lo_runner_s->register_stream_answer( lv_resp_text ).
+        DATA lv_resp_clean TYPE string.
+        lv_resp_clean = lv_resp_text.
+        REPLACE ALL OCCURRENCES OF '&amp;'  IN lv_resp_clean WITH '&'.
+        REPLACE ALL OCCURRENCES OF '&lt;'   IN lv_resp_clean WITH '<'.
+        REPLACE ALL OCCURRENCES OF '&gt;'   IN lv_resp_clean WITH '>'.
+        " Decode &#NNN; numeric entities (Cyrillic etc.) using regex + character conversion
+        DATA lt_ent_matches TYPE match_result_tab.
+        FIND ALL OCCURRENCES OF REGEX '&#(\d+);'
+          IN lv_resp_clean RESULTS lt_ent_matches.
+        LOOP AT lt_ent_matches INTO DATA(ls_ent) IN REVERSE ORDER.
+          DATA(lv_code) = substring(
+            val = lv_resp_clean
+            off = ls_ent-submatches[ 1 ]-offset
+            len = ls_ent-submatches[ 1 ]-length ).
+          DATA(lv_codepoint) = CONV i( lv_code ).
+          DATA(lv_char) = cl_abap_conv_codepage=>uc_to_char( lv_codepoint ).
+          lv_resp_clean = substring( val = lv_resp_clean len = ls_ent-offset )
+            && lv_char
+            && substring( val = lv_resp_clean off = ls_ent-offset + ls_ent-length ).
+        ENDLOOP.
+        lo_runner_s->register_stream_answer( lv_resp_clean ).
         APPEND LINES OF lo_runner_s->get_messages( )->get_messages( ) TO mt_message_history.
       ENDIF.
       " Do NOT call display_status — it would overwrite the streamed answer.
