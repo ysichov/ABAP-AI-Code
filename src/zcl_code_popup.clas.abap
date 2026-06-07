@@ -338,7 +338,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         DATA lv_stream_html TYPE string.
         lv_stream_html =
-          '<html><head><meta charset="windows-1251"><style>'
+          '<html><head><meta charset="UTF-8"><style>'
           && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#ffffff}'
           && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:#1a1a1a}'
           && '</style></head><body>'
