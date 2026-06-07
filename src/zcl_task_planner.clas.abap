@@ -135,6 +135,8 @@ CLASS ZCL_TASK_PLANNER IMPLEMENTATION.
           lv_agent = 'CODE_SEARCH'.
         WHEN 'ZCL_AI_TOOL=>SAVE'.
           lv_agent = 'CODE_CHANGE'.
+        WHEN 'ZCL_AI_TOOL=>REVIEW'.
+          lv_agent = 'CODE_REVIEW'.
         WHEN 'NONE' OR ''.
           " No SAP object involved - skip as standalone task text
           APPEND ls_task-action_description TO rt_tasks.

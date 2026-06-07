@@ -191,7 +191,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         i_skip_final_llm  = abap_true ).
 
       mo_messages = ls_stream_prep-messages_ref.
-      APPEND LINES OF ls_stream_prep-messages TO mt_message_history.
+      " Do NOT append messages here — will append after streaming completes (with FINAL message).
 
       " Build JSON config + assembled final prompt for the Python script
       DATA lv_json_prompt TYPE string.
