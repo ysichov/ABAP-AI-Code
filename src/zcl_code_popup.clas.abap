@@ -176,14 +176,31 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       mv_stream_prompt_file   = lv_temp_dir && '\abap_ai_prompt.json'.
       mv_stream_response_file = lv_temp_dir && '\abap_ai_response.txt'.
 
-      " Build JSON config + prompt for the Python script
+      " Run all agent prep steps (detect language, plan tasks, read code) but skip
+      " the final LLM call — returns the fully assembled prompt in rs_result-final_prompt.
+      display_status( |Preparing prompt...| ).
+      cl_gui_cfw=>flush( ).
+
+      DATA(lo_runner_s) = NEW zcl_code_ai_runner(
+        io_llm     = mo_llm
+        io_prompts = mo_prompts ).
+      lo_runner_s->set_html_viewer( mo_progress ).
+      DATA(ls_stream_prep) = lo_runner_s->run(
+        i_prompt          = lv_prompt
+        i_session_id      = mv_session_counter
+        i_skip_final_llm  = abap_true ).
+
+      mo_messages = ls_stream_prep-messages_ref.
+      APPEND LINES OF ls_stream_prep-messages TO mt_message_history.
+
+      " Build JSON config + assembled final prompt for the Python script
       DATA lv_json_prompt TYPE string.
       DATA lv_esc_prompt  TYPE string.
       DATA lv_esc_apikey  TYPE string.
       DATA lv_cr          TYPE c LENGTH 1.
       lv_cr = cl_abap_char_utilities=>cr_lf(1).
 
-      lv_esc_prompt = lv_prompt.
+      lv_esc_prompt = ls_stream_prep-final_prompt.
       REPLACE ALL OCCURRENCES OF '\' IN lv_esc_prompt WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_esc_prompt WITH '\"'.
       REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_esc_prompt WITH '\n'.

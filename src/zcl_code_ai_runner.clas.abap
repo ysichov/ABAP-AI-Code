@@ -21,6 +21,9 @@ public section.
       " When abap_true the answer field contains raw ABAP source that should be
       " shown in CL_GUI_ABAPEDIT instead of the HTML viewer.
       is_source_code TYPE abap_bool,
+      " Streaming: full assembled final prompt (set when i_skip_final_llm = abap_true).
+      " Popup writes this to file and Python streams the LLM call.
+      final_prompt   TYPE string,
     END OF ty_result .
 
   methods CONSTRUCTOR
@@ -31,6 +34,9 @@ public section.
     importing
       !I_PROMPT type STRING
       !I_SESSION_ID type I
+      " When abap_true: run all prep steps but skip the final LLM call.
+      " rs_result-final_prompt contains the assembled prompt ready for streaming.
+      !I_SKIP_FINAL_LLM type ABAP_BOOL optional
     returning
       value(RS_RESULT) type TY_RESULT .
   methods GET_MESSAGES
@@ -1248,6 +1254,16 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_final_user_prompt
           i_agent       = lv_final_agent ).
+
+        " Streaming mode: return assembled prompt to caller instead of calling LLM.
+        " Python will stream the final LLM call on the client machine.
+        IF i_skip_final_llm = abap_true.
+          rs_result-final_prompt   = lv_final_prompt.
+          rs_result-messages_ref   = mo_messages.
+          rs_result-messages       = mo_messages->get_messages( ).
+          RETURN.
+        ENDIF.
+
         lv_answer = mo_llm->ask( lv_final_prompt ).
         lv_final_duration_seconds = mo_llm->get_last_seconds( ).
         complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).
