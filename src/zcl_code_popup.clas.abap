@@ -11,7 +11,8 @@ public section.
       !I_APIKEY type STRING
       !I_PROVIDER type STRING
       !I_AGENTS_PATH type STRING
-      !I_TEMPERATURE type STRING optional .
+      !I_TEMPERATURE type STRING optional
+      !I_STREAM type ABAP_BOOL optional .
   methods SHOW .
   class-methods BUILD_STEPS_HTML
     importing
@@ -59,6 +60,14 @@ private section.
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
   data MV_SAVE_FIX_ATTEMPTS type I .
   data MV_TEMPERATURE type STRING .
+  data MV_STREAM type ABAP_BOOL .
+  data MV_AGENTS_PATH type STRING .
+  data MV_APIKEY type STRING .
+  data MV_MODEL type TEXT255 .
+  data MV_PROVIDER type STRING .
+  data MO_TIMER type ref to CL_GUI_TIMER .
+  data MV_STREAM_PROMPT_FILE type STRING .
+  data MV_STREAM_RESPONSE_FILE type STRING .
   data MV_RUN_PROGRAM type PROGNAME .
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
@@ -78,6 +87,9 @@ private section.
       !FCODE .
   methods ON_DIALOG_CLOSE
     for event CLOSE of CL_GUI_DIALOGBOX_CONTAINER .
+  " Timer handler: polls client-side response file during Python streaming.
+  methods ON_TIMER
+    for event ACTION of CL_GUI_TIMER .
   methods ON_ANSWER_SAPEVENT
     for event SAPEVENT of CL_GUI_HTML_VIEWER
     importing
@@ -159,6 +171,81 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     mv_session_counter = mv_session_counter + 1.
 
+    " --- Streaming path: delegate HTTP call to local Python client ---
+    IF mv_stream = abap_true.
+      " Get client temp directory for exchange files
+      DATA lv_temp_dir TYPE string.
+      cl_gui_frontend_services=>get_temp_directory(
+        CHANGING  temp_dir = lv_temp_dir
+        EXCEPTIONS OTHERS  = 1 ).
+      IF lv_temp_dir IS INITIAL.
+        lv_temp_dir = 'C:\temp'.
+      ENDIF.
+
+      mv_stream_prompt_file   = lv_temp_dir && '\abap_ai_prompt.json'.
+      mv_stream_response_file = lv_temp_dir && '\abap_ai_response.txt'.
+
+      " Build JSON config + prompt for the Python script
+      DATA lv_json_prompt TYPE string.
+      DATA lv_esc_prompt  TYPE string.
+      DATA lv_esc_apikey  TYPE string.
+      DATA lv_cr          TYPE c LENGTH 1.
+      lv_cr = cl_abap_char_utilities=>cr_lf(1).
+
+      lv_esc_prompt = lv_prompt.
+      REPLACE ALL OCCURRENCES OF '\' IN lv_esc_prompt WITH '\\'.
+      REPLACE ALL OCCURRENCES OF '"' IN lv_esc_prompt WITH '\"'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_esc_prompt WITH '\n'.
+      REPLACE ALL OCCURRENCES OF lv_cr IN lv_esc_prompt WITH ''.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_esc_prompt WITH '\n'.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_esc_prompt WITH '\t'.
+
+      " Escape API key (may contain special chars)
+      lv_esc_apikey = mv_apikey.
+      REPLACE ALL OCCURRENCES OF '\' IN lv_esc_apikey WITH '\\'.
+      REPLACE ALL OCCURRENCES OF '"' IN lv_esc_apikey WITH '\"'.
+
+      lv_json_prompt = |{ '{' }"prompt":"{ lv_esc_prompt }","model":"{ mv_model }","provider":"{ mv_provider }","api_key":"{ lv_esc_apikey }","temperature":"{ mv_temperature }"{ '}' }|.
+
+      " Write prompt file to client machine
+      DATA lt_prompt_file TYPE TABLE OF string.
+      APPEND lv_json_prompt TO lt_prompt_file.
+      cl_gui_frontend_services=>gui_download(
+        EXPORTING filename = mv_stream_prompt_file filetype = 'ASC'
+        CHANGING  data_tab = lt_prompt_file
+        EXCEPTIONS OTHERS  = 1 ).
+
+      " Clear previous response file
+      DATA lt_empty TYPE TABLE OF string.
+      cl_gui_frontend_services=>gui_download(
+        EXPORTING filename = mv_stream_response_file filetype = 'ASC'
+        CHANGING  data_tab = lt_empty
+        EXCEPTIONS OTHERS  = 1 ).
+
+      " Launch Python script asynchronously on client machine
+      DATA(lv_script) = mv_agents_path && '\llm_stream.py'.
+      DATA(lv_params) = |"{ lv_script }" "{ mv_stream_prompt_file }" "{ mv_stream_response_file }"|.
+      cl_gui_frontend_services=>execute(
+        EXPORTING
+          application       = 'python'
+          parameter         = lv_params
+          default_directory = lv_temp_dir
+          synchronous       = ' '
+        EXCEPTIONS OTHERS   = 1 ).
+
+      " Start polling timer (100ms interval)
+      IF mo_timer IS NOT BOUND.
+        mo_timer = NEW cl_gui_timer( ).
+        SET HANDLER on_timer FOR mo_timer.
+      ENDIF.
+      mo_timer->interval = 100.
+      mo_timer->run( ).
+
+      display_status( |Streaming... (Python client active)| ).
+      RETURN.
+    ENDIF.
+    " --- End streaming path ---
+
     display_status( |Asking AI...| ).
 
     DATA(lo_runner) = NEW zcl_code_ai_runner(
@@ -183,34 +270,35 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Diff result → diff viewer (approve/decline UI)
+    " Non-code source result (error / "similar classes") — convert to HTML
+    " so the object names become clickable hyperlinks as before.
+    DATA(lv_display_answer) = ls_result-answer.
+    IF ls_result-is_source_code = abap_false
+    AND ls_result-has_diff = abap_false
+    AND ls_result-answer IS NOT INITIAL.
+      lv_display_answer = zcl_code_html_gen=>source_to_html(
+        i_source = ls_result-answer
+        i_title  = 'Search result' ).
+    ENDIF.
     IF ls_result-has_diff = abap_true.
-      DATA(lv_diff_html) = diff_to_html(
+      lv_display_answer = diff_to_html(
         i_old_code    = ls_result-diff_old_code
         i_new_code    = ls_result-diff_new_code
         i_object_type = ls_result-diff_object_type
         i_object_name = ls_result-diff_object_name
         i_package     = ls_result-diff_package
         i_usage_text  = ls_result-answer_log ).
-
-      REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*$'
-        IN lv_diff_html WITH '' IGNORING CASE.
-      REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
-        IN lv_diff_html WITH '' IGNORING CASE.
-
-      display_answer(
-        i_answer = lv_diff_html
-        i_source = ls_result-resolved_code
-        i_title  = ls_result-source_title ).
-      RETURN.
     ENDIF.
 
-    " Pure AI text answer (code review, explanation, summary etc.)
-    " Show with typewriter animation for streaming feel.
-    " Source-search "not found" pages also land here - still readable as plain text.
-    IF ls_result-answer IS NOT INITIAL.
-      display_streaming( ls_result-answer ).
-    ENDIF.
+    REPLACE ALL OCCURRENCES OF REGEX '(^|[\r\n]+)\s*CHANGES\s*:\s*(YES|NO)\s*$'
+      IN lv_display_answer WITH '' IGNORING CASE.
+    REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
+      IN lv_display_answer WITH '' IGNORING CASE.
+
+    display_answer(
+      i_answer = lv_display_answer
+      i_source = ls_result-resolved_code
+      i_title  = ls_result-source_title ).
 
   endmethod.
 
@@ -226,6 +314,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     " Apply initial temperature (default 0.1 from selection screen)
     mv_temperature = COND string( WHEN i_temperature IS NOT INITIAL THEN i_temperature ELSE '0.1' ).
     mo_llm->set_temperature( mv_temperature ).
+
+    mv_stream      = i_stream.
+    mv_agents_path = i_agents_path.
+    mv_apikey      = i_apikey.
+    mv_model       = i_model.
+    mv_provider    = i_provider.
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 
@@ -1176,6 +1270,126 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     ENDIF.
 
     cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
+
+  METHOD on_timer.
+
+    " Poll client-side response file written by Python llm_stream.py.
+    " Called every 100ms while streaming is active.
+    IF mv_stream_response_file IS INITIAL.
+      mo_timer->stop( ).
+      RETURN.
+    ENDIF.
+
+    " Read current content of response file from client machine
+    DATA lt_lines TYPE TABLE OF string.
+    cl_gui_frontend_services=>gui_upload(
+      EXPORTING filename = mv_stream_response_file filetype = 'ASC'
+      CHANGING  data_tab = lt_lines
+      EXCEPTIONS OTHERS  = 1 ).
+
+    " Join lines into single string
+    DATA lv_text TYPE string.
+    LOOP AT lt_lines INTO DATA(lv_line).
+      IF lv_text IS NOT INITIAL.
+        lv_text = lv_text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      lv_text = lv_text && lv_line.
+    ENDLOOP.
+
+    " Check for terminal markers written by Python script
+    DATA lv_done  TYPE abap_bool.
+    DATA lv_error TYPE abap_bool.
+    IF lv_text CS '##DONE##'.
+      lv_done = abap_true.
+      REPLACE ALL OCCURRENCES OF REGEX '\n?##DONE##' IN lv_text WITH ''.
+    ELSEIF lv_text CS '##ERROR##'.
+      lv_error = abap_true.
+      REPLACE ALL OCCURRENCES OF REGEX '\n?##ERROR##' IN lv_text WITH ''.
+    ENDIF.
+
+    " Update HTML viewer with current accumulated text
+    IF lv_text IS NOT INITIAL OR lv_done = abap_true OR lv_error = abap_true.
+      DATA lv_html TYPE string.
+      DATA lv_status_color TYPE string.
+      IF lv_done = abap_true.
+        lv_status_color = '#4ec94e'.  " green - complete
+      ELSEIF lv_error = abap_true.
+        lv_status_color = '#e05252'.  " red - error
+      ELSE.
+        lv_status_color = '#d4d4d4'.  " grey - in progress (cursor blinks)
+      ENDIF.
+
+      " Escape text for HTML display
+      DATA lv_html_text TYPE string.
+      lv_html_text = lv_text.
+      REPLACE ALL OCCURRENCES OF '&'  IN lv_html_text WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<'  IN lv_html_text WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>'  IN lv_html_text WITH '&gt;'.
+
+      DATA lv_cursor TYPE string.
+      IF lv_done = abap_true OR lv_error = abap_true.
+        lv_cursor = ''.
+      ELSE.
+        lv_cursor = |<span style="display:inline-block;width:2px;height:1em;background:{ lv_status_color };vertical-align:text-bottom;animation:blink 0.7s step-end infinite"></span>|.
+      ENDIF.
+
+      lv_html = |<!DOCTYPE html><html><head><meta charset="UTF-8">| &&
+        |<style>| &&
+        |  body { margin:0;padding:8px;font-family:Consolas,monospace;background:#1e1e1e;color:#d4d4d4; }| &&
+        |  pre { white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:{ lv_status_color }; }| &&
+        |  @keyframes blink { 0%,100%{ opacity:1 } 50%{ opacity:0 } }| &&
+        |</style></head><body>| &&
+        |<pre>{ lv_html_text }{ lv_cursor }</pre>| &&
+        |</body></html>|.
+
+      " Load into HTML viewer
+      DATA lt_html TYPE tt_html.
+      DATA ls_html TYPE w3html.
+      DATA lv_offset TYPE i.
+      WHILE lv_offset < strlen( lv_html ).
+        CLEAR ls_html.
+        ls_html-line = substring(
+          val = lv_html off = lv_offset
+          len = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_offset ) ).
+        APPEND ls_html TO lt_html.
+        lv_offset = lv_offset + 255.
+      ENDWHILE.
+
+      DATA lv_url TYPE c LENGTH 255.
+      mo_answer->load_data(
+        EXPORTING type = 'text' subtype = 'html'
+        IMPORTING assigned_url = lv_url
+        CHANGING  data_table   = lt_html
+        EXCEPTIONS OTHERS = 1 ).
+      mo_answer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
+
+      " Switch panel to HTML viewer
+      IF mo_answer_split IS BOUND.
+        mo_answer_split->set_row_height( id = 1 height = 100 ).
+        mo_answer_split->set_row_height( id = 2 height = 0 ).
+      ENDIF.
+      cl_gui_cfw=>flush( ).
+    ENDIF.
+
+    " Stop timer when Python script signals completion
+    IF lv_done = abap_true OR lv_error = abap_true.
+      mo_timer->stop( ).
+
+      " Delete response file on client — API key already gone (Python deleted prompt file)
+      " cl_gui_frontend_services has no delete; use file_delete if available
+      cl_gui_frontend_services=>file_delete(
+        EXPORTING filename   = mv_stream_response_file
+        EXCEPTIONS file_delete_failed = 1 OTHERS = 2 ).
+
+      IF lv_error = abap_true.
+        display_status( |Stream error - see response panel| ).
+      ELSE.
+        display_status( |Done| ).
+      ENDIF.
+    ENDIF.
 
   ENDMETHOD.
 
