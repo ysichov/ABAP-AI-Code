@@ -1452,8 +1452,15 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+    DATA lv_read_preview TYPE string.
+    DATA lv_read_cnt     TYPE i.
+    LOOP AT lt_cur INTO DATA(lv_read_line).
+      lv_read_cnt = lv_read_cnt + 1.
+      lv_read_preview = lv_read_preview && lv_nl && |  [{ lv_read_cnt }] { lv_read_line }|.
+      IF lv_read_cnt >= 8. EXIT. ENDIF.
+    ENDLOOP.
     mv_last_log = mv_last_log && lv_nl
-               && |Step 3: Read class source: { lines( lt_cur ) } lines, first: "{ lt_cur[ 1 ] }"|.
+               && |Step 3: Read { lines( lt_cur ) } lines:{ lv_read_preview }|.
 
     " set_source() on a CLIF object expects ONLY METHOD...ENDMETHOD blocks —
     " no CLASS...DEFINITION, no PUBLIC SECTION, no CLASS...IMPLEMENTATION, no ENDCLASS.
@@ -1507,7 +1514,15 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing to system...|.
+    " Log first 15 lines of lt_new so we can see exactly what is sent to set_source()
+    DATA lv_src_preview TYPE string.
+    DATA lv_preview_cnt TYPE i.
+    LOOP AT lt_new INTO DATA(lv_prev_line).
+      lv_preview_cnt = lv_preview_cnt + 1.
+      lv_src_preview = lv_src_preview && lv_nl && |  [{ lv_preview_cnt }] { lv_prev_line }|.
+      IF lv_preview_cnt >= 15. EXIT. ENDIF.
+    ENDLOOP.
+    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing { lines( lt_new ) } lines to system:{ lv_src_preview }|.
     lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
     IF lv_err IS NOT INITIAL.
       rv_message = lv_err.
