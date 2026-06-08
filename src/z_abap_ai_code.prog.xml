@@ -40,6 +40,18 @@
      <ENTRY>OpenAI</ENTRY>
      <LENGTH>14</LENGTH>
     </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_STREAM</KEY>
+     <ENTRY>LLM Streaming from Pyton Call</ENTRY>
+     <LENGTH>37</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_TEMP</KEY>
+     <ENTRY>LLM Temperature</ENTRY>
+     <LENGTH>23</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>
