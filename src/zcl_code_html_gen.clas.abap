@@ -524,9 +524,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         et_proposed       = lt_new ).
 
     DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff(
-      it_old = lt_old
-      it_new = lt_new
-      i_title = 'Computing AI code diff' ).
+      it_old        = lt_old
+      it_new        = lt_new
+      i_ignore_case = abap_true
+      i_title       = 'Computing AI code diff' ).
 
     lt_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_diff ).
 
