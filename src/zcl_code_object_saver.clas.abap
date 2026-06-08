@@ -1455,26 +1455,37 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     mv_last_log = mv_last_log && lv_nl
                && |Step 3: Read class source: { lines( lt_cur ) } lines, first: "{ lt_cur[ 1 ] }"|.
 
-    " Some SAP releases return DEFINITION+IMPLEMENTATION from get_source().
-    " set_source() on a CLIF object expects ONLY implementation lines — strip
-    " everything before "CLASS ... IMPLEMENTATION." to avoid "PUBLIC SECTION. unexpected".
+    " set_source() on a CLIF object expects ONLY METHOD...ENDMETHOD blocks —
+    " no CLASS...DEFINITION, no PUBLIC SECTION, no CLASS...IMPLEMENTATION, no ENDCLASS.
+    " Strip everything outside the method bodies.
     DATA lv_impl_found TYPE abap_bool.
     DATA lv_stripped   TYPE i.
     LOOP AT lt_cur INTO DATA(lv_cur_line).
       DATA(lv_cur_upper) = lv_cur_line.
       TRANSLATE lv_cur_upper TO UPPER CASE.
       CONDENSE lv_cur_upper.
+      " Mark start of implementation section
       IF lv_cur_upper CP 'CLASS * IMPLEMENTATION*'.
         lv_impl_found = abap_true.
+        lv_stripped = lv_stripped + 1.
+        DELETE lt_cur.  " strip CLASS...IMPLEMENTATION. line itself
+        CONTINUE.
       ENDIF.
+      " Strip everything before CLASS...IMPLEMENTATION. (definition section)
       IF lv_impl_found = abap_false.
         lv_stripped = lv_stripped + 1.
-        DELETE lt_cur.  " remove DEFINITION lines
+        DELETE lt_cur.
+        CONTINUE.
+      ENDIF.
+      " Strip ENDCLASS. at the end
+      IF lv_cur_upper CP 'ENDCLASS*'.
+        lv_stripped = lv_stripped + 1.
+        DELETE lt_cur.
       ENDIF.
     ENDLOOP.
     IF lv_stripped > 0.
       mv_last_log = mv_last_log && lv_nl
-                 && |Step 3b: Stripped { lv_stripped } DEFINITION lines, { lines( lt_cur ) } remain|.
+                 && |Step 3b: Stripped { lv_stripped } wrapper lines, { lines( lt_cur ) } remain|.
     ENDIF.
 
     lt_new = lt_cur.
