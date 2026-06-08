@@ -43,7 +43,6 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
         for text in stream.text_stream:
             out_file.write(text)
             out_file.flush()
-            time.sleep(0.04)
 
 
 def get_base_url(model: str, base_url: str) -> str:

@@ -1198,8 +1198,15 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
 
+        " Build final user prompt from tasks, skipping already-executed {AGENT:...} commands.
         DATA(lv_final_user_prompt) = VALUE string( ).
         LOOP AT lt_tasks INTO DATA(lv_final_task).
+          " Skip agent command lines — code was already read/processed, no need to repeat them
+          DATA(lv_task_upper) = lv_final_task.
+          TRANSLATE lv_task_upper TO UPPER CASE.
+          IF lv_task_upper CP '{AGENT:*'.
+            CONTINUE.
+          ENDIF.
           IF lv_final_user_prompt IS NOT INITIAL.
             lv_final_user_prompt = lv_final_user_prompt && cl_abap_char_utilities=>newline.
           ENDIF.
