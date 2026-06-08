@@ -1434,15 +1434,12 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     CONDENSE lv_class.
 
     mv_last_log = |SAVE_METHOD diagnostics| && lv_nl
-               && |Object: METH { lv_class }=>{ i_method }| && lv_nl
-               && |Step 1: Source lines from LLM: { lines( lt_body ) }|.
+               && |Object: METH { lv_class }=>{ i_method }|.
 
     " The method body written into the class must be a complete
     " 'METHOD <name>. ... ENDMETHOD.' block.
     lt_body = ensure_method_wrapper( i_method  = i_method
                                      it_source = lt_body ).
-    mv_last_log = mv_last_log && lv_nl
-               && |Step 2: After ensure_method_wrapper: { lines( lt_body ) } lines|.
 
     " Read current full source, replace just this one method, write back whole.
     " Everything else stays byte-exact, so the class can never be corrupted.
@@ -1452,16 +1449,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
-    DATA lv_read_preview TYPE string.
-    DATA lv_read_cnt     TYPE i.
-    LOOP AT lt_cur INTO DATA(lv_read_line).
-      lv_read_cnt = lv_read_cnt + 1.
-      lv_read_preview = lv_read_preview && lv_nl && |  [{ lv_read_cnt }] { lv_read_line }|.
-      IF lv_read_cnt >= 8. EXIT. ENDIF.
-    ENDLOOP.
-    mv_last_log = mv_last_log && lv_nl
-               && |Step 3: Read { lines( lt_cur ) } lines:{ lv_read_preview }|.
-
     lt_new = lt_cur.
 
     IF replace_method_in_lines( EXPORTING iv_method = i_method
@@ -1472,8 +1459,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
-    mv_last_log = mv_last_log && lv_nl
-               && |Step 4: Method replaced in class source ({ lines( lt_new ) } lines total)|.
 
     IF lt_new = lt_cur.
       rv_message = |Method { lv_class }=>{ i_method } unchanged - nothing to save.|.
@@ -1481,24 +1466,13 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Log first 15 lines of lt_new so we can see exactly what is sent to set_source()
-    DATA lv_src_preview TYPE string.
-    DATA lv_preview_cnt TYPE i.
-    LOOP AT lt_new INTO DATA(lv_prev_line).
-      lv_preview_cnt = lv_preview_cnt + 1.
-      lv_src_preview = lv_src_preview && lv_nl && |  [{ lv_preview_cnt }] { lv_prev_line }|.
-      IF lv_preview_cnt >= 15. EXIT. ENDIF.
-    ENDLOOP.
-    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing { lines( lt_new ) } lines to system:{ lv_src_preview }|.
     lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
     IF lv_err IS NOT INITIAL.
       rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
-    mv_last_log = mv_last_log && lv_nl && |Step 5: Write OK|.
 
-    mv_last_log = mv_last_log && lv_nl && |Step 6: Activating class...|.
     lv_err = activate_class( lv_class ).
     IF lv_err IS NOT INITIAL.
       mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
@@ -1508,7 +1482,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
-    mv_last_log = mv_last_log && lv_nl && |Step 6: Activation OK|.
 
     lv_err = verify_class( lv_class ).
     IF lv_err IS NOT INITIAL.
