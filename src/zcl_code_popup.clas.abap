@@ -269,6 +269,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           parameter         = lv_params
           default_directory = lv_temp_dir
           synchronous       = ' '
+          minimize          = abap_true
         EXCEPTIONS OTHERS   = 1 ).
 
       " Show paths in status so user can debug if Python does not start
@@ -289,9 +290,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       WHILE abap_true = abap_true.
         GET TIME STAMP FIELD lv_ts_now.
 
-        " Timeout after 30 seconds
+        " Timeout after 120 seconds (large prompts can take longer to process)
         lv_ts_elapsed = cl_abap_tstmp=>subtract( tstmp1 = lv_ts_now tstmp2 = lv_ts_start ).
-        IF lv_ts_elapsed > 30.
+        IF lv_ts_elapsed > 120.
           EXIT.
         ENDIF.
 
@@ -339,14 +340,26 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           lv_stream_error = abap_true.
           REPLACE ALL OCCURRENCES OF '##ERROR##' IN lv_resp_text WITH ''.
         ENDIF.
+        " Strip CHANGES:YES / CHANGES:NO marker (same as non-streaming path)
+        REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
+          IN lv_resp_text WITH '' IGNORING CASE.
         " Do NOT condense — preserves code indentation and formatting
 
-        " Escape HTML special chars — Python wrote plain text, ABAP escapes for HTML display.
+        " While file is still empty — show "Waiting LLM answer..." with elapsed seconds
         DATA lv_resp_html TYPE string.
-        lv_resp_html = lv_resp_text.
-        REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
-        REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
-        REPLACE ALL OCCURRENCES OF '>' IN lv_resp_html WITH '&gt;'.
+        IF lv_resp_text IS INITIAL AND lv_stream_done = abap_false AND lv_stream_error = abap_false.
+          GET TIME STAMP FIELD lv_ts_now.
+          DATA(lv_wait_sec) = cl_abap_tstmp=>subtract( tstmp1 = lv_ts_now tstmp2 = lv_ts_start ).
+          DATA lv_wait_int TYPE i.
+          lv_wait_int = lv_wait_sec.
+          lv_resp_html = |⏳ Waiting LLM answer... { lv_wait_int }s|.
+        ELSE.
+          " Escape HTML special chars — Python wrote plain text, ABAP escapes for HTML display.
+          lv_resp_html = lv_resp_text.
+          REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
+          REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
+          REPLACE ALL OCCURRENCES OF '>' IN lv_resp_html WITH '&gt;'.
+        ENDIF.
 
         " Build and show HTML with current content
         DATA lv_color TYPE string.
@@ -368,7 +381,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         IF lv_stream_done = abap_false AND lv_stream_error = abap_false.
           lv_stream_html = lv_stream_html && '&#9608;'.  " block cursor while in progress
         ENDIF.
-        lv_stream_html = lv_stream_html && '</pre></body></html>'.
+        " Auto-scroll to bottom so latest streamed content is always visible
+        lv_stream_html = lv_stream_html
+          && '</pre><script>window.scrollTo(0,document.body.scrollHeight);</script></body></html>'.
 
         DATA lt_stream_html TYPE tt_html.
         DATA ls_stream_html TYPE w3html.
