@@ -762,8 +762,13 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_direct_upper2) = lv_direct_source.
         TRANSLATE lv_direct_upper2 TO UPPER CASE.
         IF lv_direct_source IS INITIAL OR lv_direct_upper2 CS 'NOT FOUND' OR lv_direct_upper2 CS 'CANNOT BE READ'.
-          " Neither found - show both error messages (HTML with hyperlinks)
-          lv_direct_source = lv_class_err && cl_abap_char_utilities=>newline && lv_direct_source.
+          " Exact match failed for both class and program — wildcard search NAME* in TADIR
+          DATA(lv_wildcard_result) = zcl_ai_code_reader=>read_program( lv_word && '*' ).
+          IF lv_wildcard_result IS NOT INITIAL AND NOT lv_wildcard_result CS 'No objects found'.
+            lv_direct_source = lv_wildcard_result.
+          ELSE.
+            lv_direct_source = lv_class_err && cl_abap_char_utilities=>newline && lv_direct_source.
+          ENDIF.
           lv_direct_is_code = abap_false.
         ENDIF.
       ENDIF.
