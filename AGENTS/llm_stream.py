@@ -39,7 +39,7 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
     ) as stream:
         import time
         for text in stream.text_stream:
-            out_file.write(to_ascii_html(text))
+            out_file.write(text)
             out_file.flush()
             time.sleep(0.04)
 
@@ -56,23 +56,6 @@ def get_base_url(model: str, base_url: str) -> str:
     return None  # default OpenAI
 
 
-def to_ascii_html(text: str) -> str:
-    """Escape HTML special chars and convert non-ASCII to numeric HTML entities.
-    Result is pure ASCII, safe to embed directly in a <pre> HTML block.
-    ABAP must NOT re-escape the content after reading this file."""
-    result = []
-    for ch in text:
-        if ch == '&':
-            result.append('&amp;')
-        elif ch == '<':
-            result.append('&lt;')
-        elif ch == '>':
-            result.append('&gt;')
-        elif ord(ch) > 127:
-            result.append(f'&#{ord(ch)};')
-        else:
-            result.append(ch)
-    return ''.join(result)
 
 
 def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out_file,
@@ -92,7 +75,7 @@ def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out
     for chunk in response:
         delta = chunk.choices[0].delta.content
         if delta:
-            out_file.write(to_ascii_html(delta))
+            out_file.write(delta)
             out_file.flush()
             time.sleep(0.04)  # 40ms pause — makes streaming visible in SAP GUI
 
@@ -129,16 +112,17 @@ def main() -> None:
 
     log(f"START provider={provider} model={model}")
 
-    # Response file is written as pure ASCII (non-ASCII chars → HTML entities).
-    # This avoids all encoding issues between Python, Windows filesystem and SAP GUI.
-    file_encoding = "ascii"
-    log(f"file_encoding={file_encoding} (non-ASCII → HTML entities)")
+    # Write in cp1251 — matches SAP GUI gui_upload(filetype='ASC') on Russian/Ukrainian Windows.
+    # SAP reads cp1251 bytes → converts to internal Unicode → HTML viewer sends back as cp1251.
+    # Paired with charset="windows-1251" in the HTML so the browser renders Cyrillic correctly.
+    file_encoding = "cp1251"
+    log(f"file_encoding={file_encoding}")
 
     # Clear response file before writing
     open(response_file, "w", encoding=file_encoding).close()
 
     try:
-        with open(response_file, "a", encoding=file_encoding) as out:
+        with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             if provider == "ANTHROPIC":
                 log("calling anthropic stream...")
                 stream_anthropic(prompt, model, api_key, temperature, out)
@@ -153,7 +137,6 @@ def main() -> None:
         log(f"ERROR: {exc}")
         with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             out.write(f"\n##ERROR## {exc}")
-
 
 
 if __name__ == "__main__":

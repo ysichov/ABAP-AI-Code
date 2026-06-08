@@ -193,6 +193,22 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       mo_messages = ls_stream_prep-messages_ref.
       " Do NOT append messages here — will append after streaming completes (with FINAL message).
 
+      " If runner returned without a final_prompt (direct lookup / pure code search),
+      " display the result immediately — no need to stream via Python.
+      IF ls_stream_prep-final_prompt IS INITIAL.
+        mo_messages = ls_stream_prep-messages_ref.
+        APPEND LINES OF ls_stream_prep-messages TO mt_message_history.
+        IF ls_stream_prep-is_source_code = abap_true.
+          display_program_source( ls_stream_prep-answer ).
+        ELSE.
+          display_answer(
+            i_answer = ls_stream_prep-answer
+            i_source = ls_stream_prep-resolved_code
+            i_title  = ls_stream_prep-source_title ).
+        ENDIF.
+        RETURN.
+      ENDIF.
+
       " Build JSON config + assembled final prompt for the Python script
       DATA lv_json_prompt TYPE string.
       DATA lv_esc_prompt  TYPE string.
@@ -318,10 +334,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ENDIF.
         " Do NOT condense — preserves code indentation and formatting
 
-        " Python already wrote HTML-safe content (entities for non-ASCII, escaped & < >).
-        " Do NOT re-escape here — it would corrupt &amp; into &amp;amp; etc.
+        " Escape HTML special chars — Python wrote plain text, ABAP escapes for HTML display.
         DATA lv_resp_html TYPE string.
         lv_resp_html = lv_resp_text.
+        REPLACE ALL OCCURRENCES OF '&' IN lv_resp_html WITH '&amp;'.
+        REPLACE ALL OCCURRENCES OF '<' IN lv_resp_html WITH '&lt;'.
+        REPLACE ALL OCCURRENCES OF '>' IN lv_resp_html WITH '&gt;'.
 
         " Build and show HTML with current content
         DATA lv_color TYPE string.
@@ -335,7 +353,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         DATA lv_stream_html TYPE string.
         lv_stream_html =
-          '<html><head><meta charset="UTF-8"><style>'
+          '<html><head><meta charset="windows-1251"><style>'
           && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#ffffff}'
           && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:#1a1a1a}'
           && '</style></head><body>'
@@ -380,12 +398,9 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       " Register streamed answer in message history (so it appears in History popup).
       " Decode basic HTML entities; &#NNN; stays as-is (acceptable in history log).
       IF lv_stream_done = abap_true.
-        DATA lv_resp_clean TYPE string.
-        lv_resp_clean = lv_resp_text.
-        REPLACE ALL OCCURRENCES OF '&amp;' IN lv_resp_clean WITH '&'.
-        REPLACE ALL OCCURRENCES OF '&lt;'  IN lv_resp_clean WITH '<'.
-        REPLACE ALL OCCURRENCES OF '&gt;'  IN lv_resp_clean WITH '>'.
-        lo_runner_s->register_stream_answer( lv_resp_clean ).
+        " lv_resp_text is plain text (cp1251 read by gui_upload → Unicode).
+        " Register as-is — no HTML encoding in the history log.
+        lo_runner_s->register_stream_answer( lv_resp_text ).
         APPEND LINES OF lo_runner_s->get_messages( )->get_messages( ) TO mt_message_history.
       ENDIF.
       " Do NOT call display_status — it would overwrite the streamed answer.
