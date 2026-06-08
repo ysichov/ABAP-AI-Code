@@ -1507,9 +1507,21 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     DATA lv_upper     TYPE string.
     DATA lv_line      LIKE LINE OF it_source.
 
+    " Strip any --- Section/Method --- markers that the class processor may have added.
+    DATA lt_filtered LIKE it_source.
+    LOOP AT it_source INTO lv_line.
+      lv_upper = lv_line.
+      TRANSLATE lv_upper TO UPPER CASE.
+      CONDENSE lv_upper.
+      IF lv_upper CP '---*---'.
+        CONTINUE.  " skip save_class section markers
+      ENDIF.
+      APPEND lv_line TO lt_filtered.
+    ENDLOOP.
+
     " Extract the inner body if the source already carries a METHOD ... ENDMETHOD
     " block; otherwise treat the whole source as the body.
-    LOOP AT it_source INTO lv_line.
+    LOOP AT lt_filtered INTO lv_line.
       lv_upper = lv_line.
       TRANSLATE lv_upper TO UPPER CASE.
       CONDENSE lv_upper.
@@ -1535,7 +1547,7 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     IF lv_in_method = abap_false.
       " No wrapper found in the provided source - everything is the body
-      lt_body = it_source.
+      lt_body = lt_filtered.
     ENDIF.
 
     " Rebuild the include with exactly one clean wrapper
