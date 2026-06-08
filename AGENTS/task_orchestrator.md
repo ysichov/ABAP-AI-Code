@@ -37,6 +37,8 @@ For every generated task, choose the appropriate tool for "target_tool" and ALWA
    - Leave the "tasks" array completely empty [].
    - If the request is NOT a pure code request, set "is_pure_code_request" to false, "pure_code_object_type" to "", and "pure_code_object_name" to "".
 
+4. But words like tell me or analyse or any other ask different from shoe me  - Set "is_pure_code_request" to false. 
+
 ### DEPENDENCY & PRIORITY RULES:
 - CONSOLIDATED MODIFICATIONS: Group all code modifications, refactoring, optimizations, and unit test additions for a SINGLE SAP object into one unique "ZCL_AI_TOOL=>SAVE" task.
 - TECHNICAL SEQUENCE: Always arrange tasks in a logical, executable order:

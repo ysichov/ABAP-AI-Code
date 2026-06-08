@@ -88,8 +88,10 @@ def main() -> None:
     prompt_file   = sys.argv[1]
     response_file = sys.argv[2]
 
-    # Read and parse JSON config
-    with open(prompt_file, "r", encoding="utf-8") as f:
+    # Read and parse JSON config.
+    # SAP gui_download writes files in the local Windows codepage (cp1251 on
+    # Russian/Ukrainian systems), so we must read with the same encoding.
+    with open(prompt_file, "r", encoding="cp1251") as f:
         cfg = json.load(f)
 
     prompt      = cfg.get("prompt", "")
