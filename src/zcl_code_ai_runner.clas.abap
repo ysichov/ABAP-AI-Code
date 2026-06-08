@@ -24,6 +24,9 @@ public section.
       " Streaming: full assembled final prompt (set when i_skip_final_llm = abap_true).
       " Popup writes this to file and Python streams the LLM call.
       final_prompt   TYPE string,
+      " abap_true when the final LLM produced the answer (vs. direct lookup/search result).
+      " Popup uses this to avoid passing LLM text through source_to_html.
+      has_llm_answer TYPE abap_bool,
     END OF ty_result .
 
   methods CONSTRUCTOR
@@ -1234,6 +1237,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_final_user_prompt
           i_agent       = lv_final_agent ).
+
+        rs_result-has_llm_answer = abap_true.
 
         " Streaming mode: return assembled prompt to caller instead of calling LLM.
         " Python will stream the final LLM call on the client machine.

@@ -1434,12 +1434,15 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     CONDENSE lv_class.
 
     mv_last_log = |SAVE_METHOD diagnostics| && lv_nl
-               && |Object: METH { lv_class }=>{ i_method }|.
+               && |Object: METH { lv_class }=>{ i_method }| && lv_nl
+               && |Step 1: Source lines from LLM: { lines( lt_body ) }|.
 
     " The method body written into the class must be a complete
     " 'METHOD <name>. ... ENDMETHOD.' block.
     lt_body = ensure_method_wrapper( i_method  = i_method
                                      it_source = lt_body ).
+    mv_last_log = mv_last_log && lv_nl
+               && |Step 2: After ensure_method_wrapper: { lines( lt_body ) } lines|.
 
     " Read current full source, replace just this one method, write back whole.
     " Everything else stays byte-exact, so the class can never be corrupted.
@@ -1449,6 +1452,31 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+    mv_last_log = mv_last_log && lv_nl
+               && |Step 3: Read class source: { lines( lt_cur ) } lines, first: "{ lt_cur[ 1 ] }"|.
+
+    " Some SAP releases return DEFINITION+IMPLEMENTATION from get_source().
+    " set_source() on a CLIF object expects ONLY implementation lines — strip
+    " everything before "CLASS ... IMPLEMENTATION." to avoid "PUBLIC SECTION. unexpected".
+    DATA lv_impl_found TYPE abap_bool.
+    DATA lv_stripped   TYPE i.
+    LOOP AT lt_cur INTO DATA(lv_cur_line).
+      DATA(lv_cur_upper) = lv_cur_line.
+      TRANSLATE lv_cur_upper TO UPPER CASE.
+      CONDENSE lv_cur_upper.
+      IF lv_cur_upper CP 'CLASS * IMPLEMENTATION*'.
+        lv_impl_found = abap_true.
+      ENDIF.
+      IF lv_impl_found = abap_false.
+        lv_stripped = lv_stripped + 1.
+        DELETE lt_cur.  " remove DEFINITION lines
+      ENDIF.
+    ENDLOOP.
+    IF lv_stripped > 0.
+      mv_last_log = mv_last_log && lv_nl
+                 && |Step 3b: Stripped { lv_stripped } DEFINITION lines, { lines( lt_cur ) } remain|.
+    ENDIF.
+
     lt_new = lt_cur.
 
     IF replace_method_in_lines( EXPORTING iv_method = i_method
@@ -1459,6 +1487,8 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+    mv_last_log = mv_last_log && lv_nl
+               && |Step 4: Method replaced in class source ({ lines( lt_new ) } lines total)|.
 
     IF lt_new = lt_cur.
       rv_message = |Method { lv_class }=>{ i_method } unchanged - nothing to save.|.
@@ -1466,13 +1496,16 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing to system...|.
     lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
     IF lv_err IS NOT INITIAL.
       rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+    mv_last_log = mv_last_log && lv_nl && |Step 5: Write OK|.
 
+    mv_last_log = mv_last_log && lv_nl && |Step 6: Activating class...|.
     lv_err = activate_class( lv_class ).
     IF lv_err IS NOT INITIAL.
       mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
@@ -1482,6 +1515,7 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
+    mv_last_log = mv_last_log && lv_nl && |Step 6: Activation OK|.
 
     lv_err = verify_class( lv_class ).
     IF lv_err IS NOT INITIAL.

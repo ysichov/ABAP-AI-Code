@@ -476,11 +476,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Non-code source result (error / "similar classes") — convert to HTML
-    " so the object names become clickable hyperlinks as before.
+    " Non-code search result (error / "similar classes") — convert to HTML with clickable links.
+    " LLM answers (has_llm_answer = true) go directly to display_answer as markdown.
     DATA(lv_display_answer) = ls_result-answer.
     IF ls_result-is_source_code = abap_false
     AND ls_result-has_diff = abap_false
+    AND ls_result-has_llm_answer = abap_false
     AND ls_result-answer IS NOT INITIAL.
       lv_display_answer = zcl_code_html_gen=>source_to_html(
         i_source = ls_result-answer
