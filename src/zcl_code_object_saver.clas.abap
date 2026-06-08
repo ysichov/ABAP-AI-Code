@@ -901,6 +901,10 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
 
+    rv_message = 'Under Construction'.
+    mv_last_log = rv_message.
+    RETURN.
+
     lv_class = i_class.
     TRANSLATE lv_class TO UPPER CASE.
     CONDENSE lv_class.
@@ -1415,6 +1419,10 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
+
+    rv_message = 'Under Construction'.
+    mv_last_log = rv_message.
+    RETURN.
 
     IF i_class IS INITIAL OR i_method IS INITIAL.
       rv_message = |Method name is incomplete: class={ i_class } method={ i_method }.|.
