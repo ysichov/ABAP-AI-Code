@@ -1462,39 +1462,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     mv_last_log = mv_last_log && lv_nl
                && |Step 3: Read { lines( lt_cur ) } lines:{ lv_read_preview }|.
 
-    " set_source() on a CLIF object expects ONLY METHOD...ENDMETHOD blocks —
-    " no CLASS...DEFINITION, no PUBLIC SECTION, no CLASS...IMPLEMENTATION, no ENDCLASS.
-    " Strip everything outside the method bodies.
-    DATA lv_impl_found TYPE abap_bool.
-    DATA lv_stripped   TYPE i.
-    LOOP AT lt_cur INTO DATA(lv_cur_line).
-      DATA(lv_cur_upper) = lv_cur_line.
-      TRANSLATE lv_cur_upper TO UPPER CASE.
-      CONDENSE lv_cur_upper.
-      " Mark start of implementation section
-      IF lv_cur_upper CP 'CLASS * IMPLEMENTATION*'.
-        lv_impl_found = abap_true.
-        lv_stripped = lv_stripped + 1.
-        DELETE lt_cur.  " strip CLASS...IMPLEMENTATION. line itself
-        CONTINUE.
-      ENDIF.
-      " Strip everything before CLASS...IMPLEMENTATION. (definition section)
-      IF lv_impl_found = abap_false.
-        lv_stripped = lv_stripped + 1.
-        DELETE lt_cur.
-        CONTINUE.
-      ENDIF.
-      " Strip ENDCLASS. at the end
-      IF lv_cur_upper CP 'ENDCLASS*'.
-        lv_stripped = lv_stripped + 1.
-        DELETE lt_cur.
-      ENDIF.
-    ENDLOOP.
-    IF lv_stripped > 0.
-      mv_last_log = mv_last_log && lv_nl
-                 && |Step 3b: Stripped { lv_stripped } wrapper lines, { lines( lt_cur ) } remain|.
-    ENDIF.
-
     lt_new = lt_cur.
 
     IF replace_method_in_lines( EXPORTING iv_method = i_method
@@ -1522,33 +1489,8 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       lv_src_preview = lv_src_preview && lv_nl && |  [{ lv_preview_cnt }] { lv_prev_line }|.
       IF lv_preview_cnt >= 15. EXIT. ENDIF.
     ENDLOOP.
-    " Try writing without METHOD/ENDMETHOD wrappers — some SAP CLIF formats store only body.
-    DATA lt_write TYPE string_table.
-    DATA lv_in_meth TYPE abap_bool.
-    LOOP AT lt_new INTO DATA(lv_wline).
-      DATA(lv_wupper) = lv_wline.
-      TRANSLATE lv_wupper TO UPPER CASE.
-      CONDENSE lv_wupper.
-      IF lv_in_meth = abap_false AND ( lv_wupper CP 'METHOD *' OR lv_wupper = 'METHOD' ).
-        lv_in_meth = abap_true.
-        CONTINUE.  " skip METHOD line
-      ENDIF.
-      IF lv_in_meth = abap_true AND lv_wupper CP 'ENDMETHOD*'.
-        lv_in_meth = abap_false.
-        CONTINUE.  " skip ENDMETHOD line
-      ENDIF.
-      APPEND lv_wline TO lt_write.
-    ENDLOOP.
-
-    " Rebuild preview with stripped version
-    CLEAR lv_src_preview. CLEAR lv_preview_cnt.
-    LOOP AT lt_write INTO DATA(lv_prev2).
-      lv_preview_cnt = lv_preview_cnt + 1.
-      lv_src_preview = lv_src_preview && lv_nl && |  [{ lv_preview_cnt }] { lv_prev2 }|.
-      IF lv_preview_cnt >= 12. EXIT. ENDIF.
-    ENDLOOP.
-    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing { lines( lt_write ) } lines (no wrappers):{ lv_src_preview }|.
-    lv_err = write_class_source( iv_class = lv_class it_lines = lt_write ).
+    mv_last_log = mv_last_log && lv_nl && |Step 5: Writing { lines( lt_new ) } lines to system:{ lv_src_preview }|.
+    lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
     IF lv_err IS NOT INITIAL.
       rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
