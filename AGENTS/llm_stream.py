@@ -27,7 +27,8 @@ import os
 import json
 
 
-def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, out_file) -> None:
+def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, out_file) -> tuple:
+    """Returns (input_tokens, output_tokens)."""
     import anthropic  # pip install anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -39,10 +40,11 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
         system=f"You MUST answer exclusively in {lang} language." if lang else anthropic.NOT_GIVEN,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
-        import time
         for text in stream.text_stream:
             out_file.write(text)
             out_file.flush()
+        usage = stream.get_final_message().usage
+        return (usage.input_tokens, usage.output_tokens)
 
 
 def get_base_url(model: str, base_url: str) -> str:
@@ -79,25 +81,31 @@ def build_messages(prompt: str) -> list:
 
 
 def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out_file,
-                  base_url: str = None) -> None:
+                  base_url: str = None) -> tuple:
+    """Returns (input_tokens, output_tokens)."""
     from openai import OpenAI  # pip install openai
 
     url = get_base_url(model, base_url)
     client = OpenAI(api_key=api_key, base_url=url) if url else OpenAI(api_key=api_key)
+    # stream_options: include usage in the final chunk
     response = client.chat.completions.create(
         model=model,
         max_tokens=8096,
         temperature=temperature,
         messages=build_messages(prompt),
         stream=True,
+        stream_options={"include_usage": True},
     )
-    import time
+    tok_in, tok_out = 0, 0
     for chunk in response:
-        delta = chunk.choices[0].delta.content
+        delta = chunk.choices[0].delta.content if chunk.choices else None
         if delta:
             out_file.write(delta)
             out_file.flush()
-            time.sleep(0.04)  # 40ms pause — makes streaming visible in SAP GUI
+        if chunk.usage:
+            tok_in  = chunk.usage.prompt_tokens
+            tok_out = chunk.usage.completion_tokens
+    return (tok_in, tok_out)
 
 
 def main() -> None:
@@ -145,17 +153,23 @@ def main() -> None:
     # Clear response file before writing
     open(response_file, "w", encoding=file_encoding).close()
 
+    import time as _time
+    t_start = _time.time()
+
     try:
         with open(response_file, "a", encoding=file_encoding, errors="replace") as out:
             if provider == "ANTHROPIC":
                 log("calling anthropic stream...")
-                stream_anthropic(prompt, model, api_key, temperature, out)
+                tok_in, tok_out = stream_anthropic(prompt, model, api_key, temperature, out)
             else:
                 log(f"calling openai stream... base_url={base_url}")
-                stream_openai(prompt, model, api_key, temperature, out, base_url)
+                tok_in, tok_out = stream_openai(prompt, model, api_key, temperature, out, base_url)
 
+            elapsed = round(_time.time() - t_start, 1)
+            # Write usage marker — ABAP reads and shows in progress panel
+            out.write(f"\n##USAGE## in={tok_in} out={tok_out} sec={elapsed}")
             out.write("\n##DONE##")
-            log("DONE")
+            log(f"DONE in={tok_in} out={tok_out} sec={elapsed}")
 
     except Exception as exc:
         log(f"ERROR: {exc}")

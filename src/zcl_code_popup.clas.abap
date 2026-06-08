@@ -333,8 +333,21 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         " Check terminal markers
         DATA lv_stream_error TYPE abap_bool.
+        DATA lv_stream_tok_in  TYPE i.
+        DATA lv_stream_tok_out TYPE i.
+        DATA lv_stream_seconds TYPE string.
         IF lv_resp_text CS '##DONE##'.
           lv_stream_done = abap_true.
+          " Parse ##USAGE## in=X out=Y sec=Z before stripping
+          IF lv_resp_text CS '##USAGE##'.
+            DATA(lv_usage_str) = lv_resp_text.
+            FIND REGEX '##USAGE##\s+in=(\d+)\s+out=(\d+)\s+sec=([\d.]+)'
+              IN lv_usage_str SUBMATCHES DATA(lv_m1) DATA(lv_m2) DATA(lv_m3).
+            lv_stream_tok_in  = lv_m1.
+            lv_stream_tok_out = lv_m2.
+            lv_stream_seconds = lv_m3.
+            REPLACE ALL OCCURRENCES OF REGEX '##USAGE##[^\n]*' IN lv_resp_text WITH ''.
+          ENDIF.
           REPLACE ALL OCCURRENCES OF '##DONE##' IN lv_resp_text WITH ''.
         ELSEIF lv_resp_text CS '##ERROR##'.
           lv_stream_error = abap_true.
@@ -422,7 +435,11 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       IF lv_stream_done = abap_true.
         " lv_resp_text is plain text (cp1251 read by gui_upload → Unicode).
         " Register as-is — no HTML encoding in the history log.
-        lo_runner_s->register_stream_answer( lv_resp_text ).
+        lo_runner_s->register_stream_answer(
+          i_answer  = lv_resp_text
+          i_seconds = lv_stream_seconds
+          i_tok_in  = lv_stream_tok_in
+          i_tok_out = lv_stream_tok_out ).
         APPEND LINES OF lo_runner_s->get_messages( )->get_messages( ) TO mt_message_history.
       ENDIF.
       " Do NOT call display_status — it would overwrite the streamed answer.

@@ -49,7 +49,10 @@ public section.
   " marks the Final answer step as completed in the progress panel.
   methods REGISTER_STREAM_ANSWER
     importing
-      !I_ANSWER type STRING .
+      !I_ANSWER  type STRING
+      !I_SECONDS type STRING optional
+      !I_TOK_IN  type I    optional
+      !I_TOK_OUT type I    optional .
 protected section.
 private section.
 
@@ -1822,8 +1825,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       i_content     = i_answer ).
 
     complete_last_step(
-      i_is_llm = abap_true
-      i_seconds = 0 ).
+      i_is_llm  = abap_true
+      i_seconds = CONV #( i_seconds )
+      i_tok_in  = i_tok_in
+      i_tok_out = i_tok_out ).
 
     cl_gui_cfw=>flush( ).
 
