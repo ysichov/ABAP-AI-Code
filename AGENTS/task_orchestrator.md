@@ -39,6 +39,8 @@ For every generated task, choose the appropriate tool for "target_tool" and ALWA
    - Leave the "tasks" array completely empty [].
    - If the request is NOT a pure code request, set "is_pure_code_request" to false, "pure_code_object_type" to "", and "pure_code_object_name" to "".
 
+   If user asks for a code documentation - it is not a Pure Code Request it is a task to generate instruction!!!!
+
 4. But words like tell me or analyse or any other ask different from shoe me  - Set "is_pure_code_request" to false. 
 
 ### DEPENDENCY & PRIORITY RULES:

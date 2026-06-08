@@ -31,10 +31,12 @@ def stream_anthropic(prompt: str, model: str, api_key: str, temperature: float, 
     import anthropic  # pip install anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
+    lang = extract_language(prompt)
     with client.messages.stream(
         model=model,
         max_tokens=8096,
         temperature=temperature,
+        system=f"You MUST answer exclusively in {lang} language." if lang else anthropic.NOT_GIVEN,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         import time
@@ -58,6 +60,25 @@ def get_base_url(model: str, base_url: str) -> str:
 
 
 
+def extract_language(prompt: str) -> str:
+    """Extract the ANSWER LANGUAGE value from the assembled prompt.
+    Captures everything after 'ANSWER LANGUAGE:' up to newline or backslash."""
+    import re
+    m = re.search(r'ANSWER LANGUAGE:\s*([^\n\r\\]+)', prompt)
+    return m.group(1).strip() if m else ""
+
+
+def build_messages(prompt: str) -> list:
+    """Build messages array with language reinforcement as system message."""
+    lang = extract_language(prompt)
+    messages = []
+    if lang:
+        # Reinforce language as system message so model doesn't ignore it
+        messages.append({"role": "system", "content": f"You MUST answer exclusively in {lang} language."})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
 def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out_file,
                   base_url: str = None) -> None:
     from openai import OpenAI  # pip install openai
@@ -68,7 +89,7 @@ def stream_openai(prompt: str, model: str, api_key: str, temperature: float, out
         model=model,
         max_tokens=8096,
         temperature=temperature,
-        messages=[{"role": "user", "content": prompt}],
+        messages=build_messages(prompt),
         stream=True,
     )
     import time
@@ -113,6 +134,8 @@ def main() -> None:
             f.write(f"[{datetime.datetime.now():%H:%M:%S}] {msg}\n")
 
     log(f"START provider={provider} model={model}")
+    lang = extract_language(prompt)
+    log(f"detected language from prompt: '{lang}'")
 
     # Write in cp1251 — matches SAP GUI gui_upload(filetype='ASC') on Russian/Ukrainian Windows.
     # SAP reads cp1251 bytes → converts to internal Unicode → HTML viewer sends back as cp1251.
