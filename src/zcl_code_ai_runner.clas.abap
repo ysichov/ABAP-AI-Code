@@ -1146,42 +1146,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
       ENDLOOP.
 
-      IF lt_batched_code_review IS NOT INITIAL
-      AND lv_has_code_change = abap_false
-      AND lv_has_create_object = abap_false.
-        LOOP AT lt_batched_code_review INTO DATA(ls_review_request).
-          DATA(lv_review_read_command) = mo_messages->build_read_command( ls_review_request ).
-          IF lv_review_read_command IS INITIAL.
-            CONTINUE.
-          ENDIF.
-
-          show_step( i_text = |Reading code { ls_review_request-object_name }...| i_pct = 80 ).
-
-          lv_ignored_context = resolve_and_log_read_commands(
-            EXPORTING
-              i_text           = lv_review_read_command
-            CHANGING
-              ct_done_commands = lt_done_read_commands ).
-        ENDLOOP.
-
-        show_step( i_agent = zcl_ai_agents_prompts=>c_agent_code_review i_prompt_type = 'LLM' i_pct = 90 ).
-
-        DATA(lv_review_prompt) = mo_messages->build_agent_requests( lt_batched_code_review ).
-        DATA(lv_review_answer) = mo_llm->ask( lv_review_prompt ).
-        DATA(lv_review_answer_log) = lv_review_answer.
-        lv_review_answer = zcl_ai_messages=>strip_log_info( lv_review_answer ).
-
-        complete_last_step( i_is_llm = abap_true i_seconds = CONV #( mo_llm->get_last_seconds( ) ) i_tok_in = mo_llm->mv_last_tok_in i_tok_out = mo_llm->mv_last_tok_out ).
-
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = zcl_ai_agents_prompts=>c_agent_code_review
-          i_prompt_type = 'LLM_RESPONSE'
-          i_duration_seconds = mo_llm->get_last_seconds( )
-          i_tok_in      = mo_llm->mv_last_tok_in
-          i_tok_out     = mo_llm->mv_last_tok_out
-          i_content     = lv_review_answer_log ).
-      ENDIF.
+      " CODE_REVIEW tasks: code is already read via prerequisite READ tasks.
+      " No separate intermediate LLM call needed - final LLM handles the review.
 
       DATA(lv_only_code_search) = abap_true.
       LOOP AT lt_agent_requests INTO ls_agent_request.
@@ -1203,12 +1169,6 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
         lv_answer_log = lv_answer.
-      ELSEIF lt_batched_code_review IS NOT INITIAL
-        AND lv_has_code_change = abap_false
-        AND lv_has_create_object = abap_false.
-        lv_answer = lv_review_answer.
-        lv_answer_log = lv_answer.
-        lv_resolved_code = mo_messages->get_resolved_code( ).
       ELSEIF lv_has_code_change = abap_false
         AND lv_has_code_diff = abap_true
         AND lv_has_agent_followup_text = abap_false.
