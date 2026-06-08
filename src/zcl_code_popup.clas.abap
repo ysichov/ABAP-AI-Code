@@ -201,8 +201,15 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         IF ls_stream_prep-is_source_code = abap_true.
           display_program_source( ls_stream_prep-answer ).
         ELSE.
+          " Non-code answer (search result list etc.) — convert to HTML with clickable links
+          DATA(lv_fallback_html) = ls_stream_prep-answer.
+          IF ls_stream_prep-has_diff = abap_false AND ls_stream_prep-answer IS NOT INITIAL.
+            lv_fallback_html = zcl_code_html_gen=>source_to_html(
+              i_source = ls_stream_prep-answer
+              i_title  = 'Search result' ).
+          ENDIF.
           display_answer(
-            i_answer = ls_stream_prep-answer
+            i_answer = lv_fallback_html
             i_source = ls_stream_prep-resolved_code
             i_title  = ls_stream_prep-source_title ).
         ENDIF.

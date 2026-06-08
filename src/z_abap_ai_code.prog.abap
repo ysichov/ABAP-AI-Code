@@ -15,7 +15,7 @@ PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_apikey TYPE text255 MEMORY ID api,
             p_agents TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.1',
-            p_stream TYPE abap_bool DEFAULT ' '.   " Stream via local Python client
+            p_stream TYPE abap_bool AS CHECKBOX DEFAULT ' '.   " Stream via local Python client
 SELECTION-SCREEN END OF BLOCK b_api.
 
 *----------------------------------------------------------------------*
