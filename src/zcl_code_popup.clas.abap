@@ -269,7 +269,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           parameter         = lv_params
           default_directory = lv_temp_dir
           synchronous       = ' '
-          minimized         = 'X'
+          minimized         = ''
         EXCEPTIONS OTHERS   = 1 ).
 
       " Show paths in status so user can debug if Python does not start
