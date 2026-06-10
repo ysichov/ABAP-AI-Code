@@ -901,10 +901,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
 
-    rv_message = 'Under Construction'.
-    mv_last_log = rv_message.
-    RETURN.
-
     lv_class = i_class.
     TRANSLATE lv_class TO UPPER CASE.
     CONDENSE lv_class.
@@ -1154,6 +1150,14 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
         rv_error = |Error saving class { iv_class }: { lx_error->get_text( ) }|.
     ENDTRY.
 
+    " Never leave the class locked after a failed save attempt
+    IF rv_error IS NOT INITIAL AND li_source IS BOUND.
+      TRY.
+          li_source->unlock( ).
+        CATCH cx_root ##NO_HANDLER.
+      ENDTRY.
+    ENDIF.
+
   ENDMETHOD.
 
 
@@ -1224,9 +1228,9 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       lv_upper = lv_line.
       CONDENSE lv_upper.
       TRANSLATE lv_upper TO UPPER CASE.
-      IF lv_upper CP |METHOD { to_upper( iv_method ) } .|
-      OR lv_upper CP |METHOD { to_upper( iv_method ) }.|
-      OR lv_upper = |METHOD { to_upper( iv_method ) }|.
+      " Match "METHOD <name>." with optional spaces and trailing comment
+      IF matches( val   = lv_upper
+                  regex = |METHOD { to_upper( iv_method ) }\\s*\\.(\\s.*)?| ).
         lv_start = lv_index.
         EXIT.
       ENDIF.
@@ -1419,10 +1423,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     CLEAR mv_last_log.
     lv_nl = cl_abap_char_utilities=>newline.
-
-    rv_message = 'Under Construction'.
-    mv_last_log = rv_message.
-    RETURN.
 
     IF i_class IS INITIAL OR i_method IS INITIAL.
       rv_message = |Method name is incomplete: class={ i_class } method={ i_method }.|.
