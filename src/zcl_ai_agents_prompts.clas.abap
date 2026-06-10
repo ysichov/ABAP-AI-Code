@@ -239,6 +239,8 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
         rv_prompt = get_code_reader_prompt( ).
       WHEN c_agent_class_processor.
         rv_prompt = get_class_processor_prompt( ).
+      WHEN c_agent_prog_processor.
+        rv_prompt = get_prog_processor_prompt( ).
       WHEN 'FINAL' OR '' OR space.
         rv_prompt = get_final_prompt( ).
       WHEN OTHERS.
@@ -263,6 +265,14 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
 
     rv_prompt = get_system_prompt_prefix( )
              && mv_class_processor_prompt.
+
+  ENDMETHOD.
+
+
+  METHOD get_prog_processor_prompt.
+
+    rv_prompt = get_system_prompt_prefix( )
+             && mv_prog_processor_prompt.
 
   ENDMETHOD.
 
