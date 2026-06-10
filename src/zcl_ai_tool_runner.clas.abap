@@ -395,6 +395,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       cl_abap_char_utilities=>newline &&
       |- Call read_sap_object before modify_sap_object or review_sap_code.| &&
       cl_abap_char_utilities=>newline &&
+      |- read_sap_object accepts a wildcard pattern (ZCL_AITOOL_*) to list | &&
+      |matching objects, and a comma-separated list of names to read several | &&
+      |objects in one call.| &&
+      cl_abap_char_utilities=>newline &&
       |- When the user only wants a code example without saving, use | &&
       |show_code_example - never create_sap_object.| &&
       cl_abap_char_utilities=>newline &&

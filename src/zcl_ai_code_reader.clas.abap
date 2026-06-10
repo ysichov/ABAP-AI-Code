@@ -335,8 +335,10 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         OTHERS                       = 2.
 
     IF sy-subrc <> 0.
-      " Fallback: search TADIR with LIKE
+      " Fallback: search TADIR with LIKE (normalize *-wildcards to SQL %)
       DATA(lv_like) = |%{ lv_class }%|.
+      REPLACE ALL OCCURRENCES OF '*' IN lv_like WITH '%'.
+      REPLACE ALL OCCURRENCES OF '+' IN lv_like WITH '_'.
       DATA lt_found TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
       SELECT object obj_name
         FROM tadir
