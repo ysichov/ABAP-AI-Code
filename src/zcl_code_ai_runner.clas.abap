@@ -1173,8 +1173,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           DATA lv_del_confirm TYPE char1.
           CALL FUNCTION 'POPUP_TO_CONFIRM'
             EXPORTING
-              titlebar              = 'Confirm Deletion'
-              text_question         = |Delete { lv_del_type } { lv_del_name }? This action cannot be undone.|
+              titlebar              = |Delete { lv_del_type } { lv_del_name }|
+              text_question         = |Permanently delete { lv_del_type } { lv_del_name } from the SAP system? This cannot be undone.|
               text_button_1         = 'Delete'
               text_button_2         = 'Cancel'
               default_button        = '2'
