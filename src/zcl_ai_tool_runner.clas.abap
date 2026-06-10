@@ -9,7 +9,8 @@ CLASS zcl_ai_tool_runner DEFINITION
       IMPORTING
         !io_llm        TYPE REF TO zcl_llm_client
         !io_context    TYPE REF TO zcl_ai_tool_context
-        !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL.
+        !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
+        !io_ui         TYPE REF TO zcl_code_popup2 OPTIONAL.
 
     " Agentic loop: LLM -> tool_calls -> execute -> results back -> LLM ...
     " Ends when the LLM answers without tool calls or c_max_iterations is hit.
@@ -30,6 +31,7 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mo_llm      TYPE REF TO zcl_llm_client.
     DATA mo_context  TYPE REF TO zcl_ai_tool_context.
     DATA mo_prompts  TYPE REF TO zcl_ai_agents_prompts.
+    DATA mo_ui       TYPE REF TO zcl_code_popup2.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
 
@@ -57,6 +59,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     mo_llm     = io_llm.
     mo_context = io_context.
     mo_prompts = io_prompts.
+    mo_ui      = io_ui.
     zcl_ai_tool_factory=>initialize( io_context ).
 
   ENDMETHOD.
@@ -214,9 +217,22 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD confirm_and_apply.
 
-    DATA lv_answer TYPE c LENGTH 1.
-
     DATA(lv_is_delete) = boolc( is_result-xml_payload CS '<code_deleted' ).
+
+    " For modifications: show diff and use the review flow if UI is available
+    IF lv_is_delete = abap_false
+    AND is_result-original_source IS NOT INITIAL
+    AND mo_ui IS BOUND.
+      rv_message = mo_ui->review_and_save(
+        i_old_code    = is_result-original_source
+        i_new_code    = is_result-final_source
+        i_object_type = is_result-object_type
+        i_object_name = is_result-object_name ).
+      RETURN.
+    ENDIF.
+
+    " Fallback: simple confirm popup (delete or no UI)
+    DATA lv_answer TYPE c LENGTH 1.
     DATA(lv_question) = COND string(
       WHEN lv_is_delete = abap_true
       THEN |Delete { is_result-object_type } { is_result-object_name }?|

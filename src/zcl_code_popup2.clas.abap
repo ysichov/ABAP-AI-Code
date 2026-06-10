@@ -119,6 +119,15 @@ private section.
     returning
       value(RV_HTML) type STRING .
   methods REFRESH_DIFF_HTML .
+  " Show diff, ask user to approve, save if confirmed. Returns save message.
+  methods REVIEW_AND_SAVE
+    importing
+      !I_OLD_CODE    type STRING
+      !I_NEW_CODE    type STRING
+      !I_OBJECT_TYPE type STRING
+      !I_OBJECT_NAME type STRING
+    returning
+      value(RV_MESSAGE) type STRING .
   methods CONFIRM_SAVE_APPROVED_DIFF
     returning
       value(RV_CONFIRMED) type ABAP_BOOL .
@@ -589,7 +598,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       i_agents_path = i_agents_path ).
     mo_tool_runner = NEW zcl_ai_tool_runner(
       io_llm     = mo_llm
-      io_context = mo_tool_context ).
+      io_context = mo_tool_context
+      io_ui      = me ).
 
   endmethod.
 
@@ -1631,6 +1641,23 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
   METHOD build_plain_html.
     rv_html = zcl_code_html_gen=>markdown_to_html( i_text ).
+  ENDMETHOD.
+
+
+  METHOD review_and_save.
+
+    " Show diff - user reviews hunks and approves/declines via diff toolbar.
+    " ON_ANSWER_SAPEVENT handles the actual save when all hunks are approved.
+    DATA(lv_diff_html) = diff_to_html(
+      i_old_code    = i_old_code
+      i_new_code    = i_new_code
+      i_object_type = i_object_type
+      i_object_name = i_object_name ).
+    display_answer( i_answer = lv_diff_html ).
+    cl_gui_cfw=>flush( ).
+
+    rv_message = |Review diff for { i_object_type } { i_object_name } and approve/decline changes.|.
+
   ENDMETHOD.
 
 ENDCLASS.

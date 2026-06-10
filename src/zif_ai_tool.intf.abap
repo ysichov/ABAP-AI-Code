@@ -3,12 +3,13 @@ INTERFACE zif_ai_tool
 
   TYPES:
     BEGIN OF ty_result,
-      xml_payload   TYPE string,     " <code_modified>/<code_example>/... envelope
-      save_required TYPE abap_bool,  " runner must trigger confirm + save afterwards
-      object_type   TYPE string,     " filled when save_required = 'X'
-      object_name   TYPE string,     " filled when save_required = 'X'
-      final_source  TYPE string,     " complete merged source ready to save
-      error_text    TYPE string,     " filled when execution failed
+      xml_payload      TYPE string,     " <code_modified>/<code_example>/... envelope
+      save_required    TYPE abap_bool,  " runner must trigger confirm + save afterwards
+      object_type      TYPE string,     " filled when save_required = 'X'
+      object_name      TYPE string,     " filled when save_required = 'X'
+      original_source  TYPE string,     " source before changes (for diff review)
+      final_source     TYPE string,     " complete merged source ready to save
+      error_text       TYPE string,     " filled when execution failed
     END OF ty_result.
 
   " Dependency injection - called once by the factory after CREATE OBJECT

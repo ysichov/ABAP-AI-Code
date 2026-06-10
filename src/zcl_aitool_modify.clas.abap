@@ -91,12 +91,13 @@ CLASS zcl_aitool_modify IMPLEMENTATION.
       i_full_source   = lv_source
       i_changed_parts = lv_changed ).
 
-    " 4. Hand over to the runner: confirmation popup + save are its job
-    rs_result-xml_payload   = lv_answer.
-    rs_result-save_required = abap_true.
-    rs_result-object_type   = lv_type.
-    rs_result-object_name   = lv_name.
-    rs_result-final_source  = lv_merged.
+    " 4. Hand over to the runner: diff review + confirmation + save are its job
+    rs_result-xml_payload      = lv_answer.
+    rs_result-save_required    = abap_true.
+    rs_result-object_type      = lv_type.
+    rs_result-object_name      = lv_name.
+    rs_result-original_source  = lv_source.
+    rs_result-final_source     = lv_merged.
 
   ENDMETHOD.
 
