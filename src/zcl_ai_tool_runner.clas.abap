@@ -75,8 +75,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         CLEAR lv_direct_source.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
       ENDIF.
-      IF lv_direct_source IS INITIAL.
+      IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
+        CLEAR lv_direct_source.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word && '*' ).
+        IF lv_direct_source CS 'not found' OR lv_direct_source CS 'No objects found'.
+          CLEAR lv_direct_source.
+        ENDIF.
       ENDIF.
       IF lv_direct_source IS NOT INITIAL.
         rv_answer = lv_direct_source.
