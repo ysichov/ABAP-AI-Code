@@ -252,7 +252,8 @@ METHOD get_total_token_usage.
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_review
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_code_diff
       OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_create_obj
-      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_save.
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_save
+      OR ls_request-agent = zcl_ai_agents_prompts=>c_agent_delete_obj.
         LOOP AT lt_parts INTO lv_part FROM 2.
           lv_part_upper = lv_part.
           TRANSLATE lv_part_upper TO UPPER CASE.
