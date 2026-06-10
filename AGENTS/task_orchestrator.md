@@ -26,7 +26,13 @@ For every generated task, choose the appropriate tool for "target_tool" and ALWA
      * Set "sap_object_type" to the type of object to review (PROG, METH, CLAS, etc.).
      * Set "sap_object_name" to the technical name of the object (e.g., 'ZYS_TEST' or 'ZCL_TEST=>HELLO').
 
-4. "NONE"
+4. "ZCL_AI_TOOL=>DELETE"
+   - Use case: When the user explicitly asks to delete an entire CLASS or PROGRAM (not a method — see DELETE RULES below).
+   - Arguments mapping:
+     * Set "sap_object_type" to CLAS or PROG.
+     * Set "sap_object_name" to the exact technical name of the object to delete (e.g., 'ZCL_TEST2' or 'Z_MY_PROG'). NEVER leave this empty.
+
+5. "NONE"
    - Use ONLY if the task requires user clarification or cannot be executed. Set "sap_object_type" to "OTHER" and "sap_object_name" to "".
 
 ### CRITICAL ORCHESTRATION RULES:
