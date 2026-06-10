@@ -13,7 +13,7 @@
         },
         "object_name": {
           "type": "string",
-          "description": "Technical name, e.g. 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME', 'Z_PROGRAM'"
+          "description": "Technical name, e.g. 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME', 'Z_PROGRAM'. Supports a wildcard pattern to list matching objects (e.g. 'ZCL_AITOOL_*') and a comma-separated list to read several objects in one call (e.g. 'ZCL_A, ZCL_B, ZCL_C')"
         }
       },
       "required": ["object_type", "object_name"]
