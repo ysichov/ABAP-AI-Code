@@ -28,6 +28,11 @@ public section.
       !I_TEXT type STRING
     returning
       value(RV_HTML) type STRING .
+  class-methods MD_INLINE
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_HTML) type STRING .
   class-methods BUILD_DIFF_HTML
     importing
       !I_OLD_CODE type STRING
@@ -1443,19 +1448,110 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
   method MARKDOWN_TO_HTML.
 
-    DATA(lv_body) = render_abap_blocks( i_text ).
+    " Standalone line-by-line markdown renderer (no normalize_markdown preprocessing).
+    DATA lt_lines  TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_body   TYPE string.
+    DATA lv_in_code TYPE abap_bool.
+    DATA lv_code_buf TYPE string.
+    DATA lv_sub1   TYPE string.
+    DATA lv_sub2   TYPE string.
+
+    " Normalise CR+LF → LF, then strip stray CR
+    DATA(lv_text) = i_text.
+    DATA lv_cr TYPE c LENGTH 1.
+    lv_cr = cl_abap_char_utilities=>cr_lf(1).
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf
+      IN lv_text WITH cl_abap_char_utilities=>newline.
+    REPLACE ALL OCCURRENCES OF lv_cr IN lv_text WITH ''.
+
+    SPLIT lv_text AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+
+      " --- code fence open/close ---
+      IF lv_line CP '```*'.
+        IF lv_in_code = abap_false.
+          lv_in_code = abap_true.
+          lv_code_buf = ''.
+        ELSE.
+          lv_in_code = abap_false.
+          lv_body = lv_body && code_block_to_html( lv_code_buf ).
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_in_code = abap_true.
+        lv_code_buf = lv_code_buf && lv_line && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- heading: 1-6 hashes followed by space ---
+      FIND FIRST OCCURRENCE OF REGEX '^(#{1,6}) (.+)$'
+        IN lv_line SUBMATCHES lv_sub1 lv_sub2.
+      IF sy-subrc = 0.
+        DATA(lv_hlevel) = strlen( lv_sub1 ).
+        DATA(lv_hcss)   = COND string( WHEN lv_hlevel = 1 THEN 'h1'
+                                       WHEN lv_hlevel = 2 THEN 'h2'
+                                       ELSE 'h3' ).
+        lv_body = lv_body
+               && |<{ lv_hcss }>{ md_inline( lv_sub2 ) }</{ lv_hcss }>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- bullet: starts with "- " ---
+      FIND FIRST OCCURRENCE OF REGEX '^- (.+)$'
+        IN lv_line SUBMATCHES lv_sub1.
+      IF sy-subrc = 0.
+        lv_body = lv_body
+               && |<li>{ md_inline( lv_sub1 ) }</li>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- numbered list: starts with digit+dot ---
+      FIND FIRST OCCURRENCE OF REGEX '^[0-9]+\. (.+)$'
+        IN lv_line SUBMATCHES lv_sub1.
+      IF sy-subrc = 0.
+        lv_body = lv_body
+               && |<li>{ md_inline( lv_sub1 ) }</li>|
+               && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- horizontal rule ---
+      IF lv_line = '---' OR lv_line = '***' OR lv_line = '___'.
+        lv_body = lv_body && '<hr>' && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- blank line ---
+      DATA(lv_trim) = lv_line.
+      CONDENSE lv_trim.
+      IF lv_trim IS INITIAL.
+        lv_body = lv_body && '<br>' && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      " --- plain paragraph line ---
+      lv_body = lv_body
+             && |<p>{ md_inline( lv_line ) }</p>|
+             && cl_abap_char_utilities=>newline.
+    ENDLOOP.
 
     rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
            && |body\{margin:0;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;|
            && |font-size:14px;line-height:1.65;color:#1a1a1a;background:#ffffff\}|
-           && |.md_h\{display:block;font-size:16px;font-weight:700;color:#003d80;|
-           && |margin:14px 0 6px\}|
-           && |.md_h2\{display:block;font-size:15px;font-weight:700;color:#1a4f8a;|
-           && |margin:10px 0 4px\}|
-           && |.md_li\{display:block;margin:3px 0 3px 20px;text-indent:-20px\}|
-           && |code\{font-family:Consolas,monospace;background:#f0f4f8;border:1px solid #dce4ec;|
-           && |padding:1px 5px;border-radius:3px;color:#1a3a5c;font-size:13px\}|
-           && |strong\{font-weight:700;color:#1a1a1a\}|
+           && |h1\{font-size:18px;font-weight:700;color:#003d80;margin:16px 0 6px\}|
+           && |h2\{font-size:16px;font-weight:700;color:#1a4f8a;margin:12px 0 4px\}|
+           && |h3\{font-size:14px;font-weight:700;color:#2a5f9a;margin:8px 0 4px\}|
+           && |p\{margin:3px 0\}|
+           && |li\{margin:2px 0 2px 20px\}|
+           && |code\{font-family:Consolas,monospace;background:#f0f4f8;|
+           && |border:1px solid #dce4ec;padding:1px 5px;color:#1a3a5c;font-size:13px\}|
+           && |strong\{font-weight:700\}|
+           && |em\{font-style:italic\}|
+           && |hr\{border:none;border-top:1px solid #ddd;margin:10px 0\}|
            && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
            && |background:#fff;border:1px solid #d7e0ea;margin:10px 0\}|
            && |.code_tbl tr:hover td\{background:#f0f4fa\}|
@@ -1467,6 +1563,15 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && lv_body
            && |</body></html>|.
 
+  endmethod.
+
+
+  method MD_INLINE.
+    " Render inline markdown: **bold**, *italic*, `code`, escape HTML.
+    rv_html = escape_html( i_text ).
+    REPLACE ALL OCCURRENCES OF REGEX '\*\*([^*]+)\*\*' IN rv_html WITH '<strong>$1</strong>'.
+    REPLACE ALL OCCURRENCES OF REGEX '\*([^*]+)\*'     IN rv_html WITH '<em>$1</em>'.
+    REPLACE ALL OCCURRENCES OF REGEX '`([^`]+)`'       IN rv_html WITH '<code>$1</code>'.
   endmethod.
 
 ENDCLASS.
