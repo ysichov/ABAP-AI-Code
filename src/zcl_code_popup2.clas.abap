@@ -215,7 +215,24 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF REGEX '<[^>]+>' IN lv_display_answer WITH ''.
       CONDENSE lv_display_answer.
     ENDIF.
+    " Markdown indicators (pipe tables, headings, bold, fences) win over the
+    " code heuristic - a comparison table also contains '--- ' and 'METHOD '
+    DATA(lv_is_markdown) = abap_false.
+    " A real markdown table has a |---|---| separator row
+    FIND FIRST OCCURRENCE OF REGEX '(^|\n)\s*\|[\s:|-]+\|\s*(\n|$)' IN lv_display_answer.
+    IF sy-subrc = 0.
+      lv_is_markdown = abap_true.
+    ELSE.
+      FIND FIRST OCCURRENCE OF REGEX '(^|\n)#{1,6} |\*\*[^\n*]+\*\*|(^|\n)```'
+        IN lv_display_answer.
+      IF sy-subrc = 0.
+        lv_is_markdown = abap_true.
+      ENDIF.
+    ENDIF.
+
     DATA(lv_tool_html) = COND string(
+      WHEN lv_is_markdown = abap_true
+      THEN zcl_code_html_gen=>markdown_to_html( lv_display_answer )
       WHEN lv_display_answer CS '--- ' OR lv_display_answer CS 'METHOD '
       THEN zcl_code_html_gen=>source_to_html( i_source = lv_display_answer i_title = space )
       WHEN lv_display_answer CP '*CLAS *' OR lv_display_answer CP '*PROG *'
