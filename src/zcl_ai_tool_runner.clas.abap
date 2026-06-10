@@ -65,13 +65,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CONDENSE lv_trimmed_prompt.
     FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed_prompt.
     IF lv_trimmed_prompt IS NOT INITIAL
-    AND lv_trimmed_prompt NOT CA ' '
+    AND lv_trimmed_prompt NA ' '
     AND sy-subrc <> 0.
       DATA(lv_word) = lv_trimmed_prompt.
       TRANSLATE lv_word TO UPPER CASE.
       " Try CLASS first, then PROG, then wildcard search
       DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
-      IF lv_direct_source IS INITIAL.
+      IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
+        CLEAR lv_direct_source.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
       ENDIF.
       IF lv_direct_source IS INITIAL.
