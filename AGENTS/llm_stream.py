@@ -117,9 +117,10 @@ def main() -> None:
     response_file = sys.argv[2]
 
     # Read and parse JSON config.
-    # SAP gui_download writes files in the local Windows codepage (cp1251 on
-    # Russian/Ukrainian systems), so we must read with the same encoding.
-    with open(prompt_file, "r", encoding="cp1251") as f:
+    # ABAP gui_download writes the prompt file with codepage 4110 (UTF-8),
+    # so the exchange is independent of the local Windows ANSI codepage.
+    # utf-8-sig tolerates an optional BOM.
+    with open(prompt_file, "r", encoding="utf-8-sig") as f:
         cfg = json.load(f)
 
     prompt      = cfg.get("prompt", "")
@@ -144,10 +145,9 @@ def main() -> None:
     lang = extract_language(prompt)
     log(f"detected language from prompt: '{lang}'")
 
-    # Write in cp1251 — matches SAP GUI gui_upload(filetype='ASC') on Russian/Ukrainian Windows.
-    # SAP reads cp1251 bytes → converts to internal Unicode → HTML viewer sends back as cp1251.
-    # Paired with charset="windows-1251" in the HTML so the browser renders Cyrillic correctly.
-    file_encoding = "cp1251"
+    # Write in UTF-8 — ABAP gui_upload reads with codepage 4110, so the
+    # round-trip works on any Windows locale (Cyrillic and Western alike).
+    file_encoding = "utf-8"
     log(f"file_encoding={file_encoding}")
 
     # Clear response file before writing

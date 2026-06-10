@@ -244,6 +244,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       cl_gui_frontend_services=>gui_download(
         EXPORTING filename             = mv_stream_prompt_file
                   filetype             = 'ASC'
+                  codepage             = '4110'  " UTF-8: locale-independent exchange with Python
                   confirm_overwrite    = ' '
                   show_transfer_status = ' '
         CHANGING  data_tab = lt_prompt_file
@@ -254,6 +255,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       cl_gui_frontend_services=>gui_download(
         EXPORTING filename             = mv_stream_response_file
                   filetype             = 'ASC'
+                  codepage             = '4110'  " UTF-8: locale-independent exchange with Python
                   confirm_overwrite    = ' '
                   show_transfer_status = ' '
         CHANGING  data_tab = lt_empty
@@ -317,6 +319,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           cl_gui_frontend_services=>gui_upload(
             EXPORTING filename = mv_stream_response_file
                       filetype = 'ASC'
+                      codepage = '4110'  " UTF-8: matches llm_stream.py output encoding
             CHANGING  data_tab = lt_resp_lines
             EXCEPTIONS OTHERS  = 1 ).
         ENDIF.
@@ -386,7 +389,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         DATA lv_stream_html TYPE string.
         lv_stream_html =
-          '<html><head><meta charset="windows-1251"><style>'
+          '<html><head><meta charset="utf-8"><style>'
           && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#ffffff}'
           && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:#1a1a1a}'
           && '</style></head><body>'
@@ -433,7 +436,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       " Register streamed answer in message history (so it appears in History popup).
       " Decode basic HTML entities; &#NNN; stays as-is (acceptable in history log).
       IF lv_stream_done = abap_true.
-        " lv_resp_text is plain text (cp1251 read by gui_upload → Unicode).
+        " lv_resp_text is plain text (UTF-8 read by gui_upload → Unicode).
         " Register as-is — no HTML encoding in the history log.
         lo_runner_s->register_stream_answer(
           i_answer  = lv_resp_text
