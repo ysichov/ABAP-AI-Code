@@ -97,20 +97,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA lt_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
 
-    mo_messages = NEW zcl_ai_messages(
-      i_user_prompt = i_prompt
-      io_prompts    = mo_prompts
-      i_session_id  = 1 ).
-
     DATA(lv_tools_json)    = zcl_ai_tool_factory=>build_tools_json( ).
     DATA(lv_system_prompt) = build_system_prompt( ).
 
-    " Log system prompt into the message history
-    mo_messages->add_message(
-      i_role        = 'system'
-      i_agent       = 'TOOL_RUNNER'
-      i_prompt_type = 'SYSTEM_PROMPT'
-      i_content     = lv_system_prompt ).
+    mo_messages = NEW zcl_ai_messages(
+      i_user_prompt   = i_prompt
+      io_prompts      = mo_prompts
+      i_session_id    = 1
+      i_system_prompt = lv_system_prompt ).
 
     DATA(lv_prompt) = i_prompt.
 

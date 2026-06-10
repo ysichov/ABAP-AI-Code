@@ -30,9 +30,10 @@ CLASS zcl_ai_messages DEFINITION
       tt_source         TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
 
     METHODS constructor
-      IMPORTING i_user_prompt TYPE string
-                io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
-                i_session_id  TYPE i OPTIONAL.
+      IMPORTING i_user_prompt   TYPE string
+                io_prompts      TYPE REF TO zcl_ai_agents_prompts OPTIONAL
+                i_session_id    TYPE i OPTIONAL
+                i_system_prompt TYPE string OPTIONAL.
 
     METHODS build_orchestrator_request
       RETURNING VALUE(rv_prompt) TYPE string.
@@ -114,6 +115,15 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
     mo_prompts = io_prompts.
     IF mv_session_id IS INITIAL.
       mv_session_id = 1.
+    ENDIF.
+
+    " System prompt first so history viewer pairs it correctly with the user message
+    IF i_system_prompt IS NOT INITIAL.
+      add_message(
+        i_role        = 'system'
+        i_agent       = 'TOOL_RUNNER'
+        i_prompt_type = 'SYSTEM_PROMPT'
+        i_content     = i_system_prompt ).
     ENDIF.
 
     add_message(
