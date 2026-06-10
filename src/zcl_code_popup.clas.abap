@@ -131,6 +131,11 @@ private section.
   methods DISPLAY_PROGRAM_SOURCE
     importing
       !I_SOURCE type STRING .
+  methods BUILD_PLAIN_HTML
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_HTML) type STRING .
   " Show plain text with typewriter animation (streaming effect).
   methods DISPLAY_STREAMING
     importing
@@ -499,6 +504,14 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
       IN lv_display_answer WITH '' IGNORING CASE.
     REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
       IN lv_display_answer WITH '' IGNORING CASE.
+
+    " LLM text answer: render same style as streaming (pre, Consolas, no line numbers).
+    IF ls_result-has_llm_answer = abap_true
+    AND ls_result-is_source_code = abap_false
+    AND ls_result-has_diff = abap_false.
+      display_answer( i_answer = build_plain_html( lv_display_answer ) ).
+      RETURN.
+    ENDIF.
 
     " Pass resolved_code only when the answer itself is source code (diff/code view).
     " For plain LLM text answers do not append source — it was not requested.
@@ -1560,6 +1573,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
     cl_gui_cfw=>flush( ).
 
+  ENDMETHOD.
+
+  METHOD build_plain_html.
+    rv_html = zcl_code_html_gen=>markdown_to_html( i_text ).
   ENDMETHOD.
 
 ENDCLASS.

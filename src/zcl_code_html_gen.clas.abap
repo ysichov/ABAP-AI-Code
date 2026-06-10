@@ -23,6 +23,11 @@ public section.
       !I_SOURCE type STRING
     returning
       value(RV_HTML) type STRING .
+  class-methods MARKDOWN_TO_HTML
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_HTML) type STRING .
   class-methods BUILD_DIFF_HTML
     importing
       !I_OLD_CODE type STRING
@@ -1198,8 +1203,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       FIND FIRST OCCURRENCE OF REGEX '^(#{1,6})\s+(.+)$' IN lv_trimmed
         SUBMATCHES lv_hashes lv_content.
       IF sy-subrc = 0.
+        DATA(lv_h_class) = COND string(
+          WHEN strlen( lv_hashes ) <= 1 THEN 'md_h'
+          ELSE 'md_h2' ).
         rv_html = rv_html
-               && |<div class="md_h">{ render_inline_markdown( lv_content ) }</div>|
+               && |<div class="{ lv_h_class }">{ render_inline_markdown( lv_content ) }</div>|
                && cl_abap_char_utilities=>newline.
         CONTINUE.
       ENDIF.
@@ -1434,4 +1442,34 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |</style></head><body><pre>| && lv_body && |</pre></body></html>|.
 
   endmethod.
+
+
+  method MARKDOWN_TO_HTML.
+
+    DATA(lv_body) = render_abap_blocks( i_text ).
+
+    rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+           && |body\{margin:0;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;|
+           && |font-size:14px;line-height:1.65;color:#1a1a1a;background:#ffffff\}|
+           && |.md_h\{display:block;font-size:16px;font-weight:700;color:#003d80;|
+           && |margin:14px 0 6px\}|
+           && |.md_h2\{display:block;font-size:15px;font-weight:700;color:#1a4f8a;|
+           && |margin:10px 0 4px\}|
+           && |.md_li\{display:block;margin:3px 0 3px 20px;text-indent:-20px\}|
+           && |code\{font-family:Consolas,monospace;background:#f0f4f8;border:1px solid #dce4ec;|
+           && |padding:1px 5px;border-radius:3px;color:#1a3a5c;font-size:13px\}|
+           && |strong\{font-weight:700;color:#1a1a1a\}|
+           && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
+           && |background:#fff;border:1px solid #d7e0ea;margin:10px 0\}|
+           && |.code_tbl tr:hover td\{background:#f0f4fa\}|
+           && |.ln\{color:#aaa;text-align:right;padding:1px 10px 1px 5px;min-width:36px;|
+           && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none\}|
+           && |.cd\{padding:1px 8px;white-space:pre\}|
+           && |.cd-error\{padding:1px 8px;white-space:pre;color:red;font-weight:bold\}|
+           && |</style></head><body>|
+           && lv_body
+           && |</body></html>|.
+
+  endmethod.
+
 ENDCLASS.
