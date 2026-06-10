@@ -1457,6 +1457,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_sub2      TYPE string.
     DATA lv_list_tag  TYPE string.
     DATA lv_code_lang TYPE string.
+    DATA lv_in_table  TYPE abap_bool.
 
     " Normalise CR+LF → LF, then strip stray CR
     DATA(lv_text) = i_text.
@@ -1508,6 +1509,45 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       IF lv_in_code = abap_true.
         lv_code_buf = lv_code_buf && lv_line && cl_abap_char_utilities=>newline.
         CONTINUE.
+      ENDIF.
+
+      " --- markdown pipe table: | cell | cell | ---
+      DATA(lv_table_inner) = VALUE string( ).
+      FIND FIRST OCCURRENCE OF REGEX '^\s*\|(.*)\|\s*$'
+        IN lv_line SUBMATCHES lv_table_inner.
+      IF sy-subrc = 0.
+        IF lv_list_tag IS NOT INITIAL.
+          lv_body = lv_body && |</{ lv_list_tag }>|.
+          CLEAR lv_list_tag.
+        ENDIF.
+
+        " Separator row (|---|:---:|) - just skip it
+        FIND FIRST OCCURRENCE OF REGEX '^[\s|:\-]+$' IN lv_line.
+        IF sy-subrc = 0.
+          CONTINUE.
+        ENDIF.
+
+        DATA(lv_cell_tag) = COND string(
+          WHEN lv_in_table = abap_false THEN 'th' ELSE 'td' ).
+        IF lv_in_table = abap_false.
+          lv_in_table = abap_true.
+          lv_body = lv_body && |<table class="md">|.
+        ENDIF.
+
+        DATA lt_cells TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+        CLEAR lt_cells.
+        SPLIT lv_table_inner AT '|' INTO TABLE lt_cells.
+
+        lv_body = lv_body && |<tr>|.
+        LOOP AT lt_cells INTO DATA(lv_cell).
+          REPLACE ALL OCCURRENCES OF REGEX '^\s+|\s+$' IN lv_cell WITH ''.
+          lv_body = lv_body && |<{ lv_cell_tag }>{ md_inline( lv_cell ) }</{ lv_cell_tag }>|.
+        ENDLOOP.
+        lv_body = lv_body && |</tr>| && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ELSEIF lv_in_table = abap_true.
+        lv_body = lv_body && |</table>| && cl_abap_char_utilities=>newline.
+        lv_in_table = abap_false.
       ENDIF.
 
       " --- heading: 1-6 hashes followed by space ---
@@ -1590,6 +1630,9 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     IF lv_list_tag IS NOT INITIAL.
       lv_body = lv_body && |</{ lv_list_tag }>|.
     ENDIF.
+    IF lv_in_table = abap_true.
+      lv_body = lv_body && |</table>|.
+    ENDIF.
 
     rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
            && |body\{margin:0;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;|
@@ -1605,6 +1648,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |strong\{font-weight:700\}|
            && |em\{font-style:italic\}|
            && |hr\{border:none;border-top:1px solid #ddd;margin:10px 0\}|
+           && |table.md\{border-collapse:collapse;margin:8px 0;font-size:13px\}|
+           && |table.md th\{background:#eaf1f8;color:#003d80;font-weight:700;text-align:left;|
+           && |padding:5px 10px;border:1px solid #c9d6e4\}|
+           && |table.md td\{padding:4px 10px;border:1px solid #d8e0ea;vertical-align:top\}|
+           && |table.md tr:nth-child(even) td\{background:#f7fafd\}|
            && |pre.code_pre\{white-space:pre-wrap;background:#f0f4f8;border:1px solid #dce4ec;|
            && |padding:8px 12px;font-family:Consolas,monospace;font-size:13px;color:#1a3a5c;margin:6px 0\}|
            && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|

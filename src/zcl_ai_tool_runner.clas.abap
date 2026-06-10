@@ -227,7 +227,20 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_agent       = ls_call-name
           i_prompt_type = 'TOOL_CALL'
           i_content     = |{ ls_call-name }( { ls_call-arguments } )| ).
-        show_step( i_text = |Tool { ls_call-name }...| ).
+        " Show target object (type + name from JSON arguments) in the step label
+        DATA lv_step_type TYPE string.
+        DATA lv_step_name TYPE string.
+        CLEAR: lv_step_type, lv_step_name.
+        FIND FIRST OCCURRENCE OF REGEX '"object_type"\s*:\s*"([^"]*)"'
+          IN ls_call-arguments SUBMATCHES lv_step_type.
+        FIND FIRST OCCURRENCE OF REGEX '"object_name"\s*:\s*"([^"]*)"'
+          IN ls_call-arguments SUBMATCHES lv_step_name.
+        DATA(lv_step_object) = |{ lv_step_type } { lv_step_name }|.
+        CONDENSE lv_step_object.
+        show_step( i_text = COND #(
+          WHEN lv_step_object IS NOT INITIAL
+          THEN |Tool { ls_call-name } { lv_step_object }...|
+          ELSE |Tool { ls_call-name }...| ) ).
         DATA(lv_result) = execute_tool_call( ls_call ).
         complete_last_step( ).
         mo_messages->add_message(
