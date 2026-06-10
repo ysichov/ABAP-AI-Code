@@ -1,0 +1,22 @@
+{
+  "type": "function",
+  "function": {
+    "name": "read_sap_object",
+    "description": "Fetch the source code of an existing SAP object (program, class, method, function module). Use it to view or analyze code, and always as a prerequisite before modify_sap_object or review_sap_code.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "object_type": {
+          "type": "string",
+          "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS", "OTHER"],
+          "description": "Type of SAP object to read"
+        },
+        "object_name": {
+          "type": "string",
+          "description": "Technical name, e.g. 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME', 'Z_PROGRAM'"
+        }
+      },
+      "required": ["object_type", "object_name"]
+    }
+  }
+}

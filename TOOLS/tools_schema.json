@@ -1,0 +1,178 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "read_sap_object",
+      "description": "Fetch and display the source code of an existing SAP object (PROGRAM, CLASS, METHOD, FUNCTION MODULE, etc.). Use this to read, analyze, or examine existing code before making changes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS", "TABL", "OTHER"],
+            "description": "Type of SAP object to read"
+          },
+          "object_name": {
+            "type": "string",
+            "description": "Technical name of the object (e.g., 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME', 'Z_PROGRAM')"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this read is needed (for logging/context)"
+          }
+        },
+        "required": ["object_type", "object_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "modify_sap_object",
+      "description": "Create or modify source code of an SAP object. Provide the complete new source code or modifications. This tool handles SAVE operations for classes, programs, methods, function modules, etc.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS", "TABL", "OTHER"],
+            "description": "Type of SAP object to modify or create"
+          },
+          "object_name": {
+            "type": "string",
+            "description": "Technical name of the object (e.g., 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME')"
+          },
+          "source_code": {
+            "type": "string",
+            "description": "The complete source code to save/write to the object"
+          },
+          "is_new_object": {
+            "type": "boolean",
+            "description": "Set to true if creating a new object, false if modifying existing"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of what was changed/created"
+          }
+        },
+        "required": ["object_type", "object_name", "source_code"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "review_sap_object",
+      "description": "Perform code review, quality analysis, bug detection, or inspection of an existing SAP object. Must be preceded by a read_sap_object call for the same object.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS", "TABL", "OTHER"],
+            "description": "Type of SAP object to review"
+          },
+          "object_name": {
+            "type": "string",
+            "description": "Technical name of the object (e.g., 'ZCL_TEST', 'Z_PROGRAM')"
+          },
+          "focus_areas": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["performance", "security", "maintainability", "bugs", "standards", "all"]
+            },
+            "description": "Which aspects to focus on in the review"
+          }
+        },
+        "required": ["object_type", "object_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_sap_object",
+      "description": "Delete an entire SAP object (CLASS or PROGRAM). WARNING: This operation is permanent. Only use when explicitly requested.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": ["PROG", "CLAS"],
+            "description": "Type of object to delete (only PROG or CLAS)"
+          },
+          "object_name": {
+            "type": "string",
+            "description": "Technical name of the object to delete"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this object should be deleted"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be set to true to confirm deletion"
+          }
+        },
+        "required": ["object_type", "object_name", "confirm"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_sap_objects",
+      "description": "Search for SAP objects by pattern, type, or name. Useful for finding existing objects or analyzing the codebase.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "search_pattern": {
+            "type": "string",
+            "description": "Pattern to search for (wildcard: *, can use % or _)"
+          },
+          "object_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS", "TABL", "IFACE", "OTHER"]
+            },
+            "description": "Which object types to search in"
+          },
+          "package_name": {
+            "type": "string",
+            "description": "Optional: restrict search to specific SAP package"
+          }
+        },
+        "required": ["search_pattern"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "analyze_dependencies",
+      "description": "Analyze calls, references, and dependencies between SAP objects. Shows what calls what and impact analysis.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS"],
+            "description": "Type of object to analyze"
+          },
+          "object_name": {
+            "type": "string",
+            "description": "Technical name of the object"
+          },
+          "analysis_type": {
+            "type": "string",
+            "enum": ["callers", "callees", "full_dependency_tree"],
+            "description": "What kind of dependency analysis to perform"
+          }
+        },
+        "required": ["object_type", "object_name", "analysis_type"]
+      }
+    }
+  }
+]

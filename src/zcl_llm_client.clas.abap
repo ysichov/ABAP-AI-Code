@@ -19,6 +19,17 @@ public section.
       !I_TEMPERATURE type STRING optional
     returning
       value(RV_ANSWER) type STRING .
+  methods ASK_WITH_TOOLS
+    importing
+      !I_PROMPT type STRING
+      !I_SYSTEM_PROMPT type STRING optional
+      !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
+      !I_TOOLS_JSON type STRING
+      !I_TEMPERATURE type STRING optional
+    exporting
+      !ET_TOOL_CALLS type ZCL_CODE_AI_API=>TT_TOOL_CALLS
+    returning
+      value(RV_ANSWER) type STRING .
   methods GET_LAST_SECONDS
     returning
       value(RV_SECONDS) type STRING .
@@ -78,6 +89,42 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
       IMPORTING
         ev_tok_in  = mv_last_tok_in
         ev_tok_out = mv_last_tok_out ).
+
+    GET RUN TIME FIELD mv_end.
+    mv_elapsed = ( mv_end - mv_start ) / 1000000.
+    mv_last_seconds = |{ mv_elapsed }|.
+    CONDENSE mv_last_seconds.
+
+  endmethod.
+
+
+  method ASK_WITH_TOOLS.
+
+    CLEAR mv_last_seconds.
+    CLEAR mv_last_tok_in.
+    CLEAR mv_last_tok_out.
+    GET RUN TIME FIELD mv_start.
+
+    DATA(lv_temperature) = COND string(
+      WHEN i_temperature IS NOT INITIAL THEN i_temperature
+      ELSE mv_temperature ).
+
+    rv_answer = zcl_code_ai_api=>ask(
+      EXPORTING
+        i_prompt           = i_prompt
+        i_system_prompt    = i_system_prompt
+        it_history         = it_history
+        i_dest             = mv_dest
+        i_model            = mv_model
+        i_apikey           = mv_apikey
+        i_provider         = mv_provider
+        i_prompt_cache_key = mv_prompt_cache_key
+        i_temperature      = lv_temperature
+        i_tools_json       = i_tools_json
+      IMPORTING
+        ev_tok_in     = mv_last_tok_in
+        ev_tok_out    = mv_last_tok_out
+        et_tool_calls = et_tool_calls ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.

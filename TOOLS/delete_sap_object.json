@@ -1,0 +1,26 @@
+{
+  "type": "function",
+  "function": {
+    "name": "delete_sap_object",
+    "description": "Delete an ENTIRE class or program. Permanent operation; a mandatory user confirmation popup is shown before deletion. To delete a METHOD from a class, do NOT use this tool - use modify_sap_object on the class instead (the method must be removed from both the section declaration and the implementation).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "object_type": {
+          "type": "string",
+          "enum": ["PROG", "CLAS"],
+          "description": "Only entire programs or classes can be deleted"
+        },
+        "object_name": {
+          "type": "string",
+          "description": "Exact technical name of the object to delete. Never empty."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the object is being deleted (shown in the confirmation popup)"
+        }
+      },
+      "required": ["object_type", "object_name"]
+    }
+  }
+}

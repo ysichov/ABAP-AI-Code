@@ -1,0 +1,30 @@
+{
+  "type": "function",
+  "function": {
+    "name": "review_sap_code",
+    "description": "Perform a code review (bugs, syntax errors, high-severity risks) of an existing SAP object WITHOUT modifying it. Must be preceded by read_sap_object for the same object. Result is a <code_analysis> envelope. Only use when the user explicitly asks for review/audit/inspection.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "object_type": {
+          "type": "string",
+          "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS"],
+          "description": "Type of SAP object to review"
+        },
+        "object_name": {
+          "type": "string",
+          "description": "Technical name, e.g. 'ZCL_TEST', 'ZCL_TEST=>METHOD_NAME'"
+        },
+        "focus_areas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["bugs", "performance", "security", "standards", "all"]
+          },
+          "description": "Aspects to focus on; default all"
+        }
+      },
+      "required": ["object_type", "object_name"]
+    }
+  }
+}

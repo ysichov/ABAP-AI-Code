@@ -1,0 +1,26 @@
+{
+  "type": "function",
+  "function": {
+    "name": "modify_sap_object",
+    "description": "Modify the source code of an EXISTING SAP object. The object must have been read with read_sap_object first. The result is wrapped in a <code_modified> envelope and saved after user confirmation. Do NOT use for examples the user does not want saved - use show_code_example instead.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "object_type": {
+          "type": "string",
+          "enum": ["PROG", "CLAS", "METH", "FUNC", "REPS"],
+          "description": "Type of SAP object to modify. For method signature changes use CLAS, not METH."
+        },
+        "object_name": {
+          "type": "string",
+          "description": "Technical name, e.g. 'ZCL_TEST'. For signature changes the class name only, not CLASS=>METHOD."
+        },
+        "action_description": {
+          "type": "string",
+          "description": "Precise description of the change to perform"
+        }
+      },
+      "required": ["object_type", "object_name", "action_description"]
+    }
+  }
+}

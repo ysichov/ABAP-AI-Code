@@ -1,0 +1,22 @@
+{
+  "type": "function",
+  "function": {
+    "name": "show_code_example",
+    "description": "Generate an ABAP code example, pattern demo, or how-to snippet for DISPLAY ONLY. Nothing is saved to the system and no review is performed. Use when the user asks 'show me how to...', 'give an example of...', or asks to generate code WITHOUT naming an object to save it into. Result is a <code_example> envelope.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "description": "What the example must demonstrate, e.g. 'LOOP AT ... GROUP BY', 'recursion in a method'"
+        },
+        "example_kind": {
+          "type": "string",
+          "enum": ["ABAP_SNIPPET", "ABAP_CLASS", "ABAP_PATTERN"],
+          "description": "Shape of the example"
+        }
+      },
+      "required": ["topic"]
+    }
+  }
+}

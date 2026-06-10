@@ -4,6 +4,14 @@ class ZCL_CODE_AI_API definition
 
 public section.
 
+  types:
+    BEGIN OF TY_TOOL_CALL,
+      ID        type STRING,   " OpenAI tool_call id (needed for the reply)
+      NAME      type STRING,   " tool name, e.g. 'read_sap_object'
+      ARGUMENTS type STRING,   " raw JSON arguments string
+    END OF TY_TOOL_CALL .
+  types TT_TOOL_CALLS type STANDARD TABLE OF TY_TOOL_CALL WITH NON-UNIQUE DEFAULT KEY .
+
   class-methods ASK
     importing
       !I_PROMPT type STRING
@@ -16,11 +24,13 @@ public section.
       !I_PROMPT_CACHE_KEY type STRING optional
       !I_JSON_SCHEMA type STRING optional
       !I_TEMPERATURE type STRING optional
+      !I_TOOLS_JSON type STRING optional
     exporting
       !EV_TOK_IN     type I
       !EV_TOK_OUT    type I
       !EV_TOK_TOTAL  type I
       !EV_TOK_CACHED type I
+      !ET_TOOL_CALLS type TT_TOOL_CALLS
     returning
       value(RV_ANSWER) type STRING .
 protected section.
@@ -36,6 +46,7 @@ private section.
       !I_PROMPT_CACHE_KEY type STRING optional
       !I_JSON_SCHEMA type STRING optional
       !I_TEMPERATURE type STRING optional
+      !I_TOOLS_JSON type STRING optional
     returning
       value(RV_JSON) type STRING .
   class-methods PARSE_RESPONSE
@@ -47,6 +58,7 @@ private section.
       !EV_TOK_OUT    type I
       !EV_TOK_TOTAL  type I
       !EV_TOK_CACHED type I
+      !ET_TOOL_CALLS type TT_TOOL_CALLS
     returning
       value(RV_ANSWER) type STRING .
 ENDCLASS.
@@ -77,7 +89,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_provider         = lv_provider
       i_prompt_cache_key = i_prompt_cache_key
       i_json_schema      = i_json_schema
-      i_temperature      = i_temperature ).
+      i_temperature      = i_temperature
+      i_tools_json       = i_tools_json ).
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING  destination              = i_dest
@@ -130,7 +143,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
         ev_tok_in     = ev_tok_in
         ev_tok_out    = ev_tok_out
         ev_tok_total  = ev_tok_total
-        ev_tok_cached = ev_tok_cached ).
+        ev_tok_cached = ev_tok_cached
+        et_tool_calls = et_tool_calls ).
 
   endmethod.
 
@@ -225,12 +239,20 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_temp_field = |, "temperature": { i_temperature }|.
     ENDIF.
 
-    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_temp_field }{ lv_response_format }{ '}' }|.
+    " Optional function-calling tools array (already valid JSON, no escaping)
+    " OpenAI:    "tools": [...]
+    " Anthropic uses a different tool format - not supported here yet
+    DATA lv_tools_field TYPE string.
+    IF i_tools_json IS NOT INITIAL AND lv_provider = 'OPENAI'.
+      lv_tools_field = |, "tools": { i_tools_json }|.
+    ENDIF.
+
+    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_prompt_cache_key WITH '\"'.
-      rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_temp_field }{ lv_response_format }{ '}' }|.
+      rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
     ENDIF.
 
   endmethod.
@@ -264,10 +286,21 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
              usage       TYPE t_usage,
            END OF t_anthropic_res.
 
-    TYPES: BEGIN OF t_openai_message,
+    TYPES: BEGIN OF t_oa_function,
+             name      TYPE string,
+             arguments TYPE string,
+           END OF t_oa_function,
+           BEGIN OF t_oa_tool_call,
+             id       TYPE string,
+             type     TYPE string,
+             function TYPE t_oa_function,
+           END OF t_oa_tool_call,
+           t_oa_tool_calls TYPE STANDARD TABLE OF t_oa_tool_call WITH NON-UNIQUE DEFAULT KEY,
+           BEGIN OF t_openai_message,
              role              TYPE string,
              content           TYPE string,
              reasoning_content TYPE string,
+             tool_calls        TYPE t_oa_tool_calls,
            END OF t_openai_message,
            BEGIN OF t_openai_choice,
              index         TYPE string,
@@ -288,7 +321,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
           response        TYPE t_anthropic_res,
           openai_response TYPE t_openai_res.
 
-    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached.
+    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached, et_tool_calls.
 
     lv_provider = i_provider.
     TRANSLATE lv_provider TO UPPER CASE.
@@ -303,6 +336,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       ENDIF.
       IF openai_response-choices IS NOT INITIAL.
         rv_answer = openai_response-choices[ 1 ]-message-content.
+        " Function calling: expose requested tool calls to the caller
+        LOOP AT openai_response-choices[ 1 ]-message-tool_calls INTO DATA(ls_tc).
+          APPEND VALUE #( id        = ls_tc-id
+                          name      = ls_tc-function-name
+                          arguments = ls_tc-function-arguments ) TO et_tool_calls.
+        ENDLOOP.
       ELSE.
         rv_answer = i_json.
       ENDIF.
