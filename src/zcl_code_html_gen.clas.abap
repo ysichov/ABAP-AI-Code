@@ -1453,9 +1453,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_body   TYPE string.
     DATA lv_in_code TYPE abap_bool.
     DATA lv_code_buf TYPE string.
-    DATA lv_sub1   TYPE string.
-    DATA lv_sub2   TYPE string.
-    DATA lv_list_tag TYPE string.
+    DATA lv_sub1      TYPE string.
+    DATA lv_sub2      TYPE string.
+    DATA lv_list_tag  TYPE string.
+    DATA lv_code_lang TYPE string.
 
     " Normalise CR+LF → LF, then strip stray CR
     DATA(lv_text) = i_text.
@@ -1478,9 +1479,28 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         IF lv_in_code = abap_false.
           lv_in_code = abap_true.
           lv_code_buf = ''.
+          " Capture language hint (text after opening ```)
+          FIND FIRST OCCURRENCE OF REGEX '^```\s*(\S+)?' IN lv_line SUBMATCHES lv_code_lang.
+          CONDENSE lv_code_lang.
+          TRANSLATE lv_code_lang TO LOWER CASE.
         ELSE.
           lv_in_code = abap_false.
-          lv_body = lv_body && code_block_to_html( lv_code_buf ).
+          " Only use numbered code table for known programming languages
+          DATA(lv_lang_trimmed) = lv_code_lang.
+          CONDENSE lv_lang_trimmed.
+          IF lv_lang_trimmed CA 'abcdefghijklmnopqrstuvwxyz0123456789'
+          AND lv_lang_trimmed NP 'text'
+          AND lv_lang_trimmed NP 'plain'
+          AND lv_lang_trimmed NP 'markdown'
+          AND lv_lang_trimmed NP 'md'
+          AND lv_lang_trimmed IS NOT INITIAL.
+            lv_body = lv_body && code_block_to_html( lv_code_buf ).
+          ELSE.
+            " No language or text-like: render as <pre> block
+            lv_body = lv_body
+                   && |<pre class="code_pre">{ escape_html( lv_code_buf ) }</pre>|.
+          ENDIF.
+          CLEAR lv_code_lang.
         ENDIF.
         CONTINUE.
       ENDIF.
@@ -1585,6 +1605,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |strong\{font-weight:700\}|
            && |em\{font-style:italic\}|
            && |hr\{border:none;border-top:1px solid #ddd;margin:10px 0\}|
+           && |pre.code_pre\{white-space:pre-wrap;background:#f0f4f8;border:1px solid #dce4ec;|
+           && |padding:8px 12px;font-family:Consolas,monospace;font-size:13px;color:#1a3a5c;margin:6px 0\}|
            && |.code_tbl\{border-collapse:collapse;width:100%;font:12px/1.5 Consolas,monospace;|
            && |background:#fff;border:1px solid #d7e0ea;margin:10px 0\}|
            && |.code_tbl tr:hover td\{background:#f0f4fa\}|
