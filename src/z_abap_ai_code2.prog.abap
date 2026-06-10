@@ -12,24 +12,34 @@ REPORT z_abap_ai_code2.
 " -> ZCL_AI_TOOL_FACTORY -> ZCL_AITOOL_* -> results back -> final answer
 "---------------------------------------------------------------------
 
-PARAMETERS p_dest   TYPE text255 LOWER CASE OBLIGATORY.        " SM59 destination
-PARAMETERS p_model  TYPE text255 LOWER CASE DEFAULT 'gpt-4o'.
-PARAMETERS p_apikey TYPE string LOWER CASE.
-PARAMETERS p_tools  TYPE string LOWER CASE
-                    DEFAULT 'C:\soft\GitHub\ABAP-AI-Code\TOOLS'. " schemas + prompts
-PARAMETERS p_temp   TYPE string DEFAULT '0.2'.
+DATA go_popup TYPE REF TO zcl_code_popup2.
 
-START-OF-SELECTION.
+SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE 'OpenAI'.
+PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
+            p_model  TYPE text255 MEMORY ID model DEFAULT 'gpt-4o',
+            p_apikey TYPE text255 MEMORY ID api,
+            p_tools  TYPE text255 OBLIGATORY,
+            p_temp   TYPE text10  DEFAULT '0.2'.
+SELECTION-SCREEN END OF BLOCK b_api.
 
-  DATA(lo_popup) = NEW zcl_code_popup2(
+INITIALIZATION.
+  p_tools = 'C:/soft/GITHUB/ABAP-AI-CODE/TOOLS'.
+
+  DATA lt_excl TYPE TABLE OF sy-ucomm.
+  APPEND 'ONLI' TO lt_excl.
+  CALL FUNCTION 'RS_SET_SELSCREEN_STATUS'
+    EXPORTING  p_status  = sy-pfkey
+    TABLES     p_exclude = lt_excl.
+
+AT SELECTION-SCREEN.
+  CHECK sy-ucomm IS INITIAL OR sy-ucomm = 'UCCHECK'.
+
+  go_popup = NEW zcl_code_popup2(
     i_dest        = p_dest
     i_model       = p_model
-    i_apikey      = p_apikey
+    i_apikey      = CONV string( p_apikey )
     i_provider    = 'OPENAI'
-    i_agents_path = p_tools
-    i_temperature = p_temp ).
+    i_agents_path = CONV string( p_tools )
+    i_temperature = CONV string( p_temp ) ).
 
-  lo_popup->show( ).
-
-  " Keep the report alive so the dialog box stays interactive
-  WRITE: / 'AI Tool popup started. Close the popup to leave.'.
+  go_popup->show( ).

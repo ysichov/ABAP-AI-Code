@@ -5,14 +5,45 @@
    <PROGDIR>
     <NAME>Z_ABAP_AI_CODE2</NAME>
     <SUBC>1</SUBC>
+    <RLOAD>E</RLOAD>
     <FIXPT>X</FIXPT>
     <UCCHECK>X</UCCHECK>
    </PROGDIR>
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>New tool-based AI agent runner</ENTRY>
-     <LENGTH>30</LENGTH>
+     <ENTRY>AI agent runner - tool-based flow (OpenAI)</ENTRY>
+     <LENGTH>40</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_APIKEY</KEY>
+     <ENTRY>API Key</ENTRY>
+     <LENGTH>15</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_DEST</KEY>
+     <ENTRY>Destination</ENTRY>
+     <LENGTH>19</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_MODEL</KEY>
+     <ENTRY>Model</ENTRY>
+     <LENGTH>13</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_TEMP</KEY>
+     <ENTRY>Temperature</ENTRY>
+     <LENGTH>19</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_TOOLS</KEY>
+     <ENTRY>Tools Path</ENTRY>
+     <LENGTH>19</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
