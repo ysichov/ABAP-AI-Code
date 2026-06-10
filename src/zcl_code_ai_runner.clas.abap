@@ -1377,23 +1377,43 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           TRANSLATE lv_code_change_type_upper TO UPPER CASE.
           IF lv_code_change_type_upper CP 'CLAS*'
           OR lv_final_agent = zcl_ai_agents_prompts=>c_agent_class_processor.
-            " Merge changed sections into full old class so unchanged parts are not shown as deleted
-            lv_diff_new_code = zcl_code_answer_tools=>merge_class_parts(
-              i_full_source    = lv_diff_old_code
-              i_changed_source = lv_diff_new_code ).
-            " PROPOSED — filters out unchanged parts, only changed go to save/diff
-            lv_diff_new_code = log_class_extract(
-              i_source         = lv_diff_new_code
-              i_object_name    = lv_code_change_name
-              i_phase          = 'PROPOSED'
-              i_compare_source = lv_diff_old_code ).
-            " CURRENT — reformat to match same sections as filtered PROPOSED
-            lv_diff_old_code = log_class_extract(
-              i_source         = lv_diff_old_code
-              i_object_name    = lv_code_change_name
-              i_phase          = 'CURRENT'
-              i_filter_source  = lv_diff_new_code
-              i_log            = abap_false ).
+            IF lv_diff_old_code IS INITIAL.
+              " New class: the review/diff must show the COMPLETE class source
+              " including the CLASS ... DEFINITION/IMPLEMENTATION frame, not the
+              " bare LLM blocks. The saver accepts this full source as-is.
+              DATA lv_build_error TYPE string.
+              DATA lt_full_class  TYPE string_table.
+              zcl_code_object_saver=>build_full_class_source(
+                EXPORTING
+                  i_class   = lv_code_change_name
+                  i_source  = lv_diff_new_code
+                IMPORTING
+                  e_error   = lv_build_error
+                  et_source = lt_full_class ).
+              IF lv_build_error IS INITIAL AND lt_full_class IS NOT INITIAL.
+                lv_diff_new_code = concat_lines_of(
+                  table = lt_full_class
+                  sep   = cl_abap_char_utilities=>newline ).
+              ENDIF.
+            ELSE.
+              " Merge changed sections into full old class so unchanged parts are not shown as deleted
+              lv_diff_new_code = zcl_code_answer_tools=>merge_class_parts(
+                i_full_source    = lv_diff_old_code
+                i_changed_source = lv_diff_new_code ).
+              " PROPOSED — filters out unchanged parts, only changed go to save/diff
+              lv_diff_new_code = log_class_extract(
+                i_source         = lv_diff_new_code
+                i_object_name    = lv_code_change_name
+                i_phase          = 'PROPOSED'
+                i_compare_source = lv_diff_old_code ).
+              " CURRENT — reformat to match same sections as filtered PROPOSED
+              lv_diff_old_code = log_class_extract(
+                i_source         = lv_diff_old_code
+                i_object_name    = lv_code_change_name
+                i_phase          = 'CURRENT'
+                i_filter_source  = lv_diff_new_code
+                i_log            = abap_false ).
+            ENDIF.
           ENDIF.
 
           lv_diff_new_code = fix_program_syntax(
@@ -1494,25 +1514,42 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           DATA(lv_create_type_upper) = ls_create_object_command-object_type.
           TRANSLATE lv_create_type_upper TO UPPER CASE.
           IF lv_create_type_upper CP 'CLAS*'.
-            " Merge changed sections into full old class so unchanged parts are not shown as deleted
-            IF lv_create_context IS NOT INITIAL.
+            IF lv_create_context IS INITIAL.
+              " New class: the review/diff must show the COMPLETE class source
+              " including the CLASS ... DEFINITION/IMPLEMENTATION frame.
+              DATA lv_create_build_error TYPE string.
+              DATA lt_create_full_class  TYPE string_table.
+              zcl_code_object_saver=>build_full_class_source(
+                EXPORTING
+                  i_class   = ls_create_object_command-object_name
+                  i_source  = lv_create_extracted_code
+                IMPORTING
+                  e_error   = lv_create_build_error
+                  et_source = lt_create_full_class ).
+              IF lv_create_build_error IS INITIAL AND lt_create_full_class IS NOT INITIAL.
+                lv_create_extracted_code = concat_lines_of(
+                  table = lt_create_full_class
+                  sep   = cl_abap_char_utilities=>newline ).
+              ENDIF.
+            ELSE.
+              " Merge changed sections into full old class so unchanged parts are not shown as deleted
               lv_create_extracted_code = zcl_code_answer_tools=>merge_class_parts(
                 i_full_source    = lv_create_context
                 i_changed_source = lv_create_extracted_code ).
+              " PROPOSED first — filters out unchanged parts
+              lv_create_extracted_code = log_class_extract(
+                i_source         = lv_create_extracted_code
+                i_object_name    = ls_create_object_command-object_name
+                i_phase          = 'PROPOSED'
+                i_compare_source = lv_create_context ).
+              " CURRENT — only parts that exist in filtered PROPOSED
+              lv_create_context = log_class_extract(
+                i_source         = lv_create_context
+                i_object_name    = ls_create_object_command-object_name
+                i_phase          = 'CURRENT'
+                i_filter_source  = lv_create_extracted_code
+                i_log            = abap_false ).
             ENDIF.
-            " PROPOSED first — filters out unchanged parts
-            lv_create_extracted_code = log_class_extract(
-              i_source         = lv_create_extracted_code
-              i_object_name    = ls_create_object_command-object_name
-              i_phase          = 'PROPOSED'
-              i_compare_source = lv_create_context ).
-            " CURRENT — only parts that exist in filtered PROPOSED
-            lv_create_context = log_class_extract(
-              i_source         = lv_create_context
-              i_object_name    = ls_create_object_command-object_name
-              i_phase          = 'CURRENT'
-              i_filter_source  = lv_create_extracted_code
-              i_log            = abap_false ).
           ENDIF.
 
           lv_create_extracted_code = fix_program_syntax(

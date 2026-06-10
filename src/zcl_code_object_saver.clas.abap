@@ -18,6 +18,22 @@ CLASS zcl_code_object_saver DEFINITION
         i_source TYPE string
       RETURNING
         VALUE(rv_message) TYPE string.
+
+    " Builds the complete merged class source out of the LLM block output
+    " (--- Section/Method --- blocks) WITHOUT saving anything. For a class that
+    " does not exist yet the blocks are applied onto a new-class skeleton, so
+    " the review/diff UI can show the whole class including the frame.
+    " If i_source carries no blocks but is already a complete class source
+    " (contains ENDCLASS), it is taken over as-is.
+    CLASS-METHODS build_full_class_source
+      IMPORTING
+        i_class     TYPE string
+        i_source    TYPE string
+      EXPORTING
+        e_error     TYPE string
+        e_is_new    TYPE abap_bool
+        et_source   TYPE string_table
+        et_baseline TYPE string_table.
 protected section.
   PRIVATE SECTION.
     TYPES:
@@ -234,6 +250,26 @@ protected section.
         it_block       TYPE tt_source
       RETURNING
         VALUE(rt_body) TYPE tt_source.
+
+    " Extracts the clean CLASS ... DEFINITION header statement (up to and
+    " including the closing period) out of a possibly messy parsed block.
+    " Returns empty if the block carries no header for this class.
+    CLASS-METHODS clean_class_header
+      IMPORTING
+        iv_class       TYPE seoclsname
+        it_block       TYPE tt_source
+      RETURNING
+        VALUE(rt_header) TYPE tt_source.
+
+    " Replaces the CLASS ... DEFINITION header statement (from the CLASS line
+    " up to its closing period) inside the full class source.
+    CLASS-METHODS replace_header_in_lines
+      IMPORTING
+        it_header      TYPE tt_source
+      CHANGING
+        ct_lines       TYPE string_table
+      RETURNING
+        VALUE(rv_found) TYPE abap_bool.
 ENDCLASS.
 
 
@@ -921,9 +957,6 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     DATA lv_nl      TYPE string.
     DATA lt_cur     TYPE string_table.
     DATA lt_new     TYPE string_table.
-    DATA lt_body    TYPE tt_source.
-    DATA lv_want    TYPE string.
-    DATA lv_found   TYPE abap_bool.
     DATA lv_err     TYPE string.
 
     CLEAR mv_last_log.
@@ -940,20 +973,34 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     mv_last_log = |SAVE_CLASS diagnostics| && lv_nl && |Object: CLAS { lv_class }|.
 
-    " 1) Read the authoritative current full source (definition + implementation).
-    "    All edits are applied on top of this, so untouched parts stay byte-exact.
+    " 1-3) Build the complete merged source: current source (or new-class
+    "      skeleton) + applied LLM blocks. No system changes happen in there.
     DATA lv_new_class TYPE abap_bool.
-    lt_cur = read_class_source( lv_class ).
-    IF lt_cur IS INITIAL.
-      IF class_exists( lv_class ) = abap_true.
-        " Class exists but its source is unreadable -> do not touch it.
-        rv_message = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
-        mv_last_log = mv_last_log && lv_nl && rv_message.
-        RETURN.
-      ENDIF.
+    build_full_class_source(
+      EXPORTING
+        i_class     = i_class
+        i_source    = i_source
+      IMPORTING
+        e_error     = lv_err
+        e_is_new    = lv_new_class
+        et_source   = lt_new
+        et_baseline = lt_cur ).
+    IF lv_err IS NOT INITIAL.
+      rv_message = lv_err.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
+      RETURN.
+    ENDIF.
 
-      " Class does not exist -> create it from scratch:
-      " shell via SEO_CLASS_CREATE_COMPLETE, then full source as one unit.
+    " 4) Nothing actually changed? (A brand-new class must always be written,
+    "    even if the blocks did not change the skeleton.)
+    IF lt_new = lt_cur AND lv_new_class = abap_false.
+      rv_message = |Class { lv_class }: no changes detected.|.
+      mv_last_log = mv_last_log && lv_nl && rv_message.
+      RETURN.
+    ENDIF.
+
+    " 4b) For a brand-new class create the shell (metadata) before writing source
+    IF lv_new_class = abap_true.
       DATA lv_package TYPE devclass.
       lv_package = i_package.
       TRANSLATE lv_package TO UPPER CASE.
@@ -973,139 +1020,8 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
         mv_last_log = mv_last_log && lv_nl && rv_message.
         RETURN.
       ENDIF.
-      lv_new_class = abap_true.
       mv_last_log = mv_last_log && lv_nl
                  && |Class { lv_class } created in package { lv_package }.|.
-
-      " Baseline skeleton the parsed blocks are applied onto. Rollback target
-      " if activation or verification of the new source fails.
-      APPEND |CLASS { lv_class } DEFINITION| TO lt_cur.
-      APPEND |  PUBLIC|                      TO lt_cur.
-      APPEND |  CREATE PUBLIC.|              TO lt_cur.
-      APPEND ||                              TO lt_cur.
-      APPEND |  PUBLIC SECTION.|             TO lt_cur.
-      APPEND |  PROTECTED SECTION.|          TO lt_cur.
-      APPEND |  PRIVATE SECTION.|            TO lt_cur.
-      APPEND |ENDCLASS.|                     TO lt_cur.
-      APPEND ||                              TO lt_cur.
-      APPEND |CLASS { lv_class } IMPLEMENTATION.| TO lt_cur.
-      APPEND |ENDCLASS.|                     TO lt_cur.
-    ENDIF.
-    lt_new = lt_cur.
-
-    " 2) Parse the proposed source into --- title --- blocks
-    "    Titles: Public/Protected/Private Section, Method <name>
-    DATA lv_rest TYPE string.
-    lv_rest = i_source.
-    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_rest WITH lv_nl.
-
-    TYPES: BEGIN OF ty_block,
-             title  TYPE string,
-             source TYPE string,
-           END OF ty_block.
-    DATA lt_blocks TYPE STANDARD TABLE OF ty_block WITH NON-UNIQUE DEFAULT KEY.
-    DATA ls_block  LIKE LINE OF lt_blocks.
-
-    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    SPLIT lv_rest AT lv_nl INTO TABLE lt_lines.
-
-    CLEAR ls_block.
-    LOOP AT lt_lines INTO DATA(lv_line).
-      DATA(lv_line_upper) = lv_line.
-      TRANSLATE lv_line_upper TO UPPER CASE.
-      CONDENSE lv_line_upper.
-      IF lv_line_upper CP '--- * ---'.
-        IF ls_block-title IS NOT INITIAL.
-          APPEND ls_block TO lt_blocks.
-        ENDIF.
-        CLEAR ls_block.
-        DATA(lv_title_raw) = lv_line.
-        REPLACE FIRST OCCURRENCE OF REGEX '^---\s*' IN lv_title_raw WITH ''.
-        REPLACE FIRST OCCURRENCE OF REGEX '\s*---\s*$' IN lv_title_raw WITH ''.
-        CONDENSE lv_title_raw.
-        ls_block-title = lv_title_raw.
-      ELSE.
-        IF ls_block-title IS NOT INITIAL.
-          IF ls_block-source IS NOT INITIAL.
-            ls_block-source = ls_block-source && lv_nl.
-          ENDIF.
-          ls_block-source = ls_block-source && lv_line.
-        ENDIF.
-      ENDIF.
-    ENDLOOP.
-    IF ls_block-title IS NOT INITIAL.
-      APPEND ls_block TO lt_blocks.
-    ENDIF.
-
-    IF lt_blocks IS INITIAL.
-      rv_message = |No --- section/method --- blocks found for class { lv_class }.|.
-      mv_last_log = mv_last_log && lv_nl && rv_message.
-      RETURN.
-    ENDIF.
-
-    mv_last_log = mv_last_log && lv_nl && |Parsed { lines( lt_blocks ) } blocks.|.
-
-    " 3) Apply each block onto the working copy of the full source
-    LOOP AT lt_blocks INTO ls_block.
-      DATA(lv_blk_upper) = ls_block-title.
-      TRANSLATE lv_blk_upper TO UPPER CASE.
-      CONDENSE lv_blk_upper.
-
-      IF lv_blk_upper CP 'METHOD *'.
-        DATA(lv_meth_name) = ls_block-title.
-        REPLACE FIRST OCCURRENCE OF REGEX '^METHOD\s+' IN lv_meth_name WITH '' IGNORING CASE.
-        CONDENSE lv_meth_name.
-
-        lt_body = ensure_method_wrapper( i_method  = lv_meth_name
-                                         it_source = source_to_table( ls_block-source ) ).
-
-        lv_found = replace_method_in_lines( EXPORTING iv_method = lv_meth_name
-                                                      it_body   = lt_body
-                                            CHANGING  ct_lines  = lt_new ).
-        IF lv_found = abap_true.
-          mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } applied.|.
-        ELSE.
-          " New method: not in the implementation yet -> add it before ENDCLASS.
-          " The matching declaration is added by the corresponding section block.
-          IF add_method_in_lines( EXPORTING it_body  = lt_body
-                                  CHANGING  ct_lines = lt_new ) = abap_true.
-            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } added (new implementation).|.
-          ELSE.
-            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } could not be added.|.
-          ENDIF.
-        ENDIF.
-
-      ELSEIF lv_blk_upper CP '*SECTION*'.
-        lv_want = COND string(
-          WHEN lv_blk_upper CP '*PUBLIC*'    THEN 'PUBLIC'
-          WHEN lv_blk_upper CP '*PROTECTED*' THEN 'PROTECTED'
-          WHEN lv_blk_upper CP '*PRIVATE*'   THEN 'PRIVATE'
-          ELSE '' ).
-        IF lv_want IS INITIAL.
-          CONTINUE.
-        ENDIF.
-
-        lt_body = clean_section_body( iv_section = lv_want
-                                      it_block   = source_to_table( ls_block-source ) ).
-        IF lt_body IS INITIAL.
-          CONTINUE.
-        ENDIF.
-
-        lv_found = replace_section_in_lines( EXPORTING iv_section = lv_want
-                                                       it_body    = lt_body
-                                             CHANGING  ct_lines   = lt_new ).
-        IF lv_found = abap_true.
-          mv_last_log = mv_last_log && lv_nl && |{ lv_want } section applied.|.
-        ENDIF.
-      ENDIF.
-    ENDLOOP.
-
-    " 4) Nothing actually changed? (A brand-new class must always be written,
-    "    even if the blocks did not change the skeleton.)
-    IF lt_new = lt_cur AND lv_new_class = abap_false.
-      rv_message = |Class { lv_class }: no changes detected.|.
-      mv_last_log = mv_last_log && lv_nl && rv_message.
-      RETURN.
     ENDIF.
 
     " 5) Write the whole class source back as one consistent unit
@@ -1164,6 +1080,179 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       rv_message = |Class { lv_class } saved and activated.|.
     ENDIF.
     mv_last_log = mv_last_log && lv_nl && rv_message.
+
+  ENDMETHOD.
+
+
+  METHOD build_full_class_source.
+
+    DATA lv_class TYPE seoclsname.
+    DATA lv_nl    TYPE string.
+    DATA lt_body  TYPE tt_source.
+    DATA lv_want  TYPE string.
+    DATA lv_found TYPE abap_bool.
+
+    CLEAR: e_error, e_is_new, et_source, et_baseline.
+    lv_nl = cl_abap_char_utilities=>newline.
+
+    lv_class = i_class.
+    TRANSLATE lv_class TO UPPER CASE.
+    CONDENSE lv_class.
+    IF lv_class IS INITIAL.
+      e_error = 'Class name is empty.'.
+      RETURN.
+    ENDIF.
+
+    " Current full source, or a new-class skeleton if the class does not exist
+    et_baseline = read_class_source( lv_class ).
+    IF et_baseline IS INITIAL.
+      IF class_exists( lv_class ) = abap_true.
+        e_error = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
+        RETURN.
+      ENDIF.
+      e_is_new = abap_true.
+      APPEND |CLASS { to_lower( lv_class ) } DEFINITION| TO et_baseline.
+      APPEND |  PUBLIC|                                  TO et_baseline.
+      APPEND |  CREATE PUBLIC.|                          TO et_baseline.
+      APPEND ||                                          TO et_baseline.
+      APPEND |  PUBLIC SECTION.|                         TO et_baseline.
+      APPEND |  PROTECTED SECTION.|                      TO et_baseline.
+      APPEND |  PRIVATE SECTION.|                        TO et_baseline.
+      APPEND |ENDCLASS.|                                 TO et_baseline.
+      APPEND ||                                          TO et_baseline.
+      APPEND |CLASS { to_lower( lv_class ) } IMPLEMENTATION.| TO et_baseline.
+      APPEND |ENDCLASS.|                                 TO et_baseline.
+    ENDIF.
+    et_source = et_baseline.
+
+    " Parse the proposed source into --- title --- blocks
+    " Titles: Public/Protected/Private Section, Method <name>
+    DATA lv_rest TYPE string.
+    lv_rest = i_source.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_rest WITH lv_nl.
+
+    TYPES: BEGIN OF ty_block,
+             title  TYPE string,
+             source TYPE string,
+           END OF ty_block.
+    DATA lt_blocks TYPE STANDARD TABLE OF ty_block WITH NON-UNIQUE DEFAULT KEY.
+    DATA ls_block  LIKE LINE OF lt_blocks.
+
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    SPLIT lv_rest AT lv_nl INTO TABLE lt_lines.
+
+    CLEAR ls_block.
+    LOOP AT lt_lines INTO DATA(lv_line).
+      DATA(lv_line_upper) = lv_line.
+      TRANSLATE lv_line_upper TO UPPER CASE.
+      CONDENSE lv_line_upper.
+      IF lv_line_upper CP '--- * ---'.
+        IF ls_block-title IS NOT INITIAL.
+          APPEND ls_block TO lt_blocks.
+        ENDIF.
+        CLEAR ls_block.
+        DATA(lv_title_raw) = lv_line.
+        REPLACE FIRST OCCURRENCE OF REGEX '^---\s*' IN lv_title_raw WITH ''.
+        REPLACE FIRST OCCURRENCE OF REGEX '\s*---\s*$' IN lv_title_raw WITH ''.
+        CONDENSE lv_title_raw.
+        ls_block-title = lv_title_raw.
+      ELSE.
+        IF ls_block-title IS NOT INITIAL.
+          IF ls_block-source IS NOT INITIAL.
+            ls_block-source = ls_block-source && lv_nl.
+          ENDIF.
+          ls_block-source = ls_block-source && lv_line.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    IF ls_block-title IS NOT INITIAL.
+      APPEND ls_block TO lt_blocks.
+    ENDIF.
+
+    IF lt_blocks IS INITIAL.
+      " Fallback: the input may already be a complete class source (e.g. the
+      " merged preview shown at review time round-tripped into save).
+      DATA(lv_rest_upper) = lv_rest.
+      TRANSLATE lv_rest_upper TO UPPER CASE.
+      IF lv_rest_upper CS 'ENDCLASS'.
+        CLEAR et_source.
+        SPLIT lv_rest AT lv_nl INTO TABLE et_source.
+        mv_last_log = mv_last_log && lv_nl
+                   && |Input treated as complete class source ({ lines( et_source ) } lines).|.
+        RETURN.
+      ENDIF.
+      e_error = |No --- section/method --- blocks found for class { lv_class }.|.
+      RETURN.
+    ENDIF.
+
+    mv_last_log = mv_last_log && lv_nl && |Parsed { lines( lt_blocks ) } blocks.|.
+
+    " Apply each block onto the working copy of the full source
+    LOOP AT lt_blocks INTO ls_block.
+      DATA(lv_blk_upper) = ls_block-title.
+      TRANSLATE lv_blk_upper TO UPPER CASE.
+      CONDENSE lv_blk_upper.
+
+      IF lv_blk_upper CP 'METHOD *'.
+        DATA(lv_meth_name) = ls_block-title.
+        REPLACE FIRST OCCURRENCE OF REGEX '^METHOD\s+' IN lv_meth_name WITH '' IGNORING CASE.
+        CONDENSE lv_meth_name.
+
+        lt_body = ensure_method_wrapper( i_method  = lv_meth_name
+                                         it_source = source_to_table( ls_block-source ) ).
+
+        lv_found = replace_method_in_lines( EXPORTING iv_method = lv_meth_name
+                                                      it_body   = lt_body
+                                            CHANGING  ct_lines  = et_source ).
+        IF lv_found = abap_true.
+          mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } applied.|.
+        ELSE.
+          " New method: not in the implementation yet -> add it before ENDCLASS.
+          " The matching declaration is added by the corresponding section block.
+          IF add_method_in_lines( EXPORTING it_body  = lt_body
+                                  CHANGING  ct_lines = et_source ) = abap_true.
+            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } added (new implementation).|.
+          ELSE.
+            mv_last_log = mv_last_log && lv_nl && |Method { lv_meth_name } could not be added.|.
+          ENDIF.
+        ENDIF.
+
+      ELSEIF lv_blk_upper CP '*SECTION*'.
+        lv_want = COND string(
+          WHEN lv_blk_upper CP '*PUBLIC*'    THEN 'PUBLIC'
+          WHEN lv_blk_upper CP '*PROTECTED*' THEN 'PROTECTED'
+          WHEN lv_blk_upper CP '*PRIVATE*'   THEN 'PRIVATE'
+          ELSE '' ).
+        IF lv_want IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        lt_body = clean_section_body( iv_section = lv_want
+                                      it_block   = source_to_table( ls_block-source ) ).
+        IF lt_body IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        lv_found = replace_section_in_lines( EXPORTING iv_section = lv_want
+                                                       it_body    = lt_body
+                                             CHANGING  ct_lines   = et_source ).
+        IF lv_found = abap_true.
+          mv_last_log = mv_last_log && lv_nl && |{ lv_want } section applied.|.
+        ENDIF.
+
+      ELSEIF lv_blk_upper CP '*CLASS*DEFINITION*'.
+        " LLM-provided class header (PUBLIC/FINAL/ABSTRACT/INHERITING FROM/...)
+        " replaces the skeleton/current header, so any class flavour works.
+        DATA(lt_header) = clean_class_header( iv_class = lv_class
+                                              it_block = source_to_table( ls_block-source ) ).
+        IF lt_header IS NOT INITIAL.
+          IF replace_header_in_lines( EXPORTING it_header = lt_header
+                                      CHANGING  ct_lines  = et_source ) = abap_true.
+            mv_last_log = mv_last_log && lv_nl && |Class definition header applied.|.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1629,6 +1718,119 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
       APPEND lv_line TO rt_body.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD clean_class_header.
+
+    DATA lv_started TYPE abap_bool.
+    DATA lv_upper   TYPE string.
+
+    LOOP AT it_block INTO DATA(lv_line).
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+
+      IF lv_started = abap_false.
+        " Header must be the statement of THIS class, not random CLASS text
+        IF lv_upper CP |CLASS { iv_class } DEFINITION*|.
+          lv_started = abap_true.
+          APPEND lv_line TO rt_header.
+          IF lv_upper CP '*.'.
+            RETURN. " single-line header
+          ENDIF.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      " Anything structural means the header statement was never closed properly
+      IF lv_upper CP 'PUBLIC SECTION*'
+      OR lv_upper CP 'PROTECTED SECTION*'
+      OR lv_upper CP 'PRIVATE SECTION*'
+      OR lv_upper CP 'ENDCLASS*'
+      OR lv_upper CP 'CLASS *IMPLEMENTATION*'.
+        CLEAR rt_header.
+        RETURN.
+      ENDIF.
+
+      APPEND lv_line TO rt_header.
+      IF lv_upper CP '*.'.
+        RETURN. " closing period of the DEFINITION statement reached
+      ENDIF.
+    ENDLOOP.
+
+    " No closing period found -> not a valid header statement
+    CLEAR rt_header.
+
+  ENDMETHOD.
+
+
+  METHOD replace_header_in_lines.
+
+    DATA lv_start TYPE i.
+    DATA lv_end   TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_upper TYPE string.
+    DATA lt_new   TYPE string_table.
+    DATA lv_line  TYPE string.
+
+    " Locate the first "CLASS ... DEFINITION" line
+    LOOP AT ct_lines INTO lv_line.
+      lv_index = sy-tabix.
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_upper CP 'CLASS * DEFINITION*'.
+        lv_start = lv_index.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_start = 0.
+      rv_found = abap_false.
+      RETURN.
+    ENDIF.
+
+    " Header statement ends with its closing period; never run into a section
+    lv_index = lv_start.
+    WHILE lv_index <= lines( ct_lines ).
+      lv_line = ct_lines[ lv_index ].
+      lv_upper = lv_line.
+      CONDENSE lv_upper.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_index > lv_start
+      AND ( lv_upper CP 'PUBLIC SECTION*'
+         OR lv_upper CP 'PROTECTED SECTION*'
+         OR lv_upper CP 'PRIVATE SECTION*'
+         OR lv_upper CP 'ENDCLASS*' ).
+        lv_end = lv_index - 1.
+        EXIT.
+      ENDIF.
+      IF lv_upper CP '*.'.
+        lv_end = lv_index.
+        EXIT.
+      ENDIF.
+      lv_index = lv_index + 1.
+    ENDWHILE.
+
+    IF lv_end = 0.
+      rv_found = abap_false.
+      RETURN.
+    ENDIF.
+
+    LOOP AT ct_lines INTO lv_line FROM 1 TO lv_start - 1.
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+    LOOP AT it_header INTO DATA(lv_header_line).
+      APPEND CONV string( lv_header_line ) TO lt_new.
+    ENDLOOP.
+    LOOP AT ct_lines INTO lv_line FROM lv_end + 1 TO lines( ct_lines ).
+      APPEND lv_line TO lt_new.
+    ENDLOOP.
+
+    ct_lines = lt_new.
+    rv_found = abap_true.
 
   ENDMETHOD.
 
