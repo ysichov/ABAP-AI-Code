@@ -420,21 +420,25 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
           rv_message = |Program { lv_name } not found.|.
           RETURN.
         ENDIF.
-        DATA lt_obj_list TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
-        APPEND VALUE tadir( pgmid = 'R3TR' object = 'PROG' obj_name = lv_name ) TO lt_obj_list.
-        CALL FUNCTION 'RS_DELETE_OBJECTS'
-          TABLES
-            object_list       = lt_obj_list
+        CALL FUNCTION 'RS_DELETE_PROGRAM'
+          EXPORTING
+            program                    = lv_progname
+            suppress_popup             = abap_true
+            mass_delete_call           = abap_true
+            force_delete_used_includes = abap_true
           EXCEPTIONS
-            not_executed      = 1
-            OTHERS            = 2.
-        IF sy-subrc <> 0.
+            enqueue_lock               = 1
+            object_not_found           = 2
+            permission_failure         = 3
+            reject_deletion            = 4
+            OTHERS                     = 5.
+        IF sy-subrc = 0 OR sy-subrc = 2.
+          rv_message = |Program { lv_name } deleted successfully.|.
+        ELSE.
           DATA lv_del_msg TYPE string.
           MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
             WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_del_msg.
           rv_message = |Error deleting program { lv_name }: { lv_del_msg }|.
-        ELSE.
-          rv_message = |Program { lv_name } deleted successfully.|.
         ENDIF.
 
       WHEN OTHERS.
