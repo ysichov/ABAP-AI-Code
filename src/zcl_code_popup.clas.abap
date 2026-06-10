@@ -390,6 +390,10 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         ENDIF.
 
         DATA lv_stream_html TYPE string.
+        IF lv_stream_done = abap_true AND lv_stream_error = abap_false.
+          " Final answer received — render markdown (headings, lists, code blocks)
+          lv_stream_html = zcl_code_html_gen=>markdown_to_html( lv_resp_text ).
+        ELSE.
         lv_stream_html =
           '<html><head><meta charset="utf-8"><style>'
           && 'body{margin:0;padding:8px;font-family:Consolas,"Courier New",monospace;background:#ffffff}'
@@ -402,6 +406,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         " Auto-scroll to bottom so latest streamed content is always visible
         lv_stream_html = lv_stream_html
           && '</pre><script>window.scrollTo(0,document.body.scrollHeight);</script></body></html>'.
+        ENDIF.
 
         DATA lt_stream_html TYPE tt_html.
         DATA ls_stream_html TYPE w3html.

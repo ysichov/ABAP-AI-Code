@@ -1455,6 +1455,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_code_buf TYPE string.
     DATA lv_sub1   TYPE string.
     DATA lv_sub2   TYPE string.
+    DATA lv_list_tag TYPE string.
 
     " Normalise CR+LF → LF, then strip stray CR
     DATA(lv_text) = i_text.
@@ -1470,6 +1471,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
       " --- code fence open/close ---
       IF lv_line CP '```*'.
+        IF lv_list_tag IS NOT INITIAL.
+          lv_body = lv_body && |</{ lv_list_tag }>|.
+          CLEAR lv_list_tag.
+        ENDIF.
         IF lv_in_code = abap_false.
           lv_in_code = abap_true.
           lv_code_buf = ''.
@@ -1489,6 +1494,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       FIND FIRST OCCURRENCE OF REGEX '^(#{1,6}) (.+)$'
         IN lv_line SUBMATCHES lv_sub1 lv_sub2.
       IF sy-subrc = 0.
+        IF lv_list_tag IS NOT INITIAL.
+          lv_body = lv_body && |</{ lv_list_tag }>|.
+          CLEAR lv_list_tag.
+        ENDIF.
         DATA(lv_hlevel) = strlen( lv_sub1 ).
         DATA(lv_hcss)   = COND string( WHEN lv_hlevel = 1 THEN 'h1'
                                        WHEN lv_hlevel = 2 THEN 'h2'
@@ -1499,24 +1508,43 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      " --- bullet: starts with "- " ---
-      FIND FIRST OCCURRENCE OF REGEX '^- (.+)$'
+      " --- bullet: starts with "- " or "* " (allow leading spaces) ---
+      FIND FIRST OCCURRENCE OF REGEX '^\s*[-*] (.+)$'
         IN lv_line SUBMATCHES lv_sub1.
       IF sy-subrc = 0.
+        IF lv_list_tag <> 'ul'.
+          IF lv_list_tag IS NOT INITIAL.
+            lv_body = lv_body && |</{ lv_list_tag }>|.
+          ENDIF.
+          lv_list_tag = 'ul'.
+          lv_body = lv_body && |<ul>|.
+        ENDIF.
         lv_body = lv_body
                && |<li>{ md_inline( lv_sub1 ) }</li>|
                && cl_abap_char_utilities=>newline.
         CONTINUE.
       ENDIF.
 
-      " --- numbered list: starts with digit+dot ---
-      FIND FIRST OCCURRENCE OF REGEX '^[0-9]+\. (.+)$'
-        IN lv_line SUBMATCHES lv_sub1.
+      " --- numbered list: starts with digit+dot, keep original number ---
+      FIND FIRST OCCURRENCE OF REGEX '^\s*([0-9]+)\. (.+)$'
+        IN lv_line SUBMATCHES lv_sub2 lv_sub1.
       IF sy-subrc = 0.
+        IF lv_list_tag <> 'ol'.
+          IF lv_list_tag IS NOT INITIAL.
+            lv_body = lv_body && |</{ lv_list_tag }>|.
+          ENDIF.
+          lv_list_tag = 'ol'.
+          lv_body = lv_body && |<ol>|.
+        ENDIF.
         lv_body = lv_body
-               && |<li>{ md_inline( lv_sub1 ) }</li>|
+               && |<li value="{ lv_sub2 }">{ md_inline( lv_sub1 ) }</li>|
                && cl_abap_char_utilities=>newline.
         CONTINUE.
+      ENDIF.
+
+      IF lv_list_tag IS NOT INITIAL.
+        lv_body = lv_body && |</{ lv_list_tag }>|.
+        CLEAR lv_list_tag.
       ENDIF.
 
       " --- horizontal rule ---
@@ -1539,6 +1567,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
              && cl_abap_char_utilities=>newline.
     ENDLOOP.
 
+    IF lv_list_tag IS NOT INITIAL.
+      lv_body = lv_body && |</{ lv_list_tag }>|.
+    ENDIF.
+
     rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
            && |body\{margin:0;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;|
            && |font-size:14px;line-height:1.65;color:#1a1a1a;background:#ffffff\}|
@@ -1546,7 +1578,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |h2\{font-size:16px;font-weight:700;color:#1a4f8a;margin:12px 0 4px\}|
            && |h3\{font-size:14px;font-weight:700;color:#2a5f9a;margin:8px 0 4px\}|
            && |p\{margin:3px 0\}|
-           && |li\{margin:2px 0 2px 20px\}|
+           && |ul,ol\{margin:4px 0 4px 26px;padding:0\}|
+           && |li\{margin:2px 0\}|
            && |code\{font-family:Consolas,monospace;background:#f0f4f8;|
            && |border:1px solid #dce4ec;padding:1px 5px;color:#1a3a5c;font-size:13px\}|
            && |strong\{font-weight:700\}|
