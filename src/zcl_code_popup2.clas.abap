@@ -221,14 +221,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       THEN zcl_code_html_gen=>search_result_to_html( lv_display_answer )
       ELSE zcl_code_html_gen=>markdown_to_html( lv_display_answer ) ).
     display_answer( i_answer = lv_tool_html ).
-    RETURN.
-    " ===================== end new tool-based flow ======================
 
-    " --- Streaming path: delegate HTTP call to local Python client ---
-    IF mv_stream = abap_true.
-      " Fixed exchange folder вЂ” easy to find and monitor
-      DATA lv_temp_dir TYPE string.
-      lv_temp_dir = 'C:\soft\stream'.
+  endmethod.
 
       mv_stream_prompt_file   = lv_temp_dir && '\abap_ai_prompt.json'.
       mv_stream_response_file = lv_temp_dir && '\abap_ai_response.txt'.

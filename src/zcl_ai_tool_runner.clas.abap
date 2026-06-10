@@ -120,38 +120,56 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         IMPORTING
           et_tool_calls   = lt_calls ).
 
+      " Persist the user turn to the multi-turn history (both paths)
+      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
+
+      " Always log the LLM output (text and/or requested tool calls) so the
+      " History popup pairs it with the prompt: input left, output right
+      DATA(lv_llm_log) = lv_answer.
+      LOOP AT lt_calls INTO DATA(ls_call).
+        IF lv_llm_log IS NOT INITIAL.
+          lv_llm_log = lv_llm_log && cl_abap_char_utilities=>newline.
+        ENDIF.
+        lv_llm_log = lv_llm_log
+          && |TOOL CALL: { ls_call-name }( { ls_call-arguments } )|.
+      ENDLOOP.
+      mo_messages->add_message(
+        i_role             = 'assistant'
+        i_agent            = 'TOOL_RUNNER'
+        i_prompt_type      = COND #( WHEN lt_calls IS INITIAL
+                                     THEN 'FINAL_ANSWER'
+                                     ELSE 'LLM_RESPONSE' )
+        i_duration_seconds = mo_llm->get_last_seconds( )
+        i_tok_in           = mo_llm->mv_last_tok_in
+        i_tok_out          = mo_llm->mv_last_tok_out
+        i_content          = lv_llm_log ).
+
       " No tool calls -> this is the final user-facing answer
       IF lt_calls IS INITIAL.
         rv_answer = lv_answer.
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = 'TOOL_RUNNER'
-          i_prompt_type = 'ANSWER'
-          i_content     = lv_answer ).
         APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
         RETURN.
       ENDIF.
 
-      " LLM requested tool calls - persist this turn to history and log it
-      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
       IF lv_answer IS NOT INITIAL.
         APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
-        mo_messages->add_message(
-          i_role        = 'assistant'
-          i_agent       = 'TOOL_RUNNER'
-          i_prompt_type = 'THINKING'
-          i_content     = lv_answer ).
       ENDIF.
 
-      " Execute each tool and log separately with tool name as prompt_type
+      " Execute each tool; log the call (input) and its result (output) as a
+      " pair so the History popup shows them side by side
       DATA lv_results TYPE string.
       CLEAR lv_results.
-      LOOP AT lt_calls INTO DATA(ls_call).
+      LOOP AT lt_calls INTO ls_call.
+        mo_messages->add_message(
+          i_role        = 'user'
+          i_agent       = ls_call-name
+          i_prompt_type = 'TOOL_CALL'
+          i_content     = |{ ls_call-name }( { ls_call-arguments } )| ).
         DATA(lv_result) = execute_tool_call( ls_call ).
         mo_messages->add_message(
           i_role        = 'tool'
           i_agent       = ls_call-name
-          i_prompt_type = ls_call-name
+          i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_result ).
         lv_results = lv_results
           && |TOOL RESULT [{ ls_call-name }]:|
@@ -169,7 +187,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         i_agent       = 'TOOL_RUNNER'
         i_prompt_type = 'LLM_INPUT'
         i_content     = lv_prompt ).
-      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
 
     ENDDO.
 
