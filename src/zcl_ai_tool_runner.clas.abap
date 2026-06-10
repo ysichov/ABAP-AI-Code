@@ -228,12 +228,29 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA(lv_is_delete) = boolc( is_result-xml_payload CS '<code_deleted' ).
 
-    " For modifications: show diff and use the review flow if UI is available
+    " Diff review is mandatory for every save when UI is available. When the
+    " tool did not supply the original source (e.g. create_sap_object on an
+    " existing object), read the current version so the user still sees a diff;
+    " for a truly new object the diff is shown against empty code.
     IF lv_is_delete = abap_false
-    AND is_result-original_source IS NOT INITIAL
+    AND is_result-final_source IS NOT INITIAL
     AND mo_ui IS BOUND.
+      DATA(lv_old_code) = is_result-original_source.
+      IF lv_old_code IS INITIAL.
+        CASE is_result-object_type.
+          WHEN 'CLAS' OR 'METH'.
+            lv_old_code = zcl_ai_code_reader=>read_class( is_result-object_name ).
+          WHEN OTHERS.
+            lv_old_code = zcl_ai_code_reader=>read_program(
+              i_program     = is_result-object_name
+              i_object_type = is_result-object_type ).
+        ENDCASE.
+        IF lv_old_code CS 'not found' OR lv_old_code CS 'cannot be read'.
+          CLEAR lv_old_code.
+        ENDIF.
+      ENDIF.
       rv_message = mo_ui->review_and_save(
-        i_old_code    = is_result-original_source
+        i_old_code    = lv_old_code
         i_new_code    = is_result-final_source
         i_object_type = is_result-object_type
         i_object_name = is_result-object_name ).
@@ -300,6 +317,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       cl_abap_char_utilities=>newline &&
       |- To delete a method from a class use modify_sap_object on the class, | &&
       |not delete_sap_object.| &&
+      cl_abap_char_utilities=>newline &&
+      |- To add or change anything in an EXISTING object (e.g. add a method to | &&
+      |an existing class) use modify_sap_object. create_sap_object is ONLY for | &&
+      |objects that do not exist yet.| &&
       cl_abap_char_utilities=>newline &&
       |- When all tool work is done, answer the user in their language.| &&
       cl_abap_char_utilities=>newline &&
