@@ -1203,11 +1203,8 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       FIND FIRST OCCURRENCE OF REGEX '^(#{1,6})\s+(.+)$' IN lv_trimmed
         SUBMATCHES lv_hashes lv_content.
       IF sy-subrc = 0.
-        DATA(lv_h_class) = COND string(
-          WHEN strlen( lv_hashes ) <= 1 THEN 'md_h'
-          ELSE 'md_h2' ).
         rv_html = rv_html
-               && |<div class="{ lv_h_class }">{ render_inline_markdown( lv_content ) }</div>|
+               && |<div class="{ COND #( WHEN strlen( lv_hashes ) <= 1 THEN 'md_h' ELSE 'md_h2' ) }">{ render_inline_markdown( lv_content ) }</div>|
                && cl_abap_char_utilities=>newline.
         CONTINUE.
       ENDIF.
