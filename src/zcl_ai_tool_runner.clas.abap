@@ -22,12 +22,16 @@ CLASS zcl_ai_tool_runner DEFINITION
     METHODS get_messages
       RETURNING VALUE(ro_messages) TYPE REF TO zcl_ai_messages.
 
+    " Reset conversation history (new session)
+    METHODS clear_session.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     DATA mo_llm      TYPE REF TO zcl_llm_client.
     DATA mo_context  TYPE REF TO zcl_ai_tool_context.
     DATA mo_prompts  TYPE REF TO zcl_ai_agents_prompts.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
+    DATA mt_history TYPE zcl_ai_messages=>tt_messages.
 
     METHODS execute_tool_call
       IMPORTING
@@ -88,7 +92,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    DATA lt_history TYPE zcl_ai_messages=>tt_messages.
     DATA lt_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
 
     mo_messages = NEW zcl_ai_messages(
@@ -106,7 +109,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       i_prompt_type = 'SYSTEM_PROMPT'
       i_content     = lv_system_prompt ).
 
-    DATA(lv_prompt)        = i_prompt.
+    DATA(lv_prompt) = i_prompt.
+
+    " Log initial user request
+    mo_messages->add_message(
+      i_role        = 'user'
+      i_agent       = 'TOOL_RUNNER'
+      i_prompt_type = 'USER'
+      i_content     = lv_prompt ).
 
     DO c_max_iterations TIMES.
 
@@ -115,7 +125,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         EXPORTING
           i_prompt        = lv_prompt
           i_system_prompt = lv_system_prompt
-          it_history      = lt_history
+          it_history      = mt_history
           i_tools_json    = lv_tools_json
         IMPORTING
           et_tool_calls   = lt_calls ).
@@ -123,29 +133,36 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " No tool calls -> this is the final user-facing answer
       IF lt_calls IS INITIAL.
         rv_answer = lv_answer.
+        mo_messages->add_message(
+          i_role        = 'assistant'
+          i_agent       = 'TOOL_RUNNER'
+          i_prompt_type = 'ANSWER'
+          i_content     = lv_answer ).
+        APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
         RETURN.
       ENDIF.
 
-      " Log this turn into the history before appending tool results
-      mo_messages->add_message(
-        i_role    = 'user'
-        i_agent   = 'TOOL_RUNNER'
-        i_content = lv_prompt ).
+      " LLM requested tool calls - persist this turn to history and log it
+      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
       IF lv_answer IS NOT INITIAL.
+        APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
         mo_messages->add_message(
-          i_role    = 'assistant'
-          i_agent   = 'TOOL_RUNNER'
-          i_content = lv_answer ).
+          i_role        = 'assistant'
+          i_agent       = 'TOOL_RUNNER'
+          i_prompt_type = 'THINKING'
+          i_content     = lv_answer ).
       ENDIF.
 
-      " Execute every requested tool; feed results back as the next prompt.
-      " NOTE v1 simplification: results are passed as a user message instead
-      " of role:"tool" messages with tool_call_id (BUILD_PAYLOAD supports
-      " only user/assistant history so far).
+      " Execute each tool and log separately with tool name as prompt_type
       DATA lv_results TYPE string.
       CLEAR lv_results.
       LOOP AT lt_calls INTO DATA(ls_call).
         DATA(lv_result) = execute_tool_call( ls_call ).
+        mo_messages->add_message(
+          i_role        = 'tool'
+          i_agent       = ls_call-name
+          i_prompt_type = ls_call-name
+          i_content     = lv_result ).
         lv_results = lv_results
           && |TOOL RESULT [{ ls_call-name }]:|
           && cl_abap_char_utilities=>newline
@@ -157,6 +174,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         && cl_abap_char_utilities=>newline
         && |Continue with the user request. Call further tools if needed, |
         && |otherwise produce the final answer.|.
+      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
 
     ENDDO.
 
@@ -258,7 +276,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |- To delete a method from a class use modify_sap_object on the class, | &&
       |not delete_sap_object.| &&
       cl_abap_char_utilities=>newline &&
-      |- When all tool work is done, answer the user in their language.|.
+      |- When all tool work is done, answer the user in their language.| &&
+      cl_abap_char_utilities=>newline &&
+      |- NEVER ask clarifying questions. Execute the full requested task autonomously.| &&
+      cl_abap_char_utilities=>newline &&
+      |- If the user asks for a code review, call read_sap_object then review_sap_code immediately.|.
 
   ENDMETHOD.
 
@@ -266,6 +288,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
   METHOD get_messages.
 
     ro_messages = mo_messages.
+
+  ENDMETHOD.
+
+
+  METHOD clear_session.
+
+    CLEAR mt_history.
+    CLEAR mo_messages.
 
   ENDMETHOD.
 ENDCLASS.

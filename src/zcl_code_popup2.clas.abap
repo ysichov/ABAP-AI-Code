@@ -1190,6 +1190,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         ENDIF.
       WHEN 'RUN_PROGRAM'.
         run_program( ).
+      WHEN 'NEW_SESSION'.
+        mo_tool_runner->clear_session( ).
+        display_answer( i_answer = build_plain_html( 'New session started.' ) ).
     ENDCASE.
 
   endmethod.
@@ -1287,6 +1290,11 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                     butn_type = cntb_btype_button
                     text      = |Temp: { mv_temperature }|
                     quickinfo = 'Set LLM temperature (0.0 = deterministic, 1.0 = creative)' ) TO lt_buttons.
+    APPEND VALUE #( function  = 'NEW_SESSION'
+                    icon      = CONV #( icon_create )
+                    butn_type = cntb_btype_button
+                    text      = 'New Session'
+                    quickinfo = 'Start a new conversation (clears history)' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
 
     SET HANDLER on_toolbar_click FOR mo_toolbar.
