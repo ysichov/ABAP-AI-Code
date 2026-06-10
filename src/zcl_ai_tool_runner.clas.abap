@@ -43,6 +43,7 @@ CLASS zcl_ai_tool_runner DEFINITION
         seconds     TYPE i,
         tok_in      TYPE i,
         tok_out     TYPE i,
+        tok_cached  TYPE i,
       END OF ty_step,
       tt_steps TYPE STANDARD TABLE OF ty_step WITH NON-UNIQUE DEFAULT KEY.
 
@@ -58,6 +59,7 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mv_total_seconds  TYPE i.
     DATA mv_total_tok_in   TYPE i.
     DATA mv_total_tok_out  TYPE i.
+    DATA mv_total_tok_cached TYPE i.
 
     METHODS show_step
       IMPORTING
@@ -71,7 +73,8 @@ CLASS zcl_ai_tool_runner DEFINITION
         !i_is_llm  TYPE abap_bool DEFAULT abap_false
         !i_seconds TYPE i OPTIONAL
         !i_tok_in  TYPE i OPTIONAL
-        !i_tok_out TYPE i OPTIONAL.
+        !i_tok_out TYPE i OPTIONAL
+        !i_tok_cached TYPE i OPTIONAL.
 
     METHODS render_steps_html
       RETURNING VALUE(rv_html) TYPE string.
@@ -156,6 +159,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CLEAR mv_total_seconds.
     CLEAR mv_total_tok_in.
     CLEAR mv_total_tok_out.
+    CLEAR mv_total_tok_cached.
 
     DO c_max_iterations TIMES.
 
@@ -177,10 +181,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           et_tool_calls   = lt_calls ).
 
       complete_last_step(
-        i_is_llm  = abap_true
-        i_seconds = CONV #( mo_llm->get_last_seconds( ) )
-        i_tok_in  = mo_llm->mv_last_tok_in
-        i_tok_out = mo_llm->mv_last_tok_out ).
+        i_is_llm     = abap_true
+        i_seconds    = CONV #( mo_llm->get_last_seconds( ) )
+        i_tok_in     = mo_llm->mv_last_tok_in
+        i_tok_out    = mo_llm->mv_last_tok_out
+        i_tok_cached = mo_llm->mv_last_tok_cached ).
 
       " Persist the user turn to the multi-turn history (both paths)
       APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
@@ -204,6 +209,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         i_duration_seconds = mo_llm->get_last_seconds( )
         i_tok_in           = mo_llm->mv_last_tok_in
         i_tok_out          = mo_llm->mv_last_tok_out
+        i_tok_cached       = mo_llm->mv_last_tok_cached
         i_content          = lv_llm_log ).
 
       " No tool calls -> this is the final user-facing answer
@@ -433,6 +439,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CLEAR mv_total_seconds.
     CLEAR mv_total_tok_in.
     CLEAR mv_total_tok_out.
+    CLEAR mv_total_tok_cached.
 
   ENDMETHOD.
 
@@ -476,16 +483,18 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     READ TABLE mt_progress_steps ASSIGNING <ls_step> INDEX lv_last.
     CHECK sy-subrc = 0.
 
-    <ls_step>-done    = abap_true.
-    <ls_step>-is_llm  = i_is_llm.
-    <ls_step>-seconds = i_seconds.
-    <ls_step>-tok_in  = i_tok_in.
-    <ls_step>-tok_out = i_tok_out.
+    <ls_step>-done       = abap_true.
+    <ls_step>-is_llm     = i_is_llm.
+    <ls_step>-seconds    = i_seconds.
+    <ls_step>-tok_in     = i_tok_in.
+    <ls_step>-tok_out    = i_tok_out.
+    <ls_step>-tok_cached = i_tok_cached.
 
     IF i_is_llm = abap_true.
-      mv_total_seconds = mv_total_seconds + i_seconds.
-      mv_total_tok_in  = mv_total_tok_in  + i_tok_in.
-      mv_total_tok_out = mv_total_tok_out + i_tok_out.
+      mv_total_seconds    = mv_total_seconds    + i_seconds.
+      mv_total_tok_in     = mv_total_tok_in     + i_tok_in.
+      mv_total_tok_out    = mv_total_tok_out    + i_tok_out.
+      mv_total_tok_cached = mv_total_tok_cached + i_tok_cached.
     ENDIF.
 
     display_steps( ).
@@ -537,6 +546,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           lv_info = |<span class="info">{ ls_step-seconds }s|.
           IF ls_step-tok_in > 0.
             lv_info = lv_info && | Tokens: inp:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
+            IF ls_step-tok_cached > 0.
+              lv_info = lv_info && |, cached:{ ls_step-tok_cached }|.
+            ENDIF.
           ENDIF.
           lv_info = lv_info && |</span>|.
           lv_rows = lv_rows
@@ -561,6 +573,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         && |<div class="total">Total: { mv_total_seconds }s|.
       IF mv_total_tok_in > 0.
         lv_rows = lv_rows && | Tokens: inp:{ mv_total_tok_in }, out:{ mv_total_tok_out }|.
+        IF mv_total_tok_cached > 0.
+          lv_rows = lv_rows && |, cached:{ mv_total_tok_cached }|.
+        ENDIF.
       ENDIF.
       lv_rows = lv_rows && |</div>|.
     ENDIF.

@@ -179,6 +179,15 @@ CLASS ZCL_API_HISTORY_POPUP IMPLEMENTATION.
           ls_row-prompt_tokens     = CONV string( ls_message-tok_in ).
           ls_row-completion_tokens = CONV string( ls_message-tok_out ).
           ls_row-total_tokens      = CONV string( ls_message-tok_in + ls_message-tok_out ).
+          IF ls_message-tok_cached > 0.
+            ls_row-cached_tokens = CONV string( ls_message-tok_cached ).
+          ENDIF.
+        ENDIF.
+        " Fallback: usage info embedded in the answer text (legacy/stream flow)
+        IF ls_row-prompt_tokens IS INITIAL AND ls_row-cached_tokens IS INITIAL.
+          extract_usage(
+            EXPORTING i_text = ls_row-answer
+            CHANGING  cs_row = ls_row ).
         ENDIF.
         DATA(lv_answer_upper) = ls_row-answer.
         TRANSLATE lv_answer_upper TO UPPER CASE.

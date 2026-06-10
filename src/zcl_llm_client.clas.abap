@@ -39,6 +39,7 @@ public section.
 
   data MV_LAST_TOK_IN  type I .
   data MV_LAST_TOK_OUT type I .
+  data MV_LAST_TOK_CACHED type I .
 
 protected section.
 private section.
@@ -67,6 +68,7 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
     CLEAR mv_last_seconds.
     CLEAR mv_last_tok_in.
     CLEAR mv_last_tok_out.
+    CLEAR mv_last_tok_cached.
     GET RUN TIME FIELD mv_start.
 
     " Use explicitly passed temperature, fall back to client-level default
@@ -87,8 +89,9 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
         i_json_schema      = i_json_schema
         i_temperature      = lv_temperature
       IMPORTING
-        ev_tok_in  = mv_last_tok_in
-        ev_tok_out = mv_last_tok_out ).
+        ev_tok_in     = mv_last_tok_in
+        ev_tok_out    = mv_last_tok_out
+        ev_tok_cached = mv_last_tok_cached ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.
@@ -103,6 +106,7 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
     CLEAR mv_last_seconds.
     CLEAR mv_last_tok_in.
     CLEAR mv_last_tok_out.
+    CLEAR mv_last_tok_cached.
     GET RUN TIME FIELD mv_start.
 
     DATA(lv_temperature) = COND string(
@@ -124,6 +128,7 @@ CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
       IMPORTING
         ev_tok_in     = mv_last_tok_in
         ev_tok_out    = mv_last_tok_out
+        ev_tok_cached = mv_last_tok_cached
         et_tool_calls = et_tool_calls ).
 
     GET RUN TIME FIELD mv_end.

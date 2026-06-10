@@ -14,6 +14,7 @@ CLASS zcl_ai_messages DEFINITION
         duration_seconds TYPE string,
         tok_in      TYPE i,
         tok_out     TYPE i,
+        tok_cached  TYPE i,
         content     TYPE string,
       END OF ty_message,
       tt_messages TYPE STANDARD TABLE OF ty_message WITH NON-UNIQUE DEFAULT KEY,
@@ -45,6 +46,7 @@ CLASS zcl_ai_messages DEFINITION
                 i_duration_seconds TYPE string OPTIONAL
                 i_tok_in  TYPE i OPTIONAL
                 i_tok_out TYPE i OPTIONAL
+                i_tok_cached TYPE i OPTIONAL
                 i_content TYPE string.
 
     METHODS parse_agent_requests
@@ -158,6 +160,7 @@ CLASS ZCL_AI_MESSAGES IMPLEMENTATION.
       duration_seconds = i_duration_seconds
       tok_in      = i_tok_in
       tok_out     = i_tok_out
+      tok_cached  = i_tok_cached
       content     = i_content ) TO mt_messages.
   ENDMETHOD.
 

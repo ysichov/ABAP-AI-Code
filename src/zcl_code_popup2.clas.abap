@@ -218,9 +218,24 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     " Markdown indicators (pipe tables, headings, bold, fences) win over the
     " code heuristic - a comparison table also contains '--- ' and 'METHOD '
     DATA(lv_is_markdown) = abap_false.
-    " A real markdown table has a |---|---| separator row
-    FIND FIRST OCCURRENCE OF REGEX '(^|\n)\s*\|[\s:|-]+\|\s*(\n|$)' IN lv_display_answer.
-    IF sy-subrc = 0.
+    DATA lt_md_check TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_pipe_rows TYPE i.
+    DATA(lv_md_text) = lv_display_answer.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf
+      IN lv_md_text WITH cl_abap_char_utilities=>newline.
+    SPLIT lv_md_text AT cl_abap_char_utilities=>newline INTO TABLE lt_md_check.
+    LOOP AT lt_md_check INTO DATA(lv_md_line).
+      SHIFT lv_md_line LEFT DELETING LEADING space.
+      IF strlen( lv_md_line ) >= 2 AND lv_md_line(1) = '|'.
+        " Markdown table row: starts AND ends with a pipe
+        DATA(lv_md_tail) = strlen( lv_md_line ) - 1.
+        IF lv_md_line+lv_md_tail(1) = '|'.
+          lv_pipe_rows = lv_pipe_rows + 1.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    " 3+ pipe rows = header + separator + data: clearly a table
+    IF lv_pipe_rows >= 3.
       lv_is_markdown = abap_true.
     ELSE.
       FIND FIRST OCCURRENCE OF REGEX '(^|\n)#{1,6} |\*\*[^\n*]+\*\*|(^|\n)```'
