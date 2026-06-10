@@ -110,6 +110,7 @@ private section.
   methods RESOLVE_AND_LOG_READ_COMMANDS
     importing
       !I_TEXT type STRING
+      !IT_AGENT_REQUESTS type ZCL_AI_MESSAGES=>TT_AGENT_REQUESTS optional
     changing
       !CT_DONE_COMMANDS type TT_STRINGS
     returning
@@ -633,7 +634,63 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       ENDIF.
       APPEND lv_read_command_key TO ct_done_commands.
 
+      " A method requested together with its full class is already contained in
+      " the class read - skip the duplicate METH read in the log and prompt.
+      IF ls_command-object_type = 'METH' OR ls_command-object_type = 'METHOD'.
+        DATA(lv_meth_class) = ls_command-object_name.
+        TRANSLATE lv_meth_class TO UPPER CASE.
+        CONDENSE lv_meth_class.
+        DATA(lv_class_also_read) = abap_false.
+        LOOP AT it_agent_requests INTO DATA(ls_peer_req) WHERE object_name IS NOT INITIAL.
+          DATA(lv_peer_type) = ls_peer_req-object_type.
+          DATA(lv_peer_name) = ls_peer_req-object_name.
+          TRANSLATE lv_peer_type TO UPPER CASE.
+          TRANSLATE lv_peer_name TO UPPER CASE.
+          CONDENSE lv_peer_name.
+          IF ( lv_peer_type = 'CLAS' OR lv_peer_type = 'CLASS' )
+          AND lv_peer_name = lv_meth_class.
+            lv_class_also_read = abap_true.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        IF lv_class_also_read = abap_true.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
       DATA(lv_code_context) = zcl_ai_code_reader=>resolve_read_commands( lv_read_command ).
+
+      " When specific methods of this class were requested, keep only those
+      " methods in the class context - sections stay, the rest is removed.
+      IF ls_command-object_type = 'CLAS' OR ls_command-object_type = 'CLASS'.
+        DATA lt_req_methods TYPE zcl_ai_code_reader=>tt_source.
+        CLEAR lt_req_methods.
+        DATA(lv_cls_name) = ls_command-object_name.
+        TRANSLATE lv_cls_name TO UPPER CASE.
+        CONDENSE lv_cls_name.
+        LOOP AT it_agent_requests INTO DATA(ls_meth_req) WHERE object_name IS NOT INITIAL.
+          DATA(lv_req_type) = ls_meth_req-object_type.
+          TRANSLATE lv_req_type TO UPPER CASE.
+          IF lv_req_type <> 'METH' AND lv_req_type <> 'METHOD'.
+            CONTINUE.
+          ENDIF.
+          DATA lv_req_cls TYPE string.
+          DATA lv_req_mth TYPE string.
+          SPLIT ls_meth_req-object_name AT '=>' INTO lv_req_cls lv_req_mth.
+          TRANSLATE lv_req_cls TO UPPER CASE.
+          TRANSLATE lv_req_mth TO UPPER CASE.
+          CONDENSE lv_req_cls.
+          CONDENSE lv_req_mth.
+          IF lv_req_cls = lv_cls_name AND lv_req_mth IS NOT INITIAL.
+            APPEND lv_req_mth TO lt_req_methods.
+          ENDIF.
+        ENDLOOP.
+        IF lt_req_methods IS NOT INITIAL.
+          lv_code_context = zcl_ai_code_reader=>remove_unrequested_methods(
+            i_class_text = lv_code_context
+            it_methods   = lt_req_methods ).
+        ENDIF.
+      ENDIF.
 
       mo_messages->add_message(
         i_role        = 'user'
@@ -901,7 +958,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       IF lv_orchestrator_read_commands IS NOT INITIAL.
         lv_orchestrator_code_context = resolve_and_log_read_commands(
           EXPORTING
-            i_text           = lv_orchestrator_answer
+            i_text            = lv_orchestrator_answer
+            it_agent_requests = lt_agent_requests
           CHANGING
             ct_done_commands = lt_done_read_commands ).
       ENDIF.
@@ -920,7 +978,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
-                i_text           = lv_search_read_command
+                i_text            = lv_search_read_command
+                it_agent_requests = lt_agent_requests
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
 
@@ -960,7 +1019,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
-                i_text           = lv_change_read_command
+                i_text            = lv_change_read_command
+                it_agent_requests = lt_agent_requests
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
           ELSEIF lv_change_is_new_object = abap_true.
@@ -1014,7 +1074,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
               lv_ignored_context = resolve_and_log_read_commands(
                 EXPORTING
-                  i_text           = lv_group_review_read_command
+                  i_text            = lv_group_review_read_command
+                  it_agent_requests = lt_agent_requests
                 CHANGING
                   ct_done_commands = lt_done_read_commands ).
             ELSEIF lv_group_review_is_new_object = abap_true.
@@ -1064,7 +1125,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
             lv_ignored_context = resolve_and_log_read_commands(
               EXPORTING
-                i_text           = lv_diff_read_command
+                i_text            = lv_diff_read_command
+                it_agent_requests = lt_agent_requests
               CHANGING
                 ct_done_commands = lt_done_read_commands ).
           ELSEIF lv_diff_is_new_object = abap_true.
@@ -1106,7 +1168,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
           lv_ignored_context = resolve_and_log_read_commands(
             EXPORTING
-              i_text           = lv_direct_read_command
+              i_text            = lv_direct_read_command
+              it_agent_requests = lt_agent_requests
             CHANGING
               ct_done_commands = lt_done_read_commands ).
 
@@ -1146,7 +1209,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
         lv_ignored_context = resolve_and_log_read_commands(
           EXPORTING
-            i_text           = lv_agent_answer
+            i_text            = lv_agent_answer
+            it_agent_requests = lt_agent_requests
           CHANGING
             ct_done_commands = lt_done_read_commands ).
 
@@ -1392,7 +1456,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         IF lv_create_read_command IS NOT INITIAL.
           lv_create_context = resolve_and_log_read_commands(
             EXPORTING
-              i_text           = lv_create_read_command
+              i_text            = lv_create_read_command
+              it_agent_requests = lt_agent_requests
             CHANGING
               ct_done_commands = lt_done_read_commands ).
         ENDIF.
@@ -1562,7 +1627,8 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         IF lv_save_read_command IS NOT INITIAL.
           lv_save_context = resolve_and_log_read_commands(
             EXPORTING
-              i_text           = lv_save_read_command
+              i_text            = lv_save_read_command
+              it_agent_requests = lt_agent_requests
             CHANGING
               ct_done_commands = lt_done_read_commands ).
         ENDIF.

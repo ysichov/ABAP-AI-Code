@@ -40,6 +40,14 @@ CLASS zcl_ai_code_reader DEFINITION
                 i_method       TYPE string
       RETURNING VALUE(rv_text) TYPE string.
 
+    " Removes from a read_class( ) text all "--- Method NAME ---" blocks whose
+    " name is not in it_methods. Sections and other blocks are kept untouched.
+    " Call it only when specific methods were requested - not always needed.
+    CLASS-METHODS remove_unrequested_methods
+      IMPORTING i_class_text   TYPE string
+                it_methods     TYPE tt_source
+      RETURNING VALUE(rv_text) TYPE string.
+
   PRIVATE SECTION.
     CLASS-METHODS class_include_prefix
       IMPORTING i_class         TYPE string
@@ -122,6 +130,25 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
 
   METHOD resolve_read_commands.
     DATA(lt_commands) = parse_read_commands( i_text ).
+
+    " Drop METH commands whose class is also read in full by the same batch -
+    " the class read already contains the method source.
+    LOOP AT lt_commands INTO DATA(ls_meth_cmd) WHERE object_type = 'METH' OR object_type = 'METHOD'.
+      DATA(lv_meth_idx) = sy-tabix.
+      DATA(lv_meth_class) = ls_meth_cmd-object_name.
+      TRANSLATE lv_meth_class TO UPPER CASE.
+      CONDENSE lv_meth_class.
+      LOOP AT lt_commands INTO DATA(ls_class_cmd)
+        WHERE object_type = 'CLASS' OR object_type = 'CLAS'.
+        DATA(lv_class_name) = ls_class_cmd-object_name.
+        TRANSLATE lv_class_name TO UPPER CASE.
+        CONDENSE lv_class_name.
+        IF lv_class_name = lv_meth_class.
+          DELETE lt_commands INDEX lv_meth_idx.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
 
     LOOP AT lt_commands INTO DATA(ls_command).
       DATA(lv_resolved) = VALUE string( ).
@@ -426,6 +453,59 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         i_title   = |Method { lv_method }|
       CHANGING
         cv_text   = rv_text ).
+  ENDMETHOD.
+
+  METHOD remove_unrequested_methods.
+    DATA lt_lines TYPE tt_source.
+    DATA lt_keep  TYPE tt_source.
+    DATA lv_skip  TYPE abap_bool.
+
+    IF it_methods IS INITIAL.
+      rv_text = i_class_text.
+      RETURN.
+    ENDIF.
+
+    " Uppercased lookup table of requested method names
+    LOOP AT it_methods INTO DATA(lv_method).
+      TRANSLATE lv_method TO UPPER CASE.
+      CONDENSE lv_method.
+      IF lv_method IS NOT INITIAL.
+        APPEND lv_method TO lt_keep.
+      ENDIF.
+    ENDLOOP.
+    IF lt_keep IS INITIAL.
+      rv_text = i_class_text.
+      RETURN.
+    ENDIF.
+
+    SPLIT i_class_text AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      DATA(lv_upper) = lv_line.
+      TRANSLATE lv_upper TO UPPER CASE.
+      CONDENSE lv_upper.
+
+      IF lv_upper CP '--- METHOD * ---'.
+        DATA(lv_name) = lv_upper.
+        REPLACE FIRST OCCURRENCE OF REGEX '^---\s*METHOD\s+' IN lv_name WITH ''.
+        REPLACE FIRST OCCURRENCE OF REGEX '\s*---\s*$' IN lv_name WITH ''.
+        CONDENSE lv_name.
+        READ TABLE lt_keep WITH KEY table_line = lv_name TRANSPORTING NO FIELDS.
+        lv_skip = xsdbool( sy-subrc <> 0 ).
+      ELSEIF lv_upper CP '---*---'.
+        " Any other block marker (sections, locals, ...) ends the skipped region
+        lv_skip = abap_false.
+      ENDIF.
+
+      IF lv_skip = abap_true.
+        CONTINUE.
+      ENDIF.
+
+      IF rv_text IS NOT INITIAL.
+        rv_text = rv_text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      rv_text = rv_text && lv_line.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD class_include_prefix.
