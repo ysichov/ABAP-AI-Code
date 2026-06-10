@@ -6,7 +6,11 @@ This is just an attempt to create my own replacement for Claude Code/Codex/Any o
 Dependencies: The ABAP Code Reviewer should be installed first - https://github.com/ysichov/AVE
 and https://github.com/abapGit/abapGit to create/change code.
 
-And you should copy AGENTS folder locally - https://github.com/ysichov/ABAP-AI-Code/tree/main/AGENTS, save variant with your path or change it in the INITIALIZATION.
+Totally refactored in Z_ABAP_AI_CODE2 https://www.loom.com/share/00e46d9a3cc343778c86ef7f68e3407e
+
+For the new version copy TOOLS folder locally - https://github.com/ysichov/ABAP-AI-Code/tree/main/TOOLS, save variant with your path or change it in the INITIALIZATION.
+
+For the old version copy AGENTS folder locally - https://github.com/ysichov/ABAP-AI-Code/tree/main/AGENTS, save variant with your path or change it in the INITIALIZATION.
 
 And lets start Combobulating ) - https://www.loom.com/share/75eb12e3a8394fe8a932c5573a8127f9
 
