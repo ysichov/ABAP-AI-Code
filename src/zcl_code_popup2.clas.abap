@@ -14,6 +14,15 @@ public section.
       !I_TEMPERATURE type STRING optional
       !I_STREAM type ABAP_BOOL optional .
   methods SHOW .
+  " Show diff, ask user to approve/decline changes via diff toolbar. Returns status message.
+  methods REVIEW_AND_SAVE
+    importing
+      !I_OLD_CODE    type STRING
+      !I_NEW_CODE    type STRING
+      !I_OBJECT_TYPE type STRING
+      !I_OBJECT_NAME type STRING
+    returning
+      value(RV_MESSAGE) type STRING .
   class-methods BUILD_STEPS_HTML
     importing
       !IO_MESSAGES type ref to ZCL_AI_MESSAGES
@@ -119,15 +128,6 @@ private section.
     returning
       value(RV_HTML) type STRING .
   methods REFRESH_DIFF_HTML .
-  " Show diff, ask user to approve, save if confirmed. Returns save message.
-  methods REVIEW_AND_SAVE
-    importing
-      !I_OLD_CODE    type STRING
-      !I_NEW_CODE    type STRING
-      !I_OBJECT_TYPE type STRING
-      !I_OBJECT_NAME type STRING
-    returning
-      value(RV_MESSAGE) type STRING .
   methods CONFIRM_SAVE_APPROVED_DIFF
     returning
       value(RV_CONFIRMED) type ABAP_BOOL .
