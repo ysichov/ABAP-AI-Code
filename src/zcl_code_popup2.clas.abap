@@ -195,20 +195,31 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     DATA(lv_tool_answer) = mo_tool_runner->run( lv_prompt ).
 
+    " Restore question text (display_answer may cause editor repaint)
+    DATA lt_restore TYPE tt_textedit_lines.
+    SPLIT lv_prompt AT cl_abap_char_utilities=>newline INTO TABLE lt_restore.
+    mo_question->set_text_as_stream( text = lt_restore ).
+
     " Pull all logged messages from the tool runner (includes system prompt + all turns)
     DATA(lo_messages) = mo_tool_runner->get_messages( ).
     IF lo_messages IS NOT INITIAL.
       APPEND LINES OF lo_messages->get_messages( ) TO mt_message_history.
     ENDIF.
 
+    " Strip raw XML envelopes that LLM should have interpreted but didn't
+    DATA(lv_display_answer) = lv_tool_answer.
+    IF lv_display_answer CP '<code_analysis*' OR lv_display_answer CP '<code_modified*'.
+      REPLACE ALL OCCURRENCES OF REGEX '<[^>]+>' IN lv_display_answer WITH ''.
+      CONDENSE lv_display_answer.
+    ENDIF.
     DATA(lv_tool_html) = COND string(
-      WHEN lv_tool_answer CS '--- ' OR lv_tool_answer CS 'METHOD '
-      THEN zcl_code_html_gen=>source_to_html( i_source = lv_tool_answer i_title = space )
-      WHEN lv_tool_answer CP '*CLAS *' OR lv_tool_answer CP '*PROG *'
-        OR lv_tool_answer CP '*DEVC *' OR lv_tool_answer CP '*FUGR *'
-        OR lv_tool_answer CS 'Objects matching'
-      THEN zcl_code_html_gen=>search_result_to_html( lv_tool_answer )
-      ELSE zcl_code_html_gen=>markdown_to_html( lv_tool_answer ) ).
+      WHEN lv_display_answer CS '--- ' OR lv_display_answer CS 'METHOD '
+      THEN zcl_code_html_gen=>source_to_html( i_source = lv_display_answer i_title = space )
+      WHEN lv_display_answer CP '*CLAS *' OR lv_display_answer CP '*PROG *'
+        OR lv_display_answer CP '*DEVC *' OR lv_display_answer CP '*FUGR *'
+        OR lv_display_answer CS 'Objects matching'
+      THEN zcl_code_html_gen=>search_result_to_html( lv_display_answer )
+      ELSE zcl_code_html_gen=>markdown_to_html( lv_display_answer ) ).
     display_answer( i_answer = lv_tool_html ).
     RETURN.
     " ===================== end new tool-based flow ======================

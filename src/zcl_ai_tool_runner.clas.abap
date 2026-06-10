@@ -114,13 +114,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA(lv_prompt) = i_prompt.
 
-    " Log initial user request
-    mo_messages->add_message(
-      i_role        = 'user'
-      i_agent       = 'TOOL_RUNNER'
-      i_prompt_type = 'USER'
-      i_content     = lv_prompt ).
-
     DO c_max_iterations TIMES.
 
       CLEAR lt_calls.
@@ -301,7 +294,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       cl_abap_char_utilities=>newline &&
       |- NEVER ask clarifying questions. Execute the full requested task autonomously.| &&
       cl_abap_char_utilities=>newline &&
-      |- If the user asks for a code review, call read_sap_object then review_sap_code immediately.|.
+      |- If the user asks for a code review, call read_sap_object then review_sap_code immediately.| &&
+      cl_abap_char_utilities=>newline &&
+      |- NEVER return raw XML to the user. Always interpret tool results and present them| &&
+      | as a clear human-readable summary in the user language.|.
 
   ENDMETHOD.
 
