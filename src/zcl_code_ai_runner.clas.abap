@@ -944,6 +944,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       DATA lv_has_create_object TYPE abap_bool.
       DATA lv_has_code_diff TYPE abap_bool.
       DATA lv_has_show_command TYPE abap_bool.
+      DATA lv_has_delete TYPE abap_bool.
       DATA lv_code_change_type TYPE string.
       DATA lv_code_change_name TYPE string.
       DATA lv_create_object_type TYPE string.
@@ -1209,6 +1210,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
           lv_answer     = lv_del_result.
           lv_answer_log = lv_del_result.
+          lv_has_delete = abap_true.
           complete_last_step( ).
           CONTINUE.
         ENDIF.
@@ -1290,6 +1292,10 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       IF lv_agent_error IS NOT INITIAL.
         lv_answer = lv_agent_error.
         lv_answer_log = lv_answer.
+      ELSEIF lv_has_delete = abap_true
+        AND lv_has_code_change = abap_false
+        AND lv_has_agent_followup_text = abap_false.
+        complete_last_step( ).
       ELSEIF lv_has_code_change = abap_false
         AND lv_has_code_diff = abap_true
         AND lv_has_agent_followup_text = abap_false.
