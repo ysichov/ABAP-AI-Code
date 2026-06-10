@@ -186,19 +186,11 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     DATA(lv_tool_answer) = mo_tool_runner->run( lv_prompt ).
 
-    " Log the turn so the History popup keeps working
-    APPEND VALUE #( session_id  = mv_session_counter
-                    role        = 'user'
-                    agent       = 'TOOL_RUNNER'
-                    prompt_type = 'USER_PROMPT'
-                    content     = lv_prompt ) TO mt_message_history.
-    APPEND VALUE #( session_id  = mv_session_counter
-                    role        = 'assistant'
-                    agent       = 'TOOL_RUNNER'
-                    prompt_type = 'LLM_RESPONSE'
-                    tok_in      = mo_llm->mv_last_tok_in
-                    tok_out     = mo_llm->mv_last_tok_out
-                    content     = lv_tool_answer ) TO mt_message_history.
+    " Pull all logged messages from the tool runner (includes system prompt + all turns)
+    DATA(lo_messages) = mo_tool_runner->get_messages( ).
+    IF lo_messages IS NOT INITIAL.
+      APPEND LINES OF lo_messages->get_messages( ) TO mt_message_history.
+    ENDIF.
 
     display_answer( i_answer = build_plain_html( lv_tool_answer ) ).
     RETURN.

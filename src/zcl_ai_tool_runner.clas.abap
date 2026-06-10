@@ -17,6 +17,10 @@ CLASS zcl_ai_tool_runner DEFINITION
         !i_prompt        TYPE string
       RETURNING VALUE(rv_answer) TYPE string.
 
+    " Access to the logged messages (for History popup, logging, etc.)
+    METHODS get_messages
+      RETURNING VALUE(ro_messages) TYPE REF TO zcl_ai_messages.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     DATA mo_llm     TYPE REF TO zcl_llm_client.
@@ -113,11 +117,15 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDIF.
 
       " Log this turn into the history before appending tool results
-      APPEND VALUE #( role    = 'user'
-                      content = lv_prompt ) TO lt_history.
+      mo_messages->add_message(
+        i_role    = 'user'
+        i_agent   = 'TOOL_RUNNER'
+        i_content = lv_prompt ).
       IF lv_answer IS NOT INITIAL.
-        APPEND VALUE #( role    = 'assistant'
-                        content = lv_answer ) TO lt_history.
+        mo_messages->add_message(
+          i_role    = 'assistant'
+          i_agent   = 'TOOL_RUNNER'
+          i_content = lv_answer ).
       ENDIF.
 
       " Execute every requested tool; feed results back as the next prompt.
@@ -241,6 +249,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |not delete_sap_object.| &&
       cl_abap_char_utilities=>newline &&
       |- When all tool work is done, answer the user in their language.|.
+
+  ENDMETHOD.
+
+
+  METHOD get_messages.
+
+    ro_messages = mo_messages.
 
   ENDMETHOD.
 ENDCLASS.
