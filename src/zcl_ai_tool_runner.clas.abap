@@ -52,11 +52,46 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD run.
 
+    " Optimization: if prompt is a single code word (object name), skip LLM and read directly
+    DATA(lv_trimmed_prompt) = i_prompt.
+    CONDENSE lv_trimmed_prompt.
+    IF lv_trimmed_prompt IS NOT INITIAL
+    AND lv_trimmed_prompt NOT CA ' '
+    AND NOT ( FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed_prompt ).
+      DATA(lv_word) = lv_trimmed_prompt.
+      TRANSLATE lv_word TO UPPER CASE.
+      " Try CLASS first, then PROG, then wildcard search
+      DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
+      IF lv_direct_source IS INITIAL.
+        lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
+      ENDIF.
+      IF lv_direct_source IS INITIAL.
+        lv_direct_source = zcl_ai_code_reader=>read_program( lv_word && '*' ).
+      ENDIF.
+      IF lv_direct_source IS NOT INITIAL.
+        rv_answer = lv_direct_source.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     DATA lt_history TYPE zcl_ai_messages=>tt_messages.
     DATA lt_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
+    DATA mo_messages TYPE REF TO zcl_ai_messages.
+
+    mo_messages = NEW zcl_ai_messages(
+      i_user_prompt = i_prompt
+      i_session_id  = 1 ).
 
     DATA(lv_tools_json)    = zcl_ai_tool_factory=>build_tools_json( ).
     DATA(lv_system_prompt) = build_system_prompt( ).
+
+    " Log system prompt into the message history
+    mo_messages->add_message(
+      i_role        = 'system'
+      i_agent       = 'TOOL_RUNNER'
+      i_prompt_type = 'SYSTEM_PROMPT'
+      i_content     = lv_system_prompt ).
+
     DATA(lv_prompt)        = i_prompt.
 
     DO c_max_iterations TIMES.

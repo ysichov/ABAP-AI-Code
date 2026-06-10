@@ -14,9 +14,9 @@ REPORT z_abap_ai_code2.
 
 DATA go_popup TYPE REF TO zcl_code_popup2.
 
-SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE 'OpenAI'.
+SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE OpenAI.
 PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
-            p_model  TYPE text255 MEMORY ID model DEFAULT 'gpt-4o',
+            p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api,
             p_tools  TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.2'.
