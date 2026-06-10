@@ -31,7 +31,7 @@ CLASS zcl_ai_messages DEFINITION
 
     METHODS constructor
       IMPORTING i_user_prompt TYPE string
-                io_prompts    TYPE REF TO zcl_ai_agents_prompts
+                io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
                 i_session_id  TYPE i OPTIONAL.
 
     METHODS build_orchestrator_request

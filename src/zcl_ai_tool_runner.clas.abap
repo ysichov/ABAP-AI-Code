@@ -7,8 +7,9 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     METHODS constructor
       IMPORTING
-        !io_llm     TYPE REF TO zcl_llm_client
-        !io_context TYPE REF TO zcl_ai_tool_context.
+        !io_llm        TYPE REF TO zcl_llm_client
+        !io_context    TYPE REF TO zcl_ai_tool_context
+        !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL.
 
     " Agentic loop: LLM -> tool_calls -> execute -> results back -> LLM ...
     " Ends when the LLM answers without tool calls or c_max_iterations is hit.
@@ -23,8 +24,10 @@ CLASS zcl_ai_tool_runner DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
-    DATA mo_llm     TYPE REF TO zcl_llm_client.
-    DATA mo_context TYPE REF TO zcl_ai_tool_context.
+    DATA mo_llm      TYPE REF TO zcl_llm_client.
+    DATA mo_context  TYPE REF TO zcl_ai_tool_context.
+    DATA mo_prompts  TYPE REF TO zcl_ai_agents_prompts.
+    DATA mo_messages TYPE REF TO zcl_ai_messages.
 
     METHODS execute_tool_call
       IMPORTING
@@ -49,6 +52,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     mo_llm     = io_llm.
     mo_context = io_context.
+    mo_prompts = io_prompts.
     zcl_ai_tool_factory=>initialize( io_context ).
 
   ENDMETHOD.
@@ -59,9 +63,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     " Optimization: if prompt is a single code word (object name), skip LLM and read directly
     DATA(lv_trimmed_prompt) = i_prompt.
     CONDENSE lv_trimmed_prompt.
+    FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed_prompt.
     IF lv_trimmed_prompt IS NOT INITIAL
     AND lv_trimmed_prompt NOT CA ' '
-    AND NOT ( FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed_prompt ).
+    AND sy-subrc <> 0.
       DATA(lv_word) = lv_trimmed_prompt.
       TRANSLATE lv_word TO UPPER CASE.
       " Try CLASS first, then PROG, then wildcard search
@@ -80,10 +85,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA lt_history TYPE zcl_ai_messages=>tt_messages.
     DATA lt_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
-    DATA mo_messages TYPE REF TO zcl_ai_messages.
 
     mo_messages = NEW zcl_ai_messages(
       i_user_prompt = i_prompt
+      io_prompts    = mo_prompts
       i_session_id  = 1 ).
 
     DATA(lv_tools_json)    = zcl_ai_tool_factory=>build_tools_json( ).
