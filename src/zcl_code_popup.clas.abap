@@ -379,19 +379,17 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
         " Build and show HTML with current content
         DATA lv_color TYPE string.
-        IF lv_stream_done = abap_true.
-          lv_color = '#1a7f1a'.  " dark green when done
-        ELSEIF lv_stream_error = abap_true.
+        IF lv_stream_error = abap_true.
           lv_color = '#cc0000'.  " dark red on error
         ELSE.
-          lv_color = '#1a1a1a'.  " near-black while streaming
+          lv_color = '#1a1a1a'.  " black
         ENDIF.
 
         DATA lv_stream_html TYPE string.
         lv_stream_html =
           '<html><head><meta charset="utf-8"><style>'
-          && 'body{margin:0;padding:8px;font-family:Consolas,monospace;background:#ffffff}'
-          && 'pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;color:#1a1a1a}'
+          && 'body{margin:0;padding:8px;font-family:Consolas,"Courier New",monospace;background:#ffffff}'
+          && 'pre{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.6;letter-spacing:0.3px;color:#1a1a1a}'
           && '</style></head><body>'
           && |<pre style="color:{ lv_color }">{ lv_resp_html }|.
         IF lv_stream_done = abap_false AND lv_stream_error = abap_false.
