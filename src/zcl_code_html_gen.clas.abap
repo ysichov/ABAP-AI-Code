@@ -1350,66 +1350,38 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
 
   method SOURCE_TO_HTML.
 
-    DATA lv_rows TYPE string.
-    DATA lv_lno TYPE i.
     DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    DATA lv_escaped TYPE string.
+    DATA lv_body  TYPE string.
 
     SPLIT i_source AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
 
     LOOP AT lt_lines INTO DATA(lv_line).
-      " Section/method header line: --- Title (INCLUDE) ---
-      IF lv_line CP '---*---'.
-        lv_lno = 0.
-        lv_escaped = escape_html( i_text = lv_line ).
-        " Strip leading dashes for cleaner display
-        REPLACE ALL OCCURRENCES OF REGEX '^---\s*' IN lv_escaped WITH ''.
-        REPLACE ALL OCCURRENCES OF REGEX '\s*---$' IN lv_escaped WITH ''.
-        lv_rows = lv_rows
-               && |<tr><td class="ln"></td>|
-               && |<td class="sh">{ lv_escaped }</td></tr>|.
-      ELSE.
-        lv_lno = lv_lno + 1.
-        DATA(lv_line_upper) = lv_line.
-        TRANSLATE lv_line_upper TO UPPER CASE.
-        CONDENSE lv_line_upper.
-        DATA(lv_cell) = escape_html( i_text = lv_line ).
-        " TADIR list line: TYPE OBJNAME -> make clickable
-        FIND FIRST OCCURRENCE OF REGEX
-          '^(CLAS|PROG|REPS|FUGR|INTF|DEVC|MSAG|DOMA|DTEL|TABL|TTYP|VIEW|SHLP)\s+(\S+)$'
-          IN lv_line_upper SUBMATCHES DATA(lv_obj_type) DATA(lv_obj_name).
-        IF sy-subrc = 0.
-          lv_cell = |<a href="sapevent:openobj~{ lv_obj_type }~{ lv_obj_name }" class="ol">{ lv_cell }</a>|.
-        ENDIF.
-        lv_rows = lv_rows
-               && |<tr><td class="ln">{ lv_lno }</td>|
-               && |<td class="cd">{ lv_cell }</td></tr>|.
+      DATA(lv_line_upper) = lv_line.
+      TRANSLATE lv_line_upper TO UPPER CASE.
+      CONDENSE lv_line_upper.
+      DATA(lv_cell) = escape_html( i_text = lv_line ).
+      " TADIR list line: TYPE OBJNAME -> make clickable
+      FIND FIRST OCCURRENCE OF REGEX
+        '^(CLAS|PROG|REPS|FUGR|INTF|DEVC|MSAG|DOMA|DTEL|TABL|TTYP|VIEW|SHLP)\s+(\S+)$'
+        IN lv_line_upper SUBMATCHES DATA(lv_obj_type) DATA(lv_obj_name).
+      IF sy-subrc = 0.
+        lv_cell = |<a href="sapevent:openobj~{ lv_obj_type }~{ lv_obj_name }" class="ol">{ lv_cell }</a>|.
       ENDIF.
+      lv_body = lv_body && lv_cell && cl_abap_char_utilities=>newline.
     ENDLOOP.
 
     DATA(lv_title) = escape_html( i_text = i_title ).
-    DATA(lv_title_row) = |<tr><td class="ln"></td><td class="th">{ lv_title }</td></tr>|.
 
     rv_html = |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
-           && |*\{margin:0;padding:0;box-sizing:border-box\}|
-           && |body\{background:#ffffff;color:#1e1e1e;font:12px/1.5 Consolas,monospace\}|
-           && |.hdr\{background:#f3f3f3;padding:5px 12px;border-bottom:1px solid #ddd;|
-           && |color:#444;font-size:11px;display:flex;gap:16px;flex-wrap:wrap\}|
-           && |.ttl\{color:#0066aa;font-weight:bold\}|
-           && |table\{border-collapse:collapse;width:100%\}|
-           && |tr:hover td\{background:#f0f4fa\}|
-           && |.ln\{color:#aaa;text-align:right;padding:1px 6px 1px 4px;|
-           && |user-select:none;border-right:1px solid #e0e0e0;|
-           && |white-space:nowrap;background:#fafafa\}|
-           && |.cd\{padding:1px 8px;white-space:pre\}|
-           && |.sh\{padding:4px 8px;color:#0066cc;font-weight:bold;|
-           && |background:#f0f6ff;border-top:2px solid #cce0ff;white-space:pre\}|
-           && |.th\{padding:6px 8px;color:#003d80;font-weight:bold;font-size:13px;|
-           && |background:#dceeff;border-bottom:2px solid #99c4f0;white-space:pre\}|
+           && |body\{margin:0;padding:8px;font-family:Consolas,"Courier New",monospace;|
+           && |font-size:14px;line-height:1.6;color:#1a1a1a;background:#ffffff\}|
+           && |.ttl\{font-weight:bold;color:#003d80;font-size:13px;margin-bottom:6px\}|
+           && |pre\{white-space:pre-wrap;word-break:break-word;margin:0\}|
            && |.ol\{color:#0066cc;text-decoration:none\}|
            && |.ol:hover\{text-decoration:underline;color:#004499\}|
            && |</style></head><body>|
-           && |<table><tbody>| && lv_title_row && lv_rows && |</tbody></table></body></html>|.
+           && COND #( WHEN lv_title IS NOT INITIAL THEN |<div class="ttl">{ lv_title }</div>| )
+           && |<pre>| && lv_body && |</pre></body></html>|.
 
   endmethod.
 ENDCLASS.

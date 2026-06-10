@@ -131,11 +131,6 @@ private section.
   methods DISPLAY_PROGRAM_SOURCE
     importing
       !I_SOURCE type STRING .
-  methods BUILD_PLAIN_TEXT_HTML
-    importing
-      !I_TEXT type STRING
-    returning
-      value(RV_HTML) type STRING .
   " Show plain text with typewriter animation (streaming effect).
   methods DISPLAY_STREAMING
     importing
@@ -206,10 +201,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
         IF ls_stream_prep-is_source_code = abap_true.
           display_program_source( ls_stream_prep-answer ).
         ELSE.
-          " Non-code answer (plain text) — show as preformatted without line numbers
+          " Non-code answer (search result list etc.) — convert to HTML with clickable links
           DATA(lv_fallback_html) = ls_stream_prep-answer.
           IF ls_stream_prep-has_diff = abap_false AND ls_stream_prep-answer IS NOT INITIAL.
-            lv_fallback_html = build_plain_text_html( ls_stream_prep-answer ).
+            lv_fallback_html = zcl_code_html_gen=>source_to_html(
+              i_source = ls_stream_prep-answer
+              i_title  = 'Search result' ).
           ENDIF.
           display_answer(
             i_answer = lv_fallback_html
@@ -1564,24 +1561,5 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     cl_gui_cfw=>flush( ).
 
   ENDMETHOD.
-
-  METHOD build_plain_text_html.
-
-    DATA lv_escaped TYPE string.
-
-    lv_escaped = i_text.
-    REPLACE ALL OCCURRENCES OF '&' IN lv_escaped WITH '&amp;'.
-    REPLACE ALL OCCURRENCES OF '<' IN lv_escaped WITH '&lt;'.
-    REPLACE ALL OCCURRENCES OF '>' IN lv_escaped WITH '&gt;'.
-
-    rv_html = '<html><head><meta charset="utf-8"><style>'
-           && 'body{margin:0;padding:8px;font-family:Consolas,"Courier New",monospace;background:#ffffff}'
-           && 'pre{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.6;letter-spacing:0.3px;color:#1a1a1a}'
-           && '</style></head><body>'
-           && '<pre>' && lv_escaped && '</pre>'
-           && '</body></html>'.
-
-  ENDMETHOD.
-
 
 ENDCLASS.
