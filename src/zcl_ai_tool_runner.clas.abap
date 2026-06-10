@@ -177,6 +177,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         && cl_abap_char_utilities=>newline
         && |Continue with the user request. Call further tools if needed, |
         && |otherwise produce the final answer.|.
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = 'TOOL_RUNNER'
+        i_prompt_type = 'LLM_INPUT'
+        i_content     = lv_prompt ).
       APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
 
     ENDDO.
