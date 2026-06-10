@@ -19,7 +19,8 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_code_diff         TYPE string VALUE 'CODE_DIFF',
       c_agent_code_reader       TYPE string VALUE 'CODE_READER',
       c_agent_class_processor   TYPE string VALUE 'CLASS_PROCESSOR',
-      c_agent_delete_obj        TYPE string VALUE 'DELETE_OBJECT'.
+      c_agent_delete_obj        TYPE string VALUE 'DELETE_OBJECT',
+      c_agent_prog_processor    TYPE string VALUE 'PROG_PROCESSOR'.
 
     METHODS constructor
       IMPORTING
@@ -65,6 +66,9 @@ CLASS zcl_ai_agents_prompts DEFINITION
     METHODS get_class_processor_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
 
+    METHODS get_prog_processor_prompt
+      RETURNING VALUE(rv_prompt) TYPE string.
+
     METHODS get_prompt_by_agent
       IMPORTING i_agent          TYPE string
       RETURNING VALUE(rv_prompt) TYPE string.
@@ -90,6 +94,7 @@ CLASS zcl_ai_agents_prompts DEFINITION
     DATA mv_code_review_prompt       TYPE string.
     DATA mv_final_prompt             TYPE string.
     DATA mv_class_processor_prompt   TYPE string.
+    DATA mv_prog_processor_prompt    TYPE string.
 
     METHODS load_agent_prompts.
 
@@ -343,6 +348,7 @@ CLASS ZCL_AI_AGENTS_PROMPTS IMPLEMENTATION.
     mv_code_review_prompt = read_prompt_file( 'code_review.md' ).
     mv_final_prompt = read_prompt_file( 'final.md' ).
     mv_class_processor_prompt = read_prompt_file( 'class_processor.md' ).
+    mv_prog_processor_prompt  = read_prompt_file( 'programs.md' ).
 
   ENDMETHOD.
 
