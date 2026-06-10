@@ -112,8 +112,35 @@ protected section.
       IMPORTING
         i_class   TYPE string
         i_source  TYPE string
+        i_package TYPE string OPTIONAL
       RETURNING
         VALUE(rv_message) TYPE string.
+
+    " True if the class exists in the class repository (SEOCLASS).
+    CLASS-METHODS class_exists
+      IMPORTING
+        iv_class TYPE seoclsname
+      RETURNING
+        VALUE(rv_exists) TYPE abap_bool.
+
+    " Creates a new empty class shell (metadata only) in the given package via
+    " SEO_CLASS_CREATE_COMPLETE. The source is written afterwards as a whole
+    " through write_class_source.
+    CLASS-METHODS create_class_shell
+      IMPORTING
+        iv_class   TYPE seoclsname
+        iv_package TYPE devclass
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    " Deletes a class completely (SEO_CLASS_DELETE_COMPLETE). Used to roll back
+    " a brand-new class whose first source version failed to activate/verify,
+    " so no empty shell is left behind in the system.
+    CLASS-METHODS delete_class
+      IMPORTING
+        iv_class TYPE seoclsname
+      RETURNING
+        VALUE(rv_error) TYPE string.
 
     CLASS-METHODS save_method
       IMPORTING
@@ -342,8 +369,9 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
           i_package = i_package ).
       WHEN 'CLASS' OR 'CLAS'.
         rv_message = save_class(
-          i_class  = i_object_name
-          i_source = i_source ).
+          i_class   = i_object_name
+          i_source  = i_source
+          i_package = i_package ).
       WHEN 'METH' OR 'METHOD'.
         DATA(lv_meth_cls) = i_object_name.
         DATA(lv_meth_mth) = VALUE string( ).
@@ -914,11 +942,54 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
     " 1) Read the authoritative current full source (definition + implementation).
     "    All edits are applied on top of this, so untouched parts stay byte-exact.
+    DATA lv_new_class TYPE abap_bool.
     lt_cur = read_class_source( lv_class ).
     IF lt_cur IS INITIAL.
-      rv_message = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
-      mv_last_log = mv_last_log && lv_nl && rv_message.
-      RETURN.
+      IF class_exists( lv_class ) = abap_true.
+        " Class exists but its source is unreadable -> do not touch it.
+        rv_message = |Error saving class { lv_class }: cannot read source (locked, missing, or not active?).|.
+        mv_last_log = mv_last_log && lv_nl && rv_message.
+        RETURN.
+      ENDIF.
+
+      " Class does not exist -> create it from scratch:
+      " shell via SEO_CLASS_CREATE_COMPLETE, then full source as one unit.
+      DATA lv_package TYPE devclass.
+      lv_package = i_package.
+      TRANSLATE lv_package TO UPPER CASE.
+      CONDENSE lv_package.
+      IF lv_package IS INITIAL.
+        lv_package = request_package_for_new_object( CONV #( lv_class ) ).
+      ENDIF.
+      IF lv_package IS INITIAL.
+        rv_message = |Class { lv_class } does not exist and no package was provided - creation cancelled.|.
+        mv_last_log = mv_last_log && lv_nl && rv_message.
+        RETURN.
+      ENDIF.
+
+      lv_err = create_class_shell( iv_class = lv_class iv_package = lv_package ).
+      IF lv_err IS NOT INITIAL.
+        rv_message = lv_err.
+        mv_last_log = mv_last_log && lv_nl && rv_message.
+        RETURN.
+      ENDIF.
+      lv_new_class = abap_true.
+      mv_last_log = mv_last_log && lv_nl
+                 && |Class { lv_class } created in package { lv_package }.|.
+
+      " Baseline skeleton the parsed blocks are applied onto. Rollback target
+      " if activation or verification of the new source fails.
+      APPEND |CLASS { lv_class } DEFINITION| TO lt_cur.
+      APPEND |  PUBLIC|                      TO lt_cur.
+      APPEND |  CREATE PUBLIC.|              TO lt_cur.
+      APPEND ||                              TO lt_cur.
+      APPEND |  PUBLIC SECTION.|             TO lt_cur.
+      APPEND |  PROTECTED SECTION.|          TO lt_cur.
+      APPEND |  PRIVATE SECTION.|            TO lt_cur.
+      APPEND |ENDCLASS.|                     TO lt_cur.
+      APPEND ||                              TO lt_cur.
+      APPEND |CLASS { lv_class } IMPLEMENTATION.| TO lt_cur.
+      APPEND |ENDCLASS.|                     TO lt_cur.
     ENDIF.
     lt_new = lt_cur.
 
@@ -1029,8 +1100,9 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    " 4) Nothing actually changed?
-    IF lt_new = lt_cur.
+    " 4) Nothing actually changed? (A brand-new class must always be written,
+    "    even if the blocks did not change the skeleton.)
+    IF lt_new = lt_cur AND lv_new_class = abap_false.
       rv_message = |Class { lv_class }: no changes detected.|.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
@@ -1039,6 +1111,12 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     " 5) Write the whole class source back as one consistent unit
     lv_err = write_class_source( iv_class = lv_class it_lines = lt_new ).
     IF lv_err IS NOT INITIAL.
+      IF lv_new_class = abap_true.
+        " The shell was just created but its source could not be written -> clean up
+        mv_last_log = mv_last_log && lv_nl && |Write failed, deleting new class...|.
+        delete_class( lv_class ).
+        lv_err = |{ lv_err } (class deleted).|.
+      ENDIF.
       rv_message = lv_err.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
@@ -1047,11 +1125,18 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     " 6) Activate the class as a whole
     lv_err = activate_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      " Activation failed -> rollback to original source
-      mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
-      write_class_source( iv_class = lv_class it_lines = lt_cur ).
-      activate_class( lv_class ).
-      rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
+      IF lv_new_class = abap_true.
+        " New class never had a working version -> remove it completely
+        mv_last_log = mv_last_log && lv_nl && |Activation failed, deleting new class...|.
+        delete_class( lv_class ).
+        rv_message = |Error creating class { lv_class }: { lv_err } (class deleted).|.
+      ELSE.
+        " Activation failed -> rollback to original source
+        mv_last_log = mv_last_log && lv_nl && |Activation failed, rolling back...|.
+        write_class_source( iv_class = lv_class it_lines = lt_cur ).
+        activate_class( lv_class ).
+        rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
+      ENDIF.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
@@ -1059,16 +1144,135 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     " 7) Verify — if broken, rollback immediately so the class stays clean
     lv_err = verify_class( lv_class ).
     IF lv_err IS NOT INITIAL.
-      mv_last_log = mv_last_log && lv_nl && |Syntax error detected, rolling back...|.
-      write_class_source( iv_class = lv_class it_lines = lt_cur ).
-      activate_class( lv_class ).
-      rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
+      IF lv_new_class = abap_true.
+        mv_last_log = mv_last_log && lv_nl && |Syntax error detected, deleting new class...|.
+        delete_class( lv_class ).
+        rv_message = |Error creating class { lv_class }: { lv_err } (class deleted).|.
+      ELSE.
+        mv_last_log = mv_last_log && lv_nl && |Syntax error detected, rolling back...|.
+        write_class_source( iv_class = lv_class it_lines = lt_cur ).
+        activate_class( lv_class ).
+        rv_message = |Error saving class { lv_class }: { lv_err } (rolled back to previous version).|.
+      ENDIF.
       mv_last_log = mv_last_log && lv_nl && rv_message.
       RETURN.
     ENDIF.
 
-    rv_message = |Class { lv_class } saved and activated.|.
+    IF lv_new_class = abap_true.
+      rv_message = |Class { lv_class } created, saved and activated.|.
+    ELSE.
+      rv_message = |Class { lv_class } saved and activated.|.
+    ENDIF.
     mv_last_log = mv_last_log && lv_nl && rv_message.
+
+  ENDMETHOD.
+
+
+  METHOD class_exists.
+
+    DATA lv_clsname TYPE seoclass-clsname.
+
+    SELECT SINGLE clsname
+      FROM seoclass
+      INTO lv_clsname
+      WHERE clsname = iv_class.
+
+    rv_exists = xsdbool( sy-subrc = 0 ).
+
+  ENDMETHOD.
+
+
+  METHOD create_class_shell.
+
+    DATA ls_vseoclass TYPE vseoclass.
+
+    ls_vseoclass-clsname   = iv_class.
+    ls_vseoclass-version   = seoc_version_active.
+    ls_vseoclass-langu     = sy-langu.
+    ls_vseoclass-descript  = 'Generated by AI'(001).
+    ls_vseoclass-state     = seoc_state_implemented.
+    ls_vseoclass-exposure  = seoc_exposure_public.
+    ls_vseoclass-clsccincl = abap_true.
+    ls_vseoclass-fixpt     = abap_true.
+    ls_vseoclass-unicode   = abap_true.
+
+    TRY.
+        CALL FUNCTION 'SEO_CLASS_CREATE_COMPLETE'
+          EXPORTING
+            devclass        = iv_package
+            overwrite       = abap_true
+            version         = seoc_version_active
+            suppress_dialog = abap_true
+          CHANGING
+            class           = ls_vseoclass
+          EXCEPTIONS
+            existing        = 1
+            is_interface    = 2
+            db_error        = 3
+            component_error = 4
+            no_access       = 5
+            other           = 6
+            OTHERS          = 7.
+      CATCH cx_sy_dyn_call_param_not_found.
+        " Older releases (702) do not have SUPPRESS_DIALOG
+        CALL FUNCTION 'SEO_CLASS_CREATE_COMPLETE'
+          EXPORTING
+            devclass        = iv_package
+            overwrite       = abap_true
+            version         = seoc_version_active
+          CHANGING
+            class           = ls_vseoclass
+          EXCEPTIONS
+            existing        = 1
+            is_interface    = 2
+            db_error        = 3
+            component_error = 4
+            no_access       = 5
+            other           = 6
+            OTHERS          = 7.
+    ENDTRY.
+
+    IF sy-subrc <> 0.
+      DATA lv_msg TYPE string.
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_msg.
+      ELSE.
+        lv_msg = |SEO_CLASS_CREATE_COMPLETE subrc { sy-subrc }|.
+      ENDIF.
+      rv_error = |Error creating class { iv_class } in package { iv_package }: { lv_msg }|.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD delete_class.
+
+    DATA ls_clskey TYPE seoclskey.
+    DATA lv_msg    TYPE string.
+
+    ls_clskey-clsname = iv_class.
+
+    CALL FUNCTION 'SEO_CLASS_DELETE_COMPLETE'
+      EXPORTING
+        clskey       = ls_clskey
+      EXCEPTIONS
+        not_existing = 1
+        is_interface = 2
+        db_error     = 3
+        no_access    = 4
+        other        = 5
+        OTHERS       = 6.
+    IF sy-subrc <> 0 AND sy-subrc <> 1.
+      " not_existing is fine for a cleanup call
+      IF sy-msgid IS NOT INITIAL.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_msg.
+      ELSE.
+        lv_msg = |SEO_CLASS_DELETE_COMPLETE subrc { sy-subrc }|.
+      ENDIF.
+      rv_error = |Error deleting class { iv_class }: { lv_msg }|.
+    ENDIF.
 
   ENDMETHOD.
 
