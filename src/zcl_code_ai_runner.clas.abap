@@ -945,6 +945,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
       DATA lv_has_code_diff TYPE abap_bool.
       DATA lv_has_show_command TYPE abap_bool.
       DATA lv_has_delete TYPE abap_bool.
+      DATA lv_is_search_result TYPE abap_bool.
       DATA lv_code_change_type TYPE string.
       DATA lv_code_change_name TYPE string.
       DATA lv_create_object_type TYPE string.
@@ -986,6 +987,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
 
             IF ls_agent_request-relevant_prompt IS INITIAL.
               lv_has_show_command = abap_true.
+              IF ls_agent_request-object_name CS '*'.
+                lv_is_search_result = abap_true.
+              ENDIF.
             ELSE.
               lv_has_agent_followup_text = abap_true.
               IF ls_agent_request-relevant_prompt IS NOT INITIAL.
@@ -1320,7 +1324,7 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           lv_src_title = 'ABAP Source'.
         ENDIF.
         lv_answer = lv_code_only.
-        rs_result-is_source_code = abap_true.
+        rs_result-is_source_code = xsdbool( lv_is_search_result = abap_false ).
       ELSE.
         show_step( i_text = 'Final answer' i_prompt_type = 'LLM' i_pct = 85 ).
 
