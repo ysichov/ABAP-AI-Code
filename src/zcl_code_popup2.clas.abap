@@ -193,6 +193,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     display_status( |Asking AI (tools)...| ).
     cl_gui_cfw=>flush( ).
 
+    " Live step log in the middle pane - same behaviour as the legacy runner
+    mo_tool_runner->set_html_viewer( mo_progress ).
+
     DATA(lv_tool_answer) = mo_tool_runner->run( lv_prompt ).
 
     " Restore question text (display_answer may cause editor repaint)

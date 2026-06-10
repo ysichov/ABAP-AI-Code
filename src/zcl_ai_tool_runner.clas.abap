@@ -26,14 +26,57 @@ CLASS zcl_ai_tool_runner DEFINITION
     " Reset conversation history (new session)
     METHODS clear_session.
 
+    " Progress panel (middle pane): same step log as the legacy runner
+    METHODS set_html_viewer
+      IMPORTING
+        !io_viewer TYPE REF TO cl_gui_html_viewer.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_step,
+        text        TYPE string,
+        agent       TYPE string,
+        prompt_type TYPE string,
+        done        TYPE abap_bool,
+        is_llm      TYPE abap_bool,
+        seconds     TYPE i,
+        tok_in      TYPE i,
+        tok_out     TYPE i,
+      END OF ty_step,
+      tt_steps TYPE STANDARD TABLE OF ty_step WITH NON-UNIQUE DEFAULT KEY.
+
     DATA mo_llm      TYPE REF TO zcl_llm_client.
     DATA mo_context  TYPE REF TO zcl_ai_tool_context.
     DATA mo_prompts  TYPE REF TO zcl_ai_agents_prompts.
     DATA mo_ui       TYPE REF TO zcl_code_popup2.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
+
+    DATA mo_html_viewer    TYPE REF TO cl_gui_html_viewer.
+    DATA mt_progress_steps TYPE tt_steps.
+    DATA mv_total_seconds  TYPE i.
+    DATA mv_total_tok_in   TYPE i.
+    DATA mv_total_tok_out  TYPE i.
+
+    METHODS show_step
+      IMPORTING
+        !i_text        TYPE string OPTIONAL
+        !i_agent       TYPE string OPTIONAL
+        !i_prompt_type TYPE string OPTIONAL
+        !i_pct         TYPE i DEFAULT 50.
+
+    METHODS complete_last_step
+      IMPORTING
+        !i_is_llm  TYPE abap_bool DEFAULT abap_false
+        !i_seconds TYPE i OPTIONAL
+        !i_tok_in  TYPE i OPTIONAL
+        !i_tok_out TYPE i OPTIONAL.
+
+    METHODS render_steps_html
+      RETURNING VALUE(rv_html) TYPE string.
+
+    METHODS display_steps.
 
     METHODS execute_tool_call
       IMPORTING
@@ -108,7 +151,20 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA(lv_prompt) = i_prompt.
 
+    " Fresh progress panel for every question
+    CLEAR mt_progress_steps.
+    CLEAR mv_total_seconds.
+    CLEAR mv_total_tok_in.
+    CLEAR mv_total_tok_out.
+
     DO c_max_iterations TIMES.
+
+      show_step(
+        i_text        = COND #( WHEN sy-index = 1
+                                THEN 'Asking LLM'
+                                ELSE |Asking LLM (step { sy-index })| )
+        i_prompt_type = 'LLM'
+        i_pct         = sy-index * 100 / c_max_iterations ).
 
       CLEAR lt_calls.
       DATA(lv_answer) = mo_llm->ask_with_tools(
@@ -119,6 +175,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_tools_json    = lv_tools_json
         IMPORTING
           et_tool_calls   = lt_calls ).
+
+      complete_last_step(
+        i_is_llm  = abap_true
+        i_seconds = CONV #( mo_llm->get_last_seconds( ) )
+        i_tok_in  = mo_llm->mv_last_tok_in
+        i_tok_out = mo_llm->mv_last_tok_out ).
 
       " Persist the user turn to the multi-turn history (both paths)
       APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
@@ -165,7 +227,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_agent       = ls_call-name
           i_prompt_type = 'TOOL_CALL'
           i_content     = |{ ls_call-name }( { ls_call-arguments } )| ).
+        show_step( i_text = |Tool { ls_call-name }...| ).
         DATA(lv_result) = execute_tool_call( ls_call ).
+        complete_last_step( ).
         mo_messages->add_message(
           i_role        = 'tool'
           i_agent       = ls_call-name
@@ -345,6 +409,161 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     CLEAR mt_history.
     CLEAR mo_messages.
+
+  ENDMETHOD.
+
+
+  METHOD set_html_viewer.
+
+    mo_html_viewer = io_viewer.
+    CLEAR mt_progress_steps.
+    CLEAR mv_total_seconds.
+    CLEAR mv_total_tok_in.
+    CLEAR mv_total_tok_out.
+
+  ENDMETHOD.
+
+
+  METHOD show_step.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = i_pct text = i_text.
+
+    CHECK mo_html_viewer IS BOUND.
+
+    " Mark previous last step as done
+    DATA(lv_last) = lines( mt_progress_steps ).
+    IF lv_last > 0.
+      FIELD-SYMBOLS <ls_prev> TYPE ty_step.
+      READ TABLE mt_progress_steps ASSIGNING <ls_prev> INDEX lv_last.
+      IF sy-subrc = 0.
+        <ls_prev>-done = abap_true.
+      ENDIF.
+    ENDIF.
+
+    APPEND VALUE ty_step(
+      text        = i_text
+      agent       = i_agent
+      prompt_type = i_prompt_type
+      done        = abap_false ) TO mt_progress_steps.
+
+    display_steps( ).
+
+  ENDMETHOD.
+
+
+  METHOD complete_last_step.
+
+    CHECK mo_html_viewer IS BOUND.
+
+    DATA(lv_last) = lines( mt_progress_steps ).
+    CHECK lv_last > 0.
+
+    FIELD-SYMBOLS <ls_step> TYPE ty_step.
+    READ TABLE mt_progress_steps ASSIGNING <ls_step> INDEX lv_last.
+    CHECK sy-subrc = 0.
+
+    <ls_step>-done    = abap_true.
+    <ls_step>-is_llm  = i_is_llm.
+    <ls_step>-seconds = i_seconds.
+    <ls_step>-tok_in  = i_tok_in.
+    <ls_step>-tok_out = i_tok_out.
+
+    IF i_is_llm = abap_true.
+      mv_total_seconds = mv_total_seconds + i_seconds.
+      mv_total_tok_in  = mv_total_tok_in  + i_tok_in.
+      mv_total_tok_out = mv_total_tok_out + i_tok_out.
+    ENDIF.
+
+    display_steps( ).
+
+  ENDMETHOD.
+
+
+  METHOD display_steps.
+
+    DATA(lv_html) = render_steps_html( ).
+    DATA lt_html TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_off TYPE i.
+    WHILE lv_off < strlen( lv_html ).
+      DATA(lv_chunk) = nmin( val1 = 255 val2 = strlen( lv_html ) - lv_off ).
+      APPEND VALUE w3html( line = substring( val = lv_html off = lv_off len = lv_chunk ) )
+        TO lt_html.
+      lv_off = lv_off + lv_chunk.
+    ENDWHILE.
+    DATA lv_url TYPE c LENGTH 255.
+    mo_html_viewer->load_data(
+      EXPORTING type = 'text' subtype = 'html'
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS = 1 ).
+    CHECK sy-subrc = 0.
+    mo_html_viewer->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
+
+  METHOD render_steps_html.
+
+    DATA lv_rows TYPE string.
+    LOOP AT mt_progress_steps INTO DATA(ls_step).
+      DATA(lv_label) = COND string(
+        WHEN ls_step-agent IS NOT INITIAL THEN |Agent { ls_step-agent }|
+        WHEN ls_step-text  IS NOT INITIAL THEN ls_step-text
+        WHEN ls_step-prompt_type IS NOT INITIAL THEN ls_step-prompt_type ).
+      REPLACE ALL OCCURRENCES OF '&' IN lv_label WITH '&amp;'.
+      REPLACE ALL OCCURRENCES OF '<' IN lv_label WITH '&lt;'.
+      REPLACE ALL OCCURRENCES OF '>' IN lv_label WITH '&gt;'.
+
+      DATA(lv_is_llm) = xsdbool( ls_step-prompt_type = 'LLM' OR ls_step-is_llm = abap_true ).
+
+      IF ls_step-done = abap_true.
+        DATA(lv_info) = VALUE string( ).
+        IF lv_is_llm = abap_true.
+          lv_info = |<span class="info">{ ls_step-seconds }s|.
+          IF ls_step-tok_in > 0.
+            lv_info = lv_info && | Tokens: inp:{ ls_step-tok_in }, out:{ ls_step-tok_out }|.
+          ENDIF.
+          lv_info = lv_info && |</span>|.
+          lv_rows = lv_rows
+            && |<div class="step done">&#x2713; { lv_label }: { lv_info }</div>|.
+        ELSE.
+          lv_rows = lv_rows
+            && |<div class="step done">&#x2713; { lv_label }</div>|.
+        ENDIF.
+      ELSE.
+        IF lv_is_llm = abap_true.
+          lv_rows = lv_rows
+            && |<div class="step active">&#x23F3; { lv_label } is working...</div>|.
+        ELSE.
+          lv_rows = lv_rows
+            && |<div class="step active">&#x23F3; { lv_label }</div>|.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    IF mv_total_seconds > 0.
+      lv_rows = lv_rows
+        && |<div class="total">Total: { mv_total_seconds }s|.
+      IF mv_total_tok_in > 0.
+        lv_rows = lv_rows && | Tokens: inp:{ mv_total_tok_in }, out:{ mv_total_tok_out }|.
+      ENDIF.
+      lv_rows = lv_rows && |</div>|.
+    ENDIF.
+
+    rv_html =
+      |<!DOCTYPE html><html><head><meta charset="utf-8"><style>|
+      && |body\{font-family:Segoe UI,Arial,sans-serif;margin:12px;background:#f5f5f5\}|
+      && |.step\{padding:5px 10px;margin:3px 0;border-radius:3px;font-size:13px\}|
+      && |.done\{color:#2e7d32\}|
+      && |.active\{color:#0033aa;font-style:italic\}|
+      && |.info\{color:#888;font-size:11px\}|
+      && |.total\{margin-top:8px;padding:5px 10px;font-size:12px;border-radius:3px;|
+      && |color:#0033aa;font-weight:bold\}|
+      && |</style></head><body>|
+      && lv_rows
+      && |</body></html>|.
 
   ENDMETHOD.
 ENDCLASS.
