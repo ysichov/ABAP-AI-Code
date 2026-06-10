@@ -18,7 +18,8 @@ CLASS zcl_ai_agents_prompts DEFINITION
       c_agent_class_extract     TYPE string VALUE 'CLASS_EXTRACT',
       c_agent_code_diff         TYPE string VALUE 'CODE_DIFF',
       c_agent_code_reader       TYPE string VALUE 'CODE_READER',
-      c_agent_class_processor   TYPE string VALUE 'CLASS_PROCESSOR'.
+      c_agent_class_processor   TYPE string VALUE 'CLASS_PROCESSOR',
+      c_agent_delete_obj        TYPE string VALUE 'DELETE_OBJECT'.
 
     METHODS constructor
       IMPORTING

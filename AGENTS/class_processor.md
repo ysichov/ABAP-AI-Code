@@ -48,6 +48,41 @@ CRITICAL for Method blocks: the first line is "METHOD method_name." — the keyw
 
 Only include the tags for sections/methods that were actually changed or added. Skip all others.
 
+### MANDATORY RULE — METHOD DELETION:
+When the task is to DELETE a method, you MUST output ONLY the section block with the method's `METHODS` declaration removed — do NOT output a `<Method NAME>` block for the deleted method (it no longer exists).
+
+EXAMPLE — deleting method HELLO_WORLD from PUBLIC SECTION:
+
+<public section>
+PUBLIC SECTION.
+  METHODS constructor.
+</public section>
+
+If the deleted method was the only method in its section, output the section block with just the section header and no METHODS declarations. Do NOT output an empty section — keep the section header line so the parser can replace the section correctly.
+
+### MANDATORY RULE — METHOD SIGNATURE CHANGES (NO EXCEPTIONS):
+Whenever you add, remove, or rename parameters of a method, you MUST output BOTH blocks — this rule has NO exceptions and overrides all other rules:
+1. The section block (`<public section>`, `<protected section>`, or `<private section>`) with the updated `METHODS` declaration including the new/changed signature.
+2. The `<Method NAME>` block with the updated implementation that uses the new parameters.
+
+Omitting the section block when parameters change is a CRITICAL ERROR. The declaration and implementation must always be consistent.
+If you output only the `<Method NAME>` block without the section block for a signature change — your output is WRONG and incomplete.
+
+EXAMPLE — adding a parameter to method hello_world in PUBLIC SECTION:
+
+<public section>
+PUBLIC SECTION.
+  METHODS hello_world
+    IMPORTING
+      iv_name TYPE string OPTIONAL.
+</public section>
+
+<Method hello_world>
+METHOD hello_world.
+  WRITE: / |Hello, { COND #( WHEN iv_name IS INITIAL THEN 'World' ELSE iv_name ) }!|.
+ENDMETHOD.
+</Method hello_world>
+
 ### CHANGES CONFIRMATION:
 After all code blocks, output exactly one line:
 CHANGES:YES

@@ -1162,6 +1162,57 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
+        IF ls_agent_request-agent = zcl_ai_agents_prompts=>c_agent_delete_obj.
+          DATA(lv_del_type) = ls_agent_request-object_type.
+          DATA(lv_del_name) = ls_agent_request-object_name.
+          TRANSLATE lv_del_type TO UPPER CASE.
+          TRANSLATE lv_del_name TO UPPER CASE.
+          CONDENSE lv_del_type.
+          CONDENSE lv_del_name.
+
+          DATA lv_del_confirm TYPE char1.
+          CALL FUNCTION 'POPUP_TO_CONFIRM'
+            EXPORTING
+              titlebar              = 'Confirm Deletion'
+              text_question         = |Delete { lv_del_type } { lv_del_name }? This action cannot be undone.|
+              text_button_1         = 'Delete'
+              text_button_2         = 'Cancel'
+              default_button        = '2'
+              display_cancel_button = ' '
+            IMPORTING
+              answer                = lv_del_confirm
+            EXCEPTIONS
+              text_not_found        = 1
+              OTHERS                = 2.
+
+          IF lv_del_confirm <> '1'.
+            lv_answer = |Deletion of { lv_del_type } { lv_del_name } cancelled by user.|.
+            lv_answer_log = lv_answer.
+            mo_messages->add_message(
+              i_role        = 'assistant'
+              i_agent       = zcl_ai_agents_prompts=>c_agent_delete_obj
+              i_prompt_type = 'AGENT_RESPONSE'
+              i_content     = lv_answer ).
+            CONTINUE.
+          ENDIF.
+
+          show_step( i_text = |Deleting { lv_del_type } { lv_del_name }...| i_pct = lv_percentage ).
+          DATA(lv_del_result) = zcl_code_object_saver=>delete(
+            i_object_type = lv_del_type
+            i_object_name = lv_del_name ).
+
+          mo_messages->add_message(
+            i_role        = 'assistant'
+            i_agent       = zcl_ai_agents_prompts=>c_agent_delete_obj
+            i_prompt_type = 'AGENT_RESPONSE'
+            i_content     = lv_del_result ).
+
+          lv_answer     = lv_del_result.
+          lv_answer_log = lv_del_result.
+          complete_last_step( ).
+          CONTINUE.
+        ENDIF.
+
         DATA(lv_direct_read_command) = mo_messages->build_read_command( ls_agent_request ).
         IF lv_direct_read_command IS NOT INITIAL.
           show_step( i_text = |Reading code { ls_agent_request-object_name }...| i_pct = lv_percentage ).

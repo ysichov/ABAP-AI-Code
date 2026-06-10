@@ -13,6 +13,13 @@ CLASS zcl_code_object_saver DEFINITION
       RETURNING
         VALUE(rv_message) TYPE string.
 
+    CLASS-METHODS delete
+      IMPORTING
+        i_object_type TYPE string
+        i_object_name TYPE string
+      RETURNING
+        VALUE(rv_message) TYPE string.
+
     CLASS-METHODS check_program_syntax
       IMPORTING
         i_source TYPE string
@@ -386,6 +393,53 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       WHERE progname = i_program.
 
     rv_exists = xsdbool( sy-subrc = 0 ).
+
+  ENDMETHOD.
+
+
+  METHOD delete.
+
+    DATA(lv_type) = i_object_type.
+    DATA(lv_name) = i_object_name.
+    TRANSLATE lv_type TO UPPER CASE.
+    TRANSLATE lv_name TO UPPER CASE.
+    CONDENSE lv_type.
+    CONDENSE lv_name.
+
+    CASE lv_type.
+      WHEN 'CLAS' OR 'CLASS'.
+        rv_message = delete_class( CONV #( lv_name ) ).
+        IF rv_message IS INITIAL.
+          rv_message = |Class { lv_name } deleted successfully.|.
+        ENDIF.
+
+      WHEN 'PROG' OR 'REPS' OR 'PROGRAM' OR 'REPORT'.
+        DATA lv_progname TYPE progname.
+        lv_progname = lv_name.
+        IF program_exists( lv_progname ) = abap_false.
+          rv_message = |Program { lv_name } not found.|.
+          RETURN.
+        ENDIF.
+        DATA lt_obj_list TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
+        APPEND VALUE tadir( pgmid = 'R3TR' object = 'PROG' obj_name = lv_name ) TO lt_obj_list.
+        CALL FUNCTION 'RS_DELETE_OBJECTS'
+          TABLES
+            object_list       = lt_obj_list
+          EXCEPTIONS
+            not_executed      = 1
+            OTHERS            = 2.
+        IF sy-subrc <> 0.
+          DATA lv_del_msg TYPE string.
+          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_del_msg.
+          rv_message = |Error deleting program { lv_name }: { lv_del_msg }|.
+        ELSE.
+          rv_message = |Program { lv_name } deleted successfully.|.
+        ENDIF.
+
+      WHEN OTHERS.
+        rv_message = |Delete not supported for object type { lv_type }.|.
+    ENDCASE.
 
   ENDMETHOD.
 

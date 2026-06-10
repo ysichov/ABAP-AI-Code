@@ -22,7 +22,7 @@
           "task_id": { "type": "string" },
           "target_tool": {
             "type": "string",
-            "enum": ["ZCL_AI_TOOL=>READ", "ZCL_AI_TOOL=>SAVE", "ZCL_AI_TOOL=>REVIEW", "NONE"]
+            "enum": ["ZCL_AI_TOOL=>READ", "ZCL_AI_TOOL=>SAVE", "ZCL_AI_TOOL=>REVIEW", "ZCL_AI_TOOL=>DELETE", "NONE"]
           },
           "sap_object_type": {
             "type": "string",

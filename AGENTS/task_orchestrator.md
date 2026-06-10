@@ -47,6 +47,44 @@ For every generated task, choose the appropriate tool for "target_tool" and ALWA
 
 5. Requests containing words like "tell me", "analyse", "explain", "describe", or any action other than "show/display/get" — set `"is_pure_code_request"` to `false`.
 
+### DELETE RULES (CRITICAL):
+
+**Case 1 — Delete a METHOD from a class:**
+Do NOT use ZCL_AI_TOOL=>DELETE. Instead, generate:
+- Task READ: ZCL_AI_TOOL=>READ, CLAS, <class_name>
+- Task SAVE: ZCL_AI_TOOL=>SAVE, CLAS, <class_name> — the LLM will remove the method from both the section declaration and the implementation.
+
+REASON: Removing a method requires LLM to update both the METHODS declaration in the section AND remove the METHOD...ENDMETHOD block.
+
+EXAMPLE:
+User: "Delete method HELLO_WORLD from class ZCL_TEST2"
+Tasks:
+  1.1: ZCL_AI_TOOL=>READ, CLAS, ZCL_TEST2, depends_on: ""
+  1.2: ZCL_AI_TOOL=>SAVE, CLAS, ZCL_TEST2, depends_on: "1.1", action_description: "Delete method HELLO_WORLD: remove METHODS declaration from section and remove METHOD HELLO_WORLD...ENDMETHOD block"
+
+**Case 2 — Delete an entire CLASS or PROGRAM:**
+Use ZCL_AI_TOOL=>DELETE. No READ task needed. A mandatory confirmation will be shown before deletion.
+- Set sap_object_type to CLAS or PROG.
+- Set sap_object_name to the object name.
+
+EXAMPLE:
+User: "Delete class ZCL_TEST2"
+Tasks:
+  1.1: ZCL_AI_TOOL=>DELETE, CLAS, ZCL_TEST2, depends_on: ""
+
+### METHOD SIGNATURE CHANGE RULE (CRITICAL):
+When the user asks to **add, remove, rename, or change parameters** of a method that belongs to a class (not a program), you MUST:
+- Set `sap_object_type` to `"CLAS"` (NOT `"METH"`) for the SAVE task.
+- Set `sap_object_name` to the class name only (e.g., `"ZCL_TEST2"`, NOT `"ZCL_TEST2=>HELLO_WORLD"`).
+- REASON: Changing a method's signature requires updating BOTH the `PUBLIC/PROTECTED/PRIVATE SECTION` declaration AND the `METHOD...ENDMETHOD` implementation. Only a CLAS-level save covers both.
+- The READ task that precedes it should also use `CLAS` + class name so the full class source is available.
+
+EXAMPLE:
+User: "Add parameter IV_NAME to method HELLO_WORLD of class ZCL_TEST2"
+Tasks:
+  1.1: ZCL_AI_TOOL=>READ, CLAS, ZCL_TEST2, depends_on: ""
+  1.2: ZCL_AI_TOOL=>SAVE, CLAS, ZCL_TEST2, depends_on: "1.1"
+
 ### DEPENDENCY & PRIORITY RULES:
 - CONSOLIDATED MODIFICATIONS: Group all code modifications, refactoring, optimizations, and unit test additions for a SINGLE SAP object into one unique "ZCL_AI_TOOL=>SAVE" task.
 - TECHNICAL SEQUENCE: Always arrange tasks in a logical, executable order:
