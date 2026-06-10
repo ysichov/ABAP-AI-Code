@@ -1358,6 +1358,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
         DATA(lv_final_agent) = COND string(
           WHEN lv_final_type CP 'CLAS*' OR lv_final_type = 'CLASS'
           THEN zcl_ai_agents_prompts=>c_agent_class_processor
+          WHEN lv_final_type = 'PROG' OR lv_final_type = 'REPS'
+            OR lv_final_type = 'PROGRAM' OR lv_final_type = 'REPORT'
+          THEN zcl_ai_agents_prompts=>c_agent_prog_processor
           ELSE '' ).
         DATA(lv_final_prompt) = mo_messages->build_final_request(
           i_user_prompt = lv_final_user_prompt
@@ -1405,7 +1408,9 @@ CLASS ZCL_CODE_AI_RUNNER IMPLEMENTATION.
                 OR lv_answer_log_upper CS '<PUBLIC'
                 OR lv_answer_log_upper CS '<PROTECTED'
                 OR lv_answer_log_upper CS '<PRIVATE'
-                OR lv_answer_log_upper CS '<METHOD ' ) ) ).
+                OR lv_answer_log_upper CS '<METHOD ' ) )
+        OR ( lv_final_agent = zcl_ai_agents_prompts=>c_agent_prog_processor
+             AND lv_answer_log_upper CS '<PROGRAM SOURCE>' ) ).
 
       IF lv_has_changes_yes = abap_true AND lv_agent_error IS INITIAL.
 
