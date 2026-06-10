@@ -204,13 +204,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
           " Non-code answer (search result list etc.) — convert to HTML with clickable links
           DATA(lv_fallback_html) = ls_stream_prep-answer.
           IF ls_stream_prep-has_diff = abap_false AND ls_stream_prep-answer IS NOT INITIAL.
-            lv_fallback_html = zcl_code_html_gen=>source_to_html(
-              i_source = ls_stream_prep-answer
-              i_title  = 'Search result' ).
+            lv_fallback_html = zcl_code_html_gen=>search_result_to_html( ls_stream_prep-answer ).
           ENDIF.
           display_answer(
             i_answer = lv_fallback_html
-            i_source = ls_stream_prep-resolved_code
+            i_source = COND #( WHEN ls_stream_prep-is_source_code = abap_true OR ls_stream_prep-has_diff = abap_true
+                               THEN ls_stream_prep-resolved_code )
             i_title  = ls_stream_prep-source_title ).
         ENDIF.
         RETURN.
@@ -484,9 +483,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     AND ls_result-has_diff = abap_false
     AND ls_result-has_llm_answer = abap_false
     AND ls_result-answer IS NOT INITIAL.
-      lv_display_answer = zcl_code_html_gen=>source_to_html(
-        i_source = ls_result-answer
-        i_title  = 'Search result' ).
+      lv_display_answer = zcl_code_html_gen=>search_result_to_html( ls_result-answer ).
     ENDIF.
     IF ls_result-has_diff = abap_true.
       lv_display_answer = diff_to_html(
@@ -503,9 +500,12 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF REGEX '\s*CHANGES\s*:\s*(YES|NO)\s*$'
       IN lv_display_answer WITH '' IGNORING CASE.
 
+    " Pass resolved_code only when the answer itself is source code (diff/code view).
+    " For plain LLM text answers do not append source — it was not requested.
     display_answer(
       i_answer = lv_display_answer
-      i_source = ls_result-resolved_code
+      i_source = COND #( WHEN ls_result-is_source_code = abap_true OR ls_result-has_diff = abap_true
+                         THEN ls_result-resolved_code )
       i_title  = ls_result-source_title ).
 
   endmethod.
