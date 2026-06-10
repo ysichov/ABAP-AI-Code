@@ -192,7 +192,15 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       APPEND LINES OF lo_messages->get_messages( ) TO mt_message_history.
     ENDIF.
 
-    display_answer( i_answer = build_plain_html( lv_tool_answer ) ).
+    DATA(lv_tool_html) = COND string(
+      WHEN lv_tool_answer CS '--- ' OR lv_tool_answer CS 'METHOD '
+      THEN zcl_code_html_gen=>source_to_html( i_source = lv_tool_answer i_title = space )
+      WHEN lv_tool_answer CP '*CLAS *' OR lv_tool_answer CP '*PROG *'
+        OR lv_tool_answer CP '*DEVC *' OR lv_tool_answer CP '*FUGR *'
+        OR lv_tool_answer CS 'Objects matching'
+      THEN zcl_code_html_gen=>search_result_to_html( lv_tool_answer )
+      ELSE zcl_code_html_gen=>markdown_to_html( lv_tool_answer ) ).
+    display_answer( i_answer = lv_tool_html ).
     RETURN.
     " ===================== end new tool-based flow ======================
 
