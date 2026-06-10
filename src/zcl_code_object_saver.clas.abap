@@ -1585,8 +1585,9 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
 
   METHOD clean_section_body.
 
-    DATA lv_started TYPE abap_bool.
-    DATA lv_upper   TYPE string.
+    DATA lv_started   TYPE abap_bool.
+    DATA lv_in_method TYPE abap_bool.
+    DATA lv_upper     TYPE string.
 
     LOOP AT it_block INTO DATA(lv_line).
       lv_upper = lv_line.
@@ -1608,6 +1609,22 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       OR lv_upper CP 'ENDCLASS*'
       OR lv_upper CP 'CLASS *IMPLEMENTATION*'.
         EXIT.
+      ENDIF.
+
+      " The LLM sometimes puts METHOD..ENDMETHOD implementations inside a
+      " section block. A definition section may only hold declarations
+      " ("METHODS ..."), so skip implementation bodies entirely.
+      " ("METHOD x" has no trailing S -> does not match "METHODS x".)
+      IF lv_in_method = abap_false
+      AND ( lv_upper CP 'METHOD *' OR lv_upper = 'METHOD' ).
+        lv_in_method = abap_true.
+        CONTINUE.
+      ENDIF.
+      IF lv_in_method = abap_true.
+        IF lv_upper CP 'ENDMETHOD*'.
+          lv_in_method = abap_false.
+        ENDIF.
+        CONTINUE.
       ENDIF.
 
       APPEND lv_line TO rt_body.
@@ -1719,7 +1736,10 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     DATA lv_upper     TYPE string.
     DATA lv_line      LIKE LINE OF it_source.
 
-    " Strip any --- Section/Method --- markers that the class processor may have added.
+    " Strip any --- Section/Method --- markers that the class processor may have
+    " added, plus anything that can never be part of a method implementation:
+    " METHODS declarations and CLASS frame lines (the LLM sometimes leaks them
+    " into a method block, e.g. "METHODS hello_world." instead of "METHOD ...").
     DATA lt_filtered LIKE it_source.
     LOOP AT it_source INTO lv_line.
       lv_upper = lv_line.
@@ -1727,6 +1747,16 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
       CONDENSE lv_upper.
       IF lv_upper CP '---*---'.
         CONTINUE.  " skip save_class section markers
+      ENDIF.
+      IF lv_upper CP 'METHODS *'       OR lv_upper CP 'METHODS:*'       OR lv_upper = 'METHODS'
+      OR lv_upper CP 'CLASS-METHODS *' OR lv_upper CP 'CLASS-METHODS:*' OR lv_upper = 'CLASS-METHODS'
+      OR lv_upper CP 'CLASS * DEFINITION*'
+      OR lv_upper CP 'CLASS * IMPLEMENTATION*'
+      OR lv_upper CP 'ENDCLASS*'
+      OR lv_upper CP 'PUBLIC SECTION*'
+      OR lv_upper CP 'PROTECTED SECTION*'
+      OR lv_upper CP 'PRIVATE SECTION*'.
+        CONTINUE.  " declarations / class frame never belong to a method body
       ENDIF.
       APPEND lv_line TO lt_filtered.
     ENDLOOP.
@@ -1758,8 +1788,19 @@ CLASS ZCL_CODE_OBJECT_SAVER IMPLEMENTATION.
     ENDLOOP.
 
     IF lv_in_method = abap_false.
-      " No wrapper found in the provided source - everything is the body
-      lt_body = lt_filtered.
+      " No wrapper found in the provided source - everything is the body,
+      " except stray ENDMETHOD lines (an ENDMETHOD without a METHOD opener is
+      " always junk left over from a malformed LLM block).
+      CLEAR lt_body.
+      LOOP AT lt_filtered INTO lv_line.
+        lv_upper = lv_line.
+        TRANSLATE lv_upper TO UPPER CASE.
+        CONDENSE lv_upper.
+        IF lv_upper CP 'ENDMETHOD*'.
+          CONTINUE.
+        ENDIF.
+        APPEND lv_line TO lt_body.
+      ENDLOOP.
     ENDIF.
 
     " Rebuild the include with exactly one clean wrapper
