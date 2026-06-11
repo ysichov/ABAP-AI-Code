@@ -31,7 +31,7 @@ public section.
 
   methods CONSTRUCTOR
     importing
-      !IO_LLM type ref to ZCL_LLM_CLIENT
+      !IO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT
       !IO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   methods RUN
     importing
@@ -81,7 +81,7 @@ private section.
   data MV_TOTAL_TOK_IN  type I .
   data MV_TOTAL_TOK_OUT type I .
 
-  data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT .
   data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_TASK_PLANNER type ref to ZCL_TASK_PLANNER .

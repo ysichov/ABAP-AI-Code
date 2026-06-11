@@ -4,14 +4,14 @@ CLASS zcl_ai_tool_context DEFINITION
 
   PUBLIC SECTION.
     " Shared dependencies handed to every tool by the factory
-    DATA mo_llm         TYPE REF TO zcl_llm_client.
+    DATA mo_llm         TYPE REF TO zcl_abapai_llm_client.
     DATA mo_prompts     TYPE REF TO zcl_ai_agents_prompts.
     DATA mo_messages    TYPE REF TO zcl_ai_messages.
     DATA mv_agents_path TYPE string.
 
     METHODS constructor
       IMPORTING
-        !io_llm         TYPE REF TO zcl_llm_client
+        !io_llm         TYPE REF TO zcl_abapai_llm_client
         !io_prompts     TYPE REF TO zcl_ai_agents_prompts OPTIONAL
         !io_messages    TYPE REF TO zcl_ai_messages OPTIONAL
         !i_agents_path  TYPE string.

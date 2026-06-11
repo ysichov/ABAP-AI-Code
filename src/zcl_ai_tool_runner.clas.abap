@@ -7,7 +7,7 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     METHODS constructor
       IMPORTING
-        !io_llm        TYPE REF TO zcl_llm_client
+        !io_llm        TYPE REF TO zcl_abapai_llm_client
         !io_context    TYPE REF TO zcl_ai_tool_context
         !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
         !io_ui         TYPE REF TO zcl_code_popup2 OPTIONAL.
@@ -47,7 +47,7 @@ CLASS zcl_ai_tool_runner DEFINITION
       END OF ty_step,
       tt_steps TYPE STANDARD TABLE OF ty_step WITH NON-UNIQUE DEFAULT KEY.
 
-    DATA mo_llm      TYPE REF TO zcl_llm_client.
+    DATA mo_llm      TYPE REF TO zcl_abapai_llm_client.
     DATA mo_context  TYPE REF TO zcl_ai_tool_context.
     DATA mo_prompts  TYPE REF TO zcl_ai_agents_prompts.
     DATA mo_ui       TYPE REF TO zcl_code_popup2.

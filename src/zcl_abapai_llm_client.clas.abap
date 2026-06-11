@@ -1,4 +1,4 @@
-class ZCL_LLM_CLIENT definition
+class ZCL_ABAPAI_LLM_CLIENT definition
   public
   create public .
 
@@ -60,7 +60,7 @@ ENDCLASS.
 
 
 
-CLASS ZCL_LLM_CLIENT IMPLEMENTATION.
+CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
 
 
   method ASK.

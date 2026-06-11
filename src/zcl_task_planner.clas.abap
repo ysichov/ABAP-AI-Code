@@ -10,7 +10,7 @@ public section.
   methods CONSTRUCTOR
     importing
       !IO_MESSAGES type ref to ZCL_AI_MESSAGES
-      !IO_LLM type ref to ZCL_LLM_CLIENT
+      !IO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT
       !IO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   methods PREPARE_TASK_LIST
     importing
@@ -21,7 +21,7 @@ protected section.
 private section.
 
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
-  data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT .
   data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
 
   methods PARSE_JSON_TASKS

@@ -35,7 +35,7 @@ private section.
     tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY .
   data MV_SESSION_COUNTER type I .
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
-  data MO_LLM type ref to ZCL_LLM_CLIENT .
+  data MO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT .
   data MO_PROMPTS type ref to ZCL_AI_AGENTS_PROMPTS .
   data MT_MESSAGE_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES .
   data MO_HISTORY type ref to ZCL_API_HISTORY_POPUP .
@@ -531,7 +531,7 @@ CLASS ZCL_CODE_POPUP IMPLEMENTATION.
 
   method CONSTRUCTOR.
 
-    mo_llm = NEW zcl_llm_client(
+    mo_llm = NEW zcl_abapai_llm_client(
       i_dest     = i_dest
       i_model    = i_model
       i_apikey   = i_apikey
