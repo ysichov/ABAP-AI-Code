@@ -339,6 +339,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD confirm_and_apply.
 
+    " A diff review is already open from an earlier tool call in this same run -
+    " never save blindly or open a second popup on top of it.
+    IF mv_review_pending = abap_true.
+      rv_message = 'A code review is already open - approve/decline it first.'.
+      RETURN.
+    ENDIF.
+
     DATA(lv_is_delete) = boolc( is_result-xml_payload CS '<code_deleted' ).
 
     " Proposed source for the diff. Normally the tool fills final_source; if it
@@ -367,19 +374,18 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       CONDENSE lv_new_code.
     ENDIF.
 
-    " DIAGNOSTIC: report exactly why the diff code-review may be skipped, so the
-    " failing precondition is visible instead of silently falling back to a popup.
+    " DIAGNOSTIC: name the exact precondition that fails, so the reason a diff is
+    " skipped is unambiguous instead of a silent fallback to the save popup.
     IF NOT ( lv_is_delete = abap_false
          AND lv_new_code IS NOT INITIAL
          AND mo_ui IS BOUND ).
-      DATA(lv_diag) =
-        |DIFF SKIPPED -> is_delete={ lv_is_delete }, |
-        && |new_code_len={ strlen( lv_new_code ) }, |
-        && |final_source_len={ strlen( is_result-final_source ) }, |
-        && |xml_payload_len={ strlen( is_result-xml_payload ) }, |
-        && |ui_bound={ COND #( WHEN mo_ui IS BOUND THEN 'X' ELSE '-' ) }, |
-        && |obj={ is_result-object_type } { is_result-object_name }|.
-      MESSAGE lv_diag TYPE 'I'.
+      DATA(lv_reason) =
+        COND string(
+          WHEN lv_is_delete = abap_true   THEN 'it is a DELETE (no diff)'
+          WHEN lv_new_code IS INITIAL     THEN 'proposed code is EMPTY'
+          WHEN mo_ui IS NOT BOUND         THEN 'UI is NOT bound'
+          ELSE 'unknown' ).
+      MESSAGE |DIFF SKIPPED for { is_result-object_type } { is_result-object_name }: { lv_reason }| TYPE 'I'.
     ENDIF.
 
     " Diff review is mandatory for every save when UI is available. When the
