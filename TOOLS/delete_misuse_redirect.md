@@ -1,0 +1,1 @@
+Error: delete_sap_object deletes the ENTIRE {TYPE} {NAME}, but the user asked to remove only a PART of it. Do NOT delete the whole object. Call modify_sap_object on {TYPE} {NAME} with an action_description that removes exactly the requested part (and read the object first if you have not yet).

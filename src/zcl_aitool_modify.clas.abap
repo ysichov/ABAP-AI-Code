@@ -125,10 +125,9 @@ CLASS zcl_aitool_modify IMPLEMENTATION.
 
     DATA(lv_system_prompt) = mo_context->read_agent_file( c_tool_name && '.md' ).
 
-    DATA(lv_prompt) =
-      |TASK: { i_action }| && cl_abap_char_utilities=>newline &&
-      |CURRENT SOURCE:| && cl_abap_char_utilities=>newline &&
-      i_source.
+    DATA(lv_prompt) = mo_context->read_agent_file( 'modify_user_template.md' ).
+    REPLACE FIRST OCCURRENCE OF '{ACTION}' IN lv_prompt WITH i_action.
+    lv_prompt = lv_prompt && cl_abap_char_utilities=>newline && i_source.
 
     rv_answer = mo_context->mo_llm->ask(
       i_prompt        = lv_prompt
