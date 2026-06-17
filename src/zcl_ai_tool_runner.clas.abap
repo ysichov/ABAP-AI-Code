@@ -337,6 +337,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_agent       = ls_call-name
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = lv_result ).
+
+        " Tool error - show it directly, do not feed back to LLM
+        IF lv_result CP 'Error:*'.
+          rv_answer = |Tool { ls_call-name }: { lv_result }|.
+          RETURN.
+        ENDIF.
+
         lv_results = lv_results
           && |TOOL RESULT [{ ls_call-name }]:|
           && cl_abap_char_utilities=>newline
