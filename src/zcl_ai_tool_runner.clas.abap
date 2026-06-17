@@ -425,7 +425,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       cl_abap_char_utilities=>newline &&
       |- When all tool work is done, answer the user in their language.| &&
       cl_abap_char_utilities=>newline &&
-      |- Use web_search when the user asks to find, check, or verify something online.|
+      |- Use web_search when the user asks to find, check, or verify something online.| &&
       cl_abap_char_utilities=>newline &&
       |- NEVER ask clarifying questions. Execute the full requested task autonomously.| &&
       cl_abap_char_utilities=>newline &&

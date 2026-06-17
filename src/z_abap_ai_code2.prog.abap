@@ -14,7 +14,10 @@ REPORT z_abap_ai_code2.
 
 DATA go_popup TYPE REF TO zcl_code_popup2.
 
-SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE OpenAI.
+SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_anth RADIOBUTTON GROUP api,
+            p_oai  RADIOBUTTON GROUP api DEFAULT 'X'.
+
 PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api,
@@ -38,7 +41,7 @@ AT SELECTION-SCREEN.
     i_dest        = p_dest
     i_model       = p_model
     i_apikey      = CONV string( p_apikey )
-    i_provider    = 'OPENAI'
+    i_provider    = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp ) ).
 

@@ -49,6 +49,32 @@ private section.
       !I_TOOLS_JSON type STRING optional
     returning
       value(RV_JSON) type STRING .
+  " Converts the OpenAI-format tools array (each entry
+  " {"type":"function","function":{...}}) into the Anthropic tools array (each
+  " entry {"name":..,"description":..,"input_schema":{..}}). The last tool gets a
+  " cache_control marker so the entire tool definition block is prompt-cached.
+  class-methods BUILD_ANTHROPIC_TOOLS
+    importing
+      !I_TOOLS_JSON type STRING
+    returning
+      value(RV_JSON) type STRING .
+  " Returns the balanced { ... } JSON object starting at the first '{' found at
+  " or after I_OFFSET, using a string-aware brace scan (braces inside JSON string
+  " values are ignored). Returns empty when no balanced object is found.
+  class-methods EXTRACT_JSON_OBJECT
+    importing
+      !I_TEXT type STRING
+      !I_OFFSET type I default 0
+    returning
+      value(RV_OBJECT) type STRING .
+  " Extracts Anthropic "tool_use" content blocks
+  " ({"type":"tool_use","id":..,"name":..,"input":{..}}) from a raw response and
+  " appends them as tool calls; the input object is preserved as a raw JSON string.
+  class-methods PARSE_ANTHROPIC_TOOL_USE
+    importing
+      !I_JSON type STRING
+    changing
+      !CT_TOOL_CALLS type TT_TOOL_CALLS .
   class-methods PARSE_RESPONSE
     importing
       !I_JSON type STRING
@@ -183,10 +209,14 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     " Anthropic: system is top-level field
     " OpenAI:    system is first message with role "system"
+    " For Anthropic the system prompt is sent as a content-block array with a
+    " cache_control marker so the (large, stable) system prompt is cached and
+    " only billed once per 5-minute window.
     DATA lv_system_field TYPE string.
     IF lv_system_prompt IS NOT INITIAL.
       IF lv_provider = 'ANTHROPIC'.
-        lv_system_field = |, "system": "{ lv_system_prompt }"|.
+        lv_system_field = |, "system": [{ '{' }"type": "text", "text": "{ lv_system_prompt }"|
+                       && |, "cache_control": { '{' }"type": "ephemeral"{ '}' }{ '}' }]|.
       ENDIF.
     ENDIF.
 
@@ -239,11 +269,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_temp_field = |, "temperature": { i_temperature }|.
     ENDIF.
 
-    " Optional function-calling tools array (already valid JSON, no escaping)
-    " OpenAI:    "tools": [...]
-    " Anthropic uses a different tool format - not supported here yet
-    " OpenAI: always include web_search_preview (server-side, no API key needed),
-    " then append any custom tools from i_tools_json.
+    " Optional function-calling tools array (already valid JSON, no escaping).
+    " OpenAI:    tools array contains {"type":"function","function":{...}}; we
+    "            always prepend web_search_preview (server-side, no API key).
+    " Anthropic: tools array contains {"name":..,"description":..,"input_schema":{..}};
+    "            the OpenAI-format schemas are converted and the last tool carries a
+    "            cache_control marker so the whole tool block is cached.
     DATA lv_tools_field TYPE string.
     IF lv_provider = 'OPENAI'.
       IF i_tools_json IS NOT INITIAL.
@@ -251,10 +282,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
         DATA(lv_custom) = substring( val = i_tools_json
                                      off = 1
                                      len = strlen( i_tools_json ) - 1 ).
-        lv_tools_field = |, "tools": [{"type":"web_search_preview"},{ lv_custom }|.
+        lv_tools_field = |, "tools": [{ '{' }"type":"web_search_preview"{ '}' },{ lv_custom }|.
       ELSE.
-        lv_tools_field = |, "tools": [{"type":"web_search_preview"}]|.
+        lv_tools_field = |, "tools": [{ '{' }"type":"web_search_preview"{ '}' }]|.
       ENDIF.
+    ELSEIF lv_provider = 'ANTHROPIC' AND i_tools_json IS NOT INITIAL.
+      lv_tools_field = |, "tools": { build_anthropic_tools( i_tools_json ) }|.
     ENDIF.
 
     rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
@@ -268,18 +301,227 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
   endmethod.
 
 
+  method EXTRACT_JSON_OBJECT.
+
+    DATA lv_start TYPE i.
+    FIND FIRST OCCURRENCE OF '{' IN SECTION OFFSET i_offset OF i_text
+      MATCH OFFSET lv_start.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    DATA lv_depth TYPE i.
+    DATA lv_instr TYPE abap_bool.
+    DATA lv_esc   TYPE abap_bool.
+    DATA lv_i     TYPE i.
+    DATA lv_len   TYPE i.
+    lv_i   = lv_start.
+    lv_len = strlen( i_text ).
+    WHILE lv_i < lv_len.
+      DATA(lv_ch) = i_text+lv_i(1).
+      rv_object = rv_object && lv_ch.
+      IF lv_instr = abap_true.
+        IF lv_esc = abap_true.
+          lv_esc = abap_false.
+        ELSEIF lv_ch = '\'.
+          lv_esc = abap_true.
+        ELSEIF lv_ch = '"'.
+          lv_instr = abap_false.
+        ENDIF.
+      ELSE.
+        IF lv_ch = '"'.
+          lv_instr = abap_true.
+        ELSEIF lv_ch = '{'.
+          lv_depth = lv_depth + 1.
+        ELSEIF lv_ch = '}'.
+          lv_depth = lv_depth - 1.
+          IF lv_depth = 0.
+            EXIT.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      lv_i = lv_i + 1.
+    ENDWHILE.
+
+  endmethod.
+
+
+  method BUILD_ANTHROPIC_TOOLS.
+
+    " Strip the outer [ ... ] of the OpenAI tools array. The array is produced as
+    " |[<schemas>]| so it starts/ends with the brackets (no surrounding spaces);
+    " CONDENSE is deliberately avoided so it cannot collapse spaces inside
+    " description strings.
+    DATA(lv_inner) = i_tools_json.
+    IF strlen( lv_inner ) >= 1 AND lv_inner(1) = '['.
+      lv_inner = lv_inner+1.
+    ENDIF.
+    DATA lv_tail TYPE i.
+    lv_tail = strlen( lv_inner ) - 1.
+    IF lv_tail >= 0 AND lv_inner+lv_tail(1) = ']'.
+      lv_inner = lv_inner(lv_tail).
+    ENDIF.
+
+    " Split into top-level tool objects with a brace-aware, string-aware scan so
+    " braces inside JSON string values do not affect nesting depth.
+    DATA lt_tools TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    DATA lv_cur   TYPE string.
+    DATA lv_depth TYPE i.
+    DATA lv_instr TYPE abap_bool.
+    DATA lv_esc   TYPE abap_bool.
+    DATA lv_idx   TYPE i.
+    DATA lv_total TYPE i.
+    lv_total = strlen( lv_inner ).
+    WHILE lv_idx < lv_total.
+      DATA(lv_c) = lv_inner+lv_idx(1).
+      IF lv_instr = abap_true.
+        lv_cur = lv_cur && lv_c.
+        IF lv_esc = abap_true.
+          lv_esc = abap_false.
+        ELSEIF lv_c = '\'.
+          lv_esc = abap_true.
+        ELSEIF lv_c = '"'.
+          lv_instr = abap_false.
+        ENDIF.
+      ELSE.
+        CASE lv_c.
+          WHEN '"'.
+            lv_instr = abap_true.
+            lv_cur = lv_cur && lv_c.
+          WHEN '{'.
+            lv_depth = lv_depth + 1.
+            lv_cur = lv_cur && lv_c.
+          WHEN '}'.
+            lv_depth = lv_depth - 1.
+            lv_cur = lv_cur && lv_c.
+            IF lv_depth = 0.
+              APPEND lv_cur TO lt_tools.
+              CLEAR lv_cur.
+            ENDIF.
+          WHEN OTHERS.
+            " keep characters only while inside an object; top-level
+            " separators (commas, whitespace) between tools are dropped
+            IF lv_depth > 0.
+              lv_cur = lv_cur && lv_c.
+            ENDIF.
+        ENDCASE.
+      ENDIF.
+      lv_idx = lv_idx + 1.
+    ENDWHILE.
+
+    " Transform each OpenAI tool object into the Anthropic shape:
+    "   {"type":"function","function":{"name":..,"parameters":{..}}}
+    " -> {"name":..,"input_schema":{..}}
+    DATA lv_result TYPE string.
+    DATA lv_count  TYPE i.
+    DATA lv_fpos   TYPE i.
+    DATA lv_anth   TYPE string.
+    DATA lv_cl     TYPE i.
+    DATA(lv_lines) = lines( lt_tools ).
+    LOOP AT lt_tools INTO DATA(lv_tool).
+      lv_count = lv_count + 1.
+
+      " The Anthropic tool object is the value of the OpenAI "function" key, i.e.
+      " the balanced { ... } right after it, with "parameters" -> "input_schema".
+      FIND FIRST OCCURRENCE OF '"function"' IN lv_tool MATCH OFFSET lv_fpos.
+      IF sy-subrc <> 0.
+        " Not in the expected wrapper - pass through unchanged.
+        lv_anth = lv_tool.
+      ELSE.
+        lv_anth = extract_json_object( i_text = lv_tool i_offset = lv_fpos ).
+        IF lv_anth IS INITIAL.
+          lv_anth = lv_tool.
+        ENDIF.
+        " OpenAI "parameters" -> Anthropic "input_schema"
+        REPLACE FIRST OCCURRENCE OF '"parameters"' IN lv_anth WITH '"input_schema"'.
+      ENDIF.
+
+      " Mark the last tool with cache_control to cache the whole tool block.
+      " lv_anth ends exactly at its closing '}' (balanced extraction), so the
+      " marker can be inserted just before it.
+      IF lv_count = lv_lines.
+        lv_cl = strlen( lv_anth ) - 1.
+        lv_anth = lv_anth(lv_cl)
+               && |, "cache_control": { '{' }"type": "ephemeral"{ '}' }|
+               && '}'.
+      ENDIF.
+
+      IF lv_result IS NOT INITIAL.
+        lv_result = lv_result && ','.
+      ENDIF.
+      lv_result = lv_result && lv_anth.
+    ENDLOOP.
+
+    rv_json = |[{ lv_result }]|.
+
+  endmethod.
+
+
+  method PARSE_ANTHROPIC_TOOL_USE.
+
+    DATA lv_off  TYPE i.
+    DATA lv_from TYPE i.
+
+    " Walk every "type": "tool_use" marker. For each, the enclosing block's id,
+    " name and input follow it (Anthropic emits "type" first in the block).
+    DO.
+      FIND FIRST OCCURRENCE OF REGEX '"type"\s*:\s*"tool_use"'
+        IN SECTION OFFSET lv_from OF i_json MATCH OFFSET lv_off.
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
+      DATA lv_id    TYPE string.
+      DATA lv_name  TYPE string.
+      DATA lv_input TYPE string.
+      CLEAR: lv_id, lv_name, lv_input.
+
+      DATA(lv_rest) = i_json+lv_off.
+      FIND FIRST OCCURRENCE OF REGEX '"id"\s*:\s*"([^"]*)"'
+        IN lv_rest SUBMATCHES lv_id.
+      FIND FIRST OCCURRENCE OF REGEX '"name"\s*:\s*"([^"]*)"'
+        IN lv_rest SUBMATCHES lv_name.
+
+      " Capture the raw "input" object (balanced, string-aware) so nested braces
+      " and braces inside string values are handled correctly.
+      DATA lv_ipos TYPE i.
+      FIND FIRST OCCURRENCE OF REGEX '"input"\s*:\s*\{'
+        IN lv_rest MATCH OFFSET lv_ipos.
+      IF sy-subrc = 0.
+        lv_input = extract_json_object( i_text = lv_rest i_offset = lv_ipos ).
+      ENDIF.
+
+      IF lv_input IS INITIAL.
+        lv_input = '{}'.
+      ENDIF.
+
+      IF lv_name IS NOT INITIAL.
+        APPEND VALUE #( id        = lv_id
+                        name      = lv_name
+                        arguments = lv_input ) TO ct_tool_calls.
+      ENDIF.
+
+      " advance past this marker to find the next tool_use block
+      lv_from = lv_off + 17.
+    ENDDO.
+
+  endmethod.
+
+
   method PARSE_RESPONSE.
 
     TYPES: BEGIN OF t_prompt_tokens_details,
              cached_tokens TYPE string,
            END OF t_prompt_tokens_details,
            BEGIN OF t_usage,
-             prompt_tokens         TYPE string,
-             completion_tokens     TYPE string,
-             total_tokens          TYPE string,
-             prompt_tokens_details TYPE t_prompt_tokens_details,
-             input_tokens          TYPE string,
-             output_tokens         TYPE string,
+             prompt_tokens               TYPE string,
+             completion_tokens           TYPE string,
+             total_tokens                TYPE string,
+             prompt_tokens_details       TYPE t_prompt_tokens_details,
+             input_tokens                TYPE string,
+             output_tokens               TYPE string,
+             cache_read_input_tokens     TYPE string,
+             cache_creation_input_tokens TYPE string,
            END OF t_usage,
            BEGIN OF t_content_block,
              type TYPE string,
@@ -369,9 +611,34 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       ev_tok_out   = response-usage-completion_tokens.
       ev_tok_total = response-usage-total_tokens.
     ENDIF.
+    " Prompt-cache accounting: cache_read = tokens served from cache (cheap),
+    " cache_creation = tokens written to cache on this call.
+    IF response-usage-cache_read_input_tokens IS NOT INITIAL.
+      ev_tok_cached = response-usage-cache_read_input_tokens.
+    ENDIF.
+
+    " Concatenate all text content blocks (a tool_use turn may have a leading
+    " text block, or none at all) for the user-facing answer.
     IF response-content IS NOT INITIAL.
-      rv_answer = response-content[ 1 ]-text.
-    ELSE.
+      LOOP AT response-content INTO DATA(ls_block).
+        IF ls_block-type = 'text' AND ls_block-text IS NOT INITIAL.
+          IF rv_answer IS NOT INITIAL.
+            rv_answer = rv_answer && cl_abap_char_utilities=>newline.
+          ENDIF.
+          rv_answer = rv_answer && ls_block-text.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    " Extract tool_use content blocks as tool calls. The "input" object is kept
+    " as a raw JSON string in -arguments, matching how the tools parse arguments.
+    parse_anthropic_tool_use(
+      EXPORTING i_json        = i_json
+      CHANGING  ct_tool_calls = et_tool_calls ).
+
+    " If the model neither produced text nor requested a tool, surface the raw
+    " payload so the caller can see what came back.
+    IF rv_answer IS INITIAL AND et_tool_calls IS INITIAL.
       rv_answer = i_json.
     ENDIF.
 
