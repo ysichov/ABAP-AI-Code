@@ -60,6 +60,15 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
     DATA mv_review_pending TYPE abap_bool.
+    DATA mv_user_prompt TYPE string.
+
+    " Returns a corrective message when delete_sap_object is mis-used for a
+    " partial deletion (a form, method, comment, line - it should be a modify),
+    " otherwise empty. Acts as a deterministic guard on top of the LLM routing.
+    METHODS delete_misuse_redirect
+      IMPORTING
+        !is_call          TYPE zcl_code_ai_api=>ty_tool_call
+      RETURNING VALUE(rv_redirect) TYPE string.
 
     DATA mo_html_viewer    TYPE REF TO cl_gui_html_viewer.
     DATA mt_progress_steps TYPE tt_steps.
@@ -175,6 +184,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA(lv_prompt) = i_prompt.
     CLEAR mv_review_pending.
+    mv_user_prompt = i_prompt.
 
     " Fresh progress panel for every question
     CLEAR mt_progress_steps.
@@ -316,6 +326,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Deterministic guard: block whole-object deletion when the request is really
+    " about removing a PART of the code, and steer the LLM to modify_sap_object.
+    DATA(lv_redirect) = delete_misuse_redirect( is_call ).
+    IF lv_redirect IS NOT INITIAL.
+      rv_result = lv_redirect.
+      RETURN.
+    ENDIF.
+
     DATA(ls_result) = lo_tool->execute( i_arguments = is_call-arguments ).
 
     IF ls_result-error_text IS NOT INITIAL.
@@ -333,6 +351,64 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         && cl_abap_char_utilities=>newline
         && |APPLY RESULT: { lv_apply_msg }|.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD delete_misuse_redirect.
+
+    " Only guards delete_sap_object calls.
+    IF is_call-name <> 'delete_sap_object'.
+      RETURN.
+    ENDIF.
+
+    " Look for part-of-code indicators in the original user request. If present,
+    " the user wants to remove something INSIDE the object, not the whole object.
+    DATA(lv_p) = mv_user_prompt.
+    TRANSLATE lv_p TO UPPER CASE.
+
+    DATA lt_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    " English
+    APPEND 'FORM' TO lt_kw.       APPEND 'SUBROUTINE' TO lt_kw.
+    APPEND 'PERFORM' TO lt_kw.    APPEND 'METHOD' TO lt_kw.
+    APPEND 'COMMENT' TO lt_kw.    APPEND 'LINE' TO lt_kw.
+    APPEND 'VARIABLE' TO lt_kw.   APPEND 'FIELD' TO lt_kw.
+    APPEND 'BLOCK' TO lt_kw.      APPEND 'PARAMETER' TO lt_kw.
+    APPEND 'HEADER' TO lt_kw.
+    " Russian / Ukrainian
+    APPEND 'ФОРМ' TO lt_kw.       APPEND 'МЕТОД' TO lt_kw.
+    APPEND 'КОММЕНТ' TO lt_kw.    APPEND 'КОМЕНТ' TO lt_kw.
+    APPEND 'СТРОК' TO lt_kw.      APPEND 'РЯДОК' TO lt_kw.
+    APPEND 'РЯДК' TO lt_kw.       APPEND 'ПЕРЕМЕНН' TO lt_kw.
+    APPEND 'ЗМІНН' TO lt_kw.      APPEND 'ПОЛЕ' TO lt_kw.
+    APPEND 'БЛОК' TO lt_kw.       APPEND 'ШАПК' TO lt_kw.
+    APPEND 'ПІДПРОГРАМ' TO lt_kw. APPEND 'ПОДПРОГРАМ' TO lt_kw.
+
+    DATA(lv_is_part) = abap_false.
+    LOOP AT lt_kw INTO DATA(lv_kw).
+      IF lv_p CS lv_kw.
+        lv_is_part = abap_true.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_is_part = abap_false.
+      RETURN.
+    ENDIF.
+
+    DATA lv_type TYPE string.
+    DATA lv_name TYPE string.
+    FIND FIRST OCCURRENCE OF REGEX '"object_type"\s*:\s*"([^"]*)"'
+      IN is_call-arguments SUBMATCHES lv_type.
+    FIND FIRST OCCURRENCE OF REGEX '"object_name"\s*:\s*"([^"]*)"'
+      IN is_call-arguments SUBMATCHES lv_name.
+
+    rv_redirect =
+      |Error: delete_sap_object deletes the ENTIRE { lv_type } { lv_name }, but the | &&
+      |user asked to remove only a PART of it. Do NOT delete the whole object. | &&
+      |Call modify_sap_object on { lv_type } { lv_name } with an | &&
+      |action_description that removes exactly the requested part | &&
+      |(and read the object first if you have not yet).|.
 
   ENDMETHOD.
 
@@ -477,6 +553,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |You are an assistant with tools for working with SAP objects.| &&
       cl_abap_char_utilities=>newline &&
       |RULES:| && cl_abap_char_utilities=>newline &&
+      |- TOP RULE - delete vs modify: delete_sap_object is ONLY for erasing a | &&
+      |WHOLE program or class. If the user wants to remove ANYTHING that lives | &&
+      |INSIDE an object (a FORM/subroutine, a method, a block, header comments, | &&
+      |lines, a variable), that is a MODIFICATION - call modify_sap_object, NEVER | &&
+      |delete_sap_object. Example: "delete form HELLO2 from ZYS_TEST" -> | &&
+      |modify_sap_object on PROG ZYS_TEST (remove that FORM), NOT delete.| &&
+      cl_abap_char_utilities=>newline &&
       |- NEVER invent SAP object names. Use only names from the user request.| &&
       cl_abap_char_utilities=>newline &&
       |- Call read_sap_object before modify_sap_object or review_sap_code.| &&

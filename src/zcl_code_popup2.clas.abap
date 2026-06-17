@@ -207,6 +207,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     DATA(lo_messages) = mo_tool_runner->get_messages( ).
     IF lo_messages IS NOT INITIAL.
       APPEND LINES OF lo_messages->get_messages( ) TO mt_message_history.
+      " Share the runner's message log so the later diff approve/save flow
+      " (save_approved_diff, request_save_fix) can log without a null reference.
+      mo_messages = lo_messages.
     ENDIF.
 
     " A tool launched an interactive diff code-review: the diff is already shown
@@ -585,11 +588,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                          && cl_abap_char_utilities=>newline
                          && mv_diff_new_code.
 
-    mo_messages->add_message(
-      i_role        = 'user'
-      i_agent       = 'SAVE_OBJECT'
-      i_prompt_type = 'COMMAND'
-      i_content     = lv_save_command ).
+    IF mo_messages IS BOUND.
+      mo_messages->add_message(
+        i_role        = 'user'
+        i_agent       = 'SAVE_OBJECT'
+        i_prompt_type = 'COMMAND'
+        i_content     = lv_save_command ).
+    ENDIF.
 
     display_status( |Saving approved changes for { mv_diff_object_type } { mv_diff_object_name }...| ).
 
@@ -599,11 +604,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       i_source      = mv_diff_new_code
       i_package     = mv_diff_package ).
 
-    mo_messages->add_message(
-      i_role        = 'assistant'
-      i_agent       = 'SAVE_OBJECT'
-      i_prompt_type = 'AGENT_RESPONSE'
-      i_content     = lv_save_message ).
+    IF mo_messages IS BOUND.
+      mo_messages->add_message(
+        i_role        = 'assistant'
+        i_agent       = 'SAVE_OBJECT'
+        i_prompt_type = 'AGENT_RESPONSE'
+        i_content     = lv_save_message ).
+    ENDIF.
 
     sync_message_history( ).
 

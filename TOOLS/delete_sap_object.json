@@ -2,7 +2,7 @@
   "type": "function",
   "function": {
     "name": "delete_sap_object",
-    "description": "Delete an ENTIRE class or program. Permanent operation; a mandatory user confirmation popup is shown before deletion. To delete a METHOD from a class, do NOT use this tool - use modify_sap_object on the class instead (the method must be removed from both the section declaration and the implementation).",
+    "description": "Delete an ENTIRE class or program (the whole object disappears). Use ONLY when the user explicitly asks to delete/drop the complete program or class. Permanent operation; a mandatory user confirmation popup is shown before deletion. NEVER use this tool to remove a PART of an object - deleting a FORM/subroutine, a method, a block of code, header comments, or lines is a MODIFICATION: use modify_sap_object on that object instead.",
     "parameters": {
       "type": "object",
       "properties": {
