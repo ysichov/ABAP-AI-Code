@@ -255,9 +255,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           et_tool_calls   = lt_calls ).
 
       write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request ).
-      write_log_file( i_suffix = 'Q'   i_content = lv_prompt            i_ext = 'txt' ).
+      write_log_file( i_suffix = 'Q'   i_content = lv_prompt i_ext = 'txt' ).
       write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response ).
-      write_log_file( i_suffix = 'LLM' i_content = lv_answer            i_ext = 'md' ).
 
       complete_last_step(
         i_is_llm     = abap_true
@@ -279,6 +278,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         lv_llm_log = lv_llm_log
           && |TOOL CALL: { ls_call-name }( { ls_call-arguments } )|.
       ENDLOOP.
+      " Write LLM.md after lv_llm_log is built (includes tool calls when answer is empty)
+      write_log_file( i_suffix = 'LLM' i_content = lv_llm_log i_ext = 'md' ).
       mo_messages->add_message(
         i_role             = 'assistant'
         i_agent            = 'TOOL_RUNNER'
