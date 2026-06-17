@@ -26,6 +26,12 @@ CLASS zcl_ai_tool_runner DEFINITION
     " Reset conversation history (new session)
     METHODS clear_session.
 
+    " True when the last run( ) launched an interactive diff code-review. The
+    " caller must then NOT overwrite the answer panel - the diff is already shown
+    " there and the save happens later via the diff toolbar (approve/decline).
+    METHODS is_review_pending
+      RETURNING VALUE(rv_pending) TYPE abap_bool.
+
     " Progress panel (middle pane): same step log as the legacy runner
     METHODS set_html_viewer
       IMPORTING
@@ -53,6 +59,7 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mo_ui       TYPE REF TO zcl_code_popup2.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
+    DATA mv_review_pending TYPE abap_bool.
 
     DATA mo_html_viewer    TYPE REF TO cl_gui_html_viewer.
     DATA mt_progress_steps TYPE tt_steps.
@@ -167,6 +174,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       i_system_prompt = lv_system_prompt ).
 
     DATA(lv_prompt) = i_prompt.
+    CLEAR mv_review_pending.
 
     " Fresh progress panel for every question
     CLEAR mt_progress_steps.
@@ -275,6 +283,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           && cl_abap_char_utilities=>newline.
       ENDLOOP.
 
+      " A tool launched an interactive diff review - stop the agentic loop so the
+      " final LLM answer does not overwrite the diff in the answer panel. The save
+      " is driven by the diff toolbar (approve/decline) from here on.
+      IF mv_review_pending = abap_true.
+        rv_answer = lv_results.
+        RETURN.
+      ENDIF.
+
       lv_prompt = lv_results
         && cl_abap_char_utilities=>newline
         && |Continue with the user request. Call further tools if needed, |
@@ -372,6 +388,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           CLEAR lv_old_code.
         ENDIF.
       ENDIF.
+      mv_review_pending = abap_true.
       rv_message = mo_ui->review_and_save(
         i_old_code    = lv_old_code
         i_new_code    = lv_new_code
@@ -474,6 +491,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     CLEAR mt_history.
     CLEAR mo_messages.
+
+  ENDMETHOD.
+
+
+  METHOD is_review_pending.
+
+    rv_pending = mv_review_pending.
 
   ENDMETHOD.
 

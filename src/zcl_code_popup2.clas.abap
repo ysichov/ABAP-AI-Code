@@ -209,6 +209,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       APPEND LINES OF lo_messages->get_messages( ) TO mt_message_history.
     ENDIF.
 
+    " A tool launched an interactive diff code-review: the diff is already shown
+    " in the answer panel and the save is driven by its toolbar. Do NOT render the
+    " tool answer over it (that would replace the diff with plain text).
+    IF mo_tool_runner->is_review_pending( ) = abap_true.
+      RETURN.
+    ENDIF.
+
     " Strip raw XML envelopes that LLM should have interpreted but didn't
     DATA(lv_display_answer) = lv_tool_answer.
     IF lv_display_answer CP '<code_analysis*' OR lv_display_answer CP '<code_modified*'.
