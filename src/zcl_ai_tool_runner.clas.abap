@@ -69,7 +69,8 @@ CLASS zcl_ai_tool_runner DEFINITION
     METHODS write_log_file
       IMPORTING
         !i_suffix  TYPE string
-        !i_content TYPE string.
+        !i_content TYPE string
+        !i_ext     TYPE string DEFAULT 'json'.
 
     " Returns a corrective message when delete_sap_object is mis-used for a
     " partial deletion (a form, method, comment, line - it should be a modify),
@@ -254,7 +255,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           et_tool_calls   = lt_calls ).
 
       write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request ).
+      write_log_file( i_suffix = 'Q'   i_content = lv_prompt            i_ext = 'txt' ).
       write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response ).
+      write_log_file( i_suffix = 'LLM' i_content = lv_answer            i_ext = 'md' ).
 
       complete_last_step(
         i_is_llm     = abap_true
@@ -858,7 +861,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     DATA(lv_filename) = lv_sep
                      && lv_date && '_' && lv_time
                      && '_' && mv_session_num
-                     && '_' && i_suffix && '.json'.
+                     && '_' && i_suffix && '.' && i_ext.
 
     DATA lt_data TYPE TABLE OF string.
     APPEND i_content TO lt_data.
