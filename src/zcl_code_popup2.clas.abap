@@ -245,17 +245,41 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    DATA(lv_tool_html) = COND string(
-      WHEN lv_is_markdown = abap_true
-      THEN zcl_code_html_gen=>markdown_to_html( lv_display_answer )
-      WHEN lv_display_answer CS '--- ' OR lv_display_answer CS 'METHOD '
-      THEN zcl_code_html_gen=>source_to_html( i_source = lv_display_answer i_title = space )
-      WHEN lv_display_answer CP '*CLAS *' OR lv_display_answer CP '*PROG *'
-        OR lv_display_answer CP '*DEVC *' OR lv_display_answer CP '*FUGR *'
-        OR lv_display_answer CS 'Objects matching'
-      THEN zcl_code_html_gen=>search_result_to_html( lv_display_answer )
-      ELSE zcl_code_html_gen=>markdown_to_html( lv_display_answer ) ).
-    display_answer( i_answer = lv_tool_html ).
+    " Check if response is raw ABAP source (first non-empty line starts with a known keyword)
+    DATA lv_first_line TYPE string.
+    DATA lt_src_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    SPLIT lv_display_answer AT cl_abap_char_utilities=>newline INTO TABLE lt_src_lines.
+    LOOP AT lt_src_lines INTO lv_first_line.
+      CONDENSE lv_first_line.
+      IF lv_first_line IS NOT INITIAL.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    DATA lv_first_upper TYPE string.
+    lv_first_upper = lv_first_line.
+    TRANSLATE lv_first_upper TO UPPER CASE.
+
+    DATA lv_is_abap_source TYPE abap_bool.
+    IF lv_is_markdown = abap_false
+    AND ( lv_first_upper CP 'REPORT *' OR lv_first_upper CP 'PROGRAM *'
+          OR lv_first_upper CP 'CLASS * DEFINITION*'
+          OR lv_display_answer CS '--- ' OR lv_display_answer CS 'METHOD ' ).
+      lv_is_abap_source = abap_true.
+    ENDIF.
+
+    IF lv_is_abap_source = abap_true.
+      display_program_source( lv_display_answer ).
+    ELSE.
+      DATA(lv_tool_html) = COND string(
+        WHEN lv_is_markdown = abap_true
+        THEN zcl_code_html_gen=>markdown_to_html( lv_display_answer )
+        WHEN lv_display_answer CP '*CLAS *' OR lv_display_answer CP '*PROG *'
+          OR lv_display_answer CP '*DEVC *' OR lv_display_answer CP '*FUGR *'
+          OR lv_display_answer CS 'Objects matching'
+        THEN zcl_code_html_gen=>search_result_to_html( lv_display_answer )
+        ELSE zcl_code_html_gen=>markdown_to_html( lv_display_answer ) ).
+      display_answer( i_answer = lv_tool_html ).
+    ENDIF.
 
   endmethod.
 

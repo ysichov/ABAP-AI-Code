@@ -242,9 +242,19 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     " Optional function-calling tools array (already valid JSON, no escaping)
     " OpenAI:    "tools": [...]
     " Anthropic uses a different tool format - not supported here yet
+    " OpenAI: always include web_search_preview (server-side, no API key needed),
+    " then append any custom tools from i_tools_json.
     DATA lv_tools_field TYPE string.
-    IF i_tools_json IS NOT INITIAL AND lv_provider = 'OPENAI'.
-      lv_tools_field = |, "tools": { i_tools_json }|.
+    IF lv_provider = 'OPENAI'.
+      IF i_tools_json IS NOT INITIAL.
+        " i_tools_json is [...]; strip the leading [ and merge
+        DATA(lv_custom) = substring( val = i_tools_json
+                                     off = 1
+                                     len = strlen( i_tools_json ) - 1 ).
+        lv_tools_field = |, "tools": [{"type":"web_search_preview"},{ lv_custom }|.
+      ELSE.
+        lv_tools_field = |, "tools": [{"type":"web_search_preview"}]|.
+      ENDIF.
     ENDIF.
 
     rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
