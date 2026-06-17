@@ -374,14 +374,24 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       CONDENSE lv_new_code.
     ENDIF.
 
-    " DIAGNOSTIC: print the three diff preconditions explicitly so the reason a
-    " diff is skipped is unambiguous instead of a silent fallback to the popup.
-    DATA(lv_f_delete) = COND string( WHEN lv_is_delete = abap_true THEN 'YES' ELSE 'no' ).
-    DATA(lv_f_code)   = COND string( WHEN lv_new_code IS NOT INITIAL THEN |YES(len={ strlen( lv_new_code ) })| ELSE 'NO(empty)' ).
-    DATA(lv_f_ui)     = COND string( WHEN mo_ui IS BOUND THEN 'YES' ELSE 'NO' ).
-    IF NOT ( lv_is_delete = abap_false
-         AND lv_new_code IS NOT INITIAL
-         AND mo_ui IS BOUND ).
+    " Decide via SEPARATE checks (not one compound AND) whether the diff review
+    " can be shown. A single combined condition proved unreliable here, so each
+    " precondition flips the flag on its own.
+    DATA lv_can_diff TYPE abap_bool VALUE abap_true.
+    IF lv_is_delete = abap_true.
+      lv_can_diff = abap_false.
+    ENDIF.
+    IF lv_new_code IS INITIAL.
+      lv_can_diff = abap_false.
+    ENDIF.
+    IF mo_ui IS NOT BOUND.
+      lv_can_diff = abap_false.
+    ENDIF.
+
+    IF lv_can_diff = abap_false.
+      DATA(lv_f_delete) = COND string( WHEN lv_is_delete = abap_true THEN 'YES' ELSE 'no' ).
+      DATA(lv_f_code)   = COND string( WHEN lv_new_code IS NOT INITIAL THEN |YES(len={ strlen( lv_new_code ) })| ELSE 'NO(empty)' ).
+      DATA(lv_f_ui)     = COND string( WHEN mo_ui IS BOUND THEN 'YES' ELSE 'NO' ).
       MESSAGE |DIFF SKIPPED { is_result-object_type } { is_result-object_name }: | &&
               |is_delete={ lv_f_delete }, has_code={ lv_f_code }, ui_bound={ lv_f_ui }| TYPE 'I'.
     ENDIF.
@@ -390,9 +400,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     " tool did not supply the original source (e.g. create_sap_object on an
     " existing object), read the current version so the user still sees a diff;
     " for a truly new object the diff is shown against empty code.
-    IF lv_is_delete = abap_false
-    AND lv_new_code IS NOT INITIAL
-    AND mo_ui IS BOUND.
+    IF lv_can_diff = abap_true.
       DATA(lv_old_code) = is_result-original_source.
       IF lv_old_code IS INITIAL.
         CASE is_result-object_type.
