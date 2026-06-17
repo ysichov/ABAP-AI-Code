@@ -13,7 +13,8 @@ public section.
       !I_AGENTS_PATH type STRING
       !I_TEMPERATURE type STRING optional
       !I_STREAM type ABAP_BOOL optional
-      !I_LOG_PATH type STRING optional .
+      !I_LOG_PATH type STRING optional
+      !I_MAX_TOKENS type I optional .
   methods SHOW .
   " Show diff, ask user to approve/decline changes via diff toolbar. Returns status message.
   methods REVIEW_AND_SAVE
@@ -75,7 +76,8 @@ private section.
   data MV_TEMPERATURE type STRING .
   data MV_STREAM type ABAP_BOOL .
   data MV_AGENTS_PATH type STRING .
-  data MV_LOG_PATH type STRING .
+  data MV_LOG_PATH   type STRING .
+  data MV_MAX_TOKENS type I .
   data MV_APIKEY type STRING .
   data MV_MODEL type TEXT255 .
   data MV_PROVIDER type STRING .
@@ -316,6 +318,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mv_model       = i_model.
     mv_provider    = i_provider.
     mv_log_path    = i_log_path.
+    mv_max_tokens  = i_max_tokens.
+    mo_llm->set_max_tokens( i_max_tokens ).
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 

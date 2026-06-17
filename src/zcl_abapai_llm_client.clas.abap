@@ -36,6 +36,9 @@ public section.
   methods SET_TEMPERATURE
     importing
       !I_TEMPERATURE type STRING .
+  methods SET_MAX_TOKENS
+    importing
+      !I_MAX_TOKENS type I .
 
   data MV_LAST_TOK_IN      type I .
   data MV_LAST_TOK_OUT     type I .
@@ -58,6 +61,7 @@ private section.
   data MV_TOK_IN_STR type STRING .
   data MV_TOK_OUT_STR type STRING .
   data MV_TEMPERATURE type STRING .
+  data MV_MAX_TOKENS  type I .
 ENDCLASS.
 
 
@@ -90,6 +94,7 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_prompt_cache_key = mv_prompt_cache_key
         i_json_schema      = i_json_schema
         i_temperature      = lv_temperature
+        i_max_tokens       = mv_max_tokens
       IMPORTING
         ev_tok_in     = mv_last_tok_in
         ev_tok_out    = mv_last_tok_out
@@ -126,6 +131,7 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_provider         = mv_provider
         i_prompt_cache_key = mv_prompt_cache_key
         i_temperature      = lv_temperature
+        i_max_tokens       = mv_max_tokens
         i_tools_json       = i_tools_json
       IMPORTING
         ev_tok_in        = mv_last_tok_in
@@ -164,6 +170,13 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
   method SET_TEMPERATURE.
 
     mv_temperature = i_temperature.
+
+  endmethod.
+
+
+  method SET_MAX_TOKENS.
+
+    mv_max_tokens = i_max_tokens.
 
   endmethod.
 ENDCLASS.

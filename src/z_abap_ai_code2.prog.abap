@@ -23,6 +23,8 @@ PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_apikey TYPE text255 MEMORY ID api,
             p_tools  TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.2',
+            p_maxt   TYPE i       DEFAULT 20000,
+            p_nomax  AS CHECKBOX,
             p_log    TYPE text255.
 SELECTION-SCREEN END OF BLOCK b_api.
 
@@ -46,6 +48,7 @@ AT SELECTION-SCREEN.
     i_provider    = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp )
+    i_max_tokens  = COND i( WHEN p_nomax = 'X' THEN 0 ELSE p_maxt )
     i_log_path    = CONV string( p_log ) ).
 
   go_popup->show( ).

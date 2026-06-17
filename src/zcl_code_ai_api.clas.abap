@@ -25,6 +25,7 @@ public section.
       !I_JSON_SCHEMA type STRING optional
       !I_TEMPERATURE type STRING optional
       !I_TOOLS_JSON type STRING optional
+      !I_MAX_TOKENS type I optional
     exporting
       !EV_TOK_IN       type I
       !EV_TOK_OUT      type I
@@ -49,6 +50,7 @@ private section.
       !I_JSON_SCHEMA type STRING optional
       !I_TEMPERATURE type STRING optional
       !I_TOOLS_JSON type STRING optional
+      !I_MAX_TOKENS type I optional
     returning
       value(RV_JSON) type STRING .
   " Converts the OpenAI-format tools array (each entry
@@ -118,7 +120,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_prompt_cache_key = i_prompt_cache_key
       i_json_schema      = i_json_schema
       i_temperature      = i_temperature
-      i_tools_json       = i_tools_json ).
+      i_tools_json       = i_tools_json
+      i_max_tokens       = i_max_tokens ).
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING  destination              = i_dest
@@ -285,12 +288,21 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_tools_field = |, "tools": { build_anthropic_tools( i_tools_json ) }|.
     ENDIF.
 
-    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
+    " max_tokens: 0 = omit field (no limit, OpenAI/Mistral only).
+    " Anthropic requires it - fall back to 32000 when caller passes 0.
+    DATA lv_maxt_field TYPE string.
+    IF i_max_tokens > 0.
+      lv_maxt_field = |, "max_tokens": { i_max_tokens }|.
+    ELSEIF lv_provider = 'ANTHROPIC'.
+      lv_maxt_field = |, "max_tokens": 32000|.
+    ENDIF.
+
+    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }]{ lv_maxt_field }{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
       REPLACE ALL OCCURRENCES OF '"' IN lv_prompt_cache_key WITH '\"'.
-      rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }], "max_tokens": 20000, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
+      rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }]{ lv_maxt_field }, "prompt_cache_key": "{ lv_prompt_cache_key }"{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
     ENDIF.
 
   endmethod.
@@ -583,6 +595,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       ENDIF.
       IF openai_response-choices IS NOT INITIAL.
         rv_answer = openai_response-choices[ 1 ]-message-content.
+        DATA(lv_finish) = openai_response-choices[ 1 ]-finish_reason.
+        IF lv_finish = 'error' OR lv_finish = 'length'.
+          rv_answer = rv_answer
+            && cl_abap_char_utilities=>newline
+            && |[API error: response cut off, finish_reason={ lv_finish }]|.
+        ENDIF.
         " Function calling: expose requested tool calls to the caller
         LOOP AT openai_response-choices[ 1 ]-message-tool_calls INTO DATA(ls_tc).
           APPEND VALUE #( id        = ls_tc-id

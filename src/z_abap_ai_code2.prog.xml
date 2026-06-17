@@ -69,6 +69,18 @@
      <ENTRY>Log Path</ENTRY>
      <LENGTH>17</LENGTH>
     </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_MAXT</KEY>
+     <ENTRY>Max tokens</ENTRY>
+     <LENGTH>18</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_NOMAX</KEY>
+     <ENTRY>No limit</ENTRY>
+     <LENGTH>17</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>

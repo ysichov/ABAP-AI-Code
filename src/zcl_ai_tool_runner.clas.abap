@@ -880,7 +880,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
                      && '_' && i_suffix && '.' && i_ext.
 
     DATA lt_data TYPE TABLE OF string.
-    APPEND i_content TO lt_data.
+    DATA(lv_norm) = i_content.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN lv_norm
+      WITH cl_abap_char_utilities=>newline.
+    SPLIT lv_norm AT cl_abap_char_utilities=>newline INTO TABLE lt_data.
 
     cl_gui_frontend_services=>gui_download(
       EXPORTING
