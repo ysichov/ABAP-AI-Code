@@ -259,6 +259,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request  i_step = lv_step ).
       DATA lv_q_full TYPE string.
       CLEAR lv_q_full.
+      lv_q_full = |[system]: { lv_system_prompt }|
+               && cl_abap_char_utilities=>newline
+               && '---' && cl_abap_char_utilities=>newline.
       LOOP AT mt_history INTO DATA(ls_hist_q).
         lv_q_full = lv_q_full
           && |[{ ls_hist_q-role }]: { ls_hist_q-content }|
