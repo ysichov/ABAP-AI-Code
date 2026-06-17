@@ -374,18 +374,16 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       CONDENSE lv_new_code.
     ENDIF.
 
-    " DIAGNOSTIC: name the exact precondition that fails, so the reason a diff is
-    " skipped is unambiguous instead of a silent fallback to the save popup.
+    " DIAGNOSTIC: print the three diff preconditions explicitly so the reason a
+    " diff is skipped is unambiguous instead of a silent fallback to the popup.
+    DATA(lv_f_delete) = COND string( WHEN lv_is_delete = abap_true THEN 'YES' ELSE 'no' ).
+    DATA(lv_f_code)   = COND string( WHEN lv_new_code IS NOT INITIAL THEN |YES(len={ strlen( lv_new_code ) })| ELSE 'NO(empty)' ).
+    DATA(lv_f_ui)     = COND string( WHEN mo_ui IS BOUND THEN 'YES' ELSE 'NO' ).
     IF NOT ( lv_is_delete = abap_false
          AND lv_new_code IS NOT INITIAL
          AND mo_ui IS BOUND ).
-      DATA(lv_reason) =
-        COND string(
-          WHEN lv_is_delete = abap_true   THEN 'it is a DELETE (no diff)'
-          WHEN lv_new_code IS INITIAL     THEN 'proposed code is EMPTY'
-          WHEN mo_ui IS NOT BOUND         THEN 'UI is NOT bound'
-          ELSE 'unknown' ).
-      MESSAGE |DIFF SKIPPED for { is_result-object_type } { is_result-object_name }: { lv_reason }| TYPE 'I'.
+      MESSAGE |DIFF SKIPPED { is_result-object_type } { is_result-object_name }: | &&
+              |is_delete={ lv_f_delete }, has_code={ lv_f_code }, ui_bound={ lv_f_ui }| TYPE 'I'.
     ENDIF.
 
     " Diff review is mandatory for every save when UI is available. When the
@@ -482,8 +480,17 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |- When the user only wants a code example without saving, use | &&
       |show_code_example - never create_sap_object.| &&
       cl_abap_char_utilities=>newline &&
-      |- To delete a method from a class use modify_sap_object on the class, | &&
-      |not delete_sap_object.| &&
+      |- delete_sap_object deletes the ENTIRE object and is allowed ONLY when the | &&
+      |user explicitly asks to delete/drop the whole program, class or function. | &&
+      |NEVER use it to remove a PART of an object.| &&
+      cl_abap_char_utilities=>newline &&
+      |- Removing or changing a PART of an object - header comments, lines, a | &&
+      |method, a form, a block of code - is a MODIFICATION: use modify_sap_object | &&
+      |on that object, NEVER delete_sap_object.| &&
+      cl_abap_char_utilities=>newline &&
+      |- Verbs like "delete/remove/clear" applied to something INSIDE an object | &&
+      |(comments, a method, a variable) still mean modify_sap_object, not | &&
+      |delete_sap_object.| &&
       cl_abap_char_utilities=>newline &&
       |- To add or change anything in an EXISTING object (e.g. add a method to | &&
       |an existing class) use modify_sap_object. create_sap_object is ONLY for | &&
