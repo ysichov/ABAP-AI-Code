@@ -269,24 +269,15 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_temp_field = |, "temperature": { i_temperature }|.
     ENDIF.
 
-    " Optional function-calling tools array (already valid JSON, no escaping).
-    " OpenAI:    tools array contains {"type":"function","function":{...}}; we
-    "            always prepend web_search_preview (server-side, no API key).
-    " Anthropic: tools array contains {"name":..,"description":..,"input_schema":{..}};
-    "            the OpenAI-format schemas are converted and the last tool carries a
-    "            cache_control marker so the whole tool block is cached.
+    " Optional function-calling tools array (already valid JSON, no escaping)
+    " OpenAI:    "tools": [...]  (schemas are already in OpenAI function format)
+    " Anthropic: tools array converted to {"name":..,"description":..,"input_schema":{..}};
+    "            the last tool carries a cache_control marker so the whole tool
+    "            block is prompt-cached.
     DATA lv_tools_field TYPE string.
-    IF lv_provider = 'OPENAI'.
-      IF i_tools_json IS NOT INITIAL.
-        " i_tools_json is [...]; strip the leading [ and merge
-        DATA(lv_custom) = substring( val = i_tools_json
-                                     off = 1
-                                     len = strlen( i_tools_json ) - 1 ).
-        lv_tools_field = |, "tools": [{ '{' }"type":"web_search_preview"{ '}' },{ lv_custom }|.
-      ELSE.
-        lv_tools_field = |, "tools": [{ '{' }"type":"web_search_preview"{ '}' }]|.
-      ENDIF.
-    ELSEIF lv_provider = 'ANTHROPIC' AND i_tools_json IS NOT INITIAL.
+    IF i_tools_json IS NOT INITIAL AND lv_provider = 'OPENAI'.
+      lv_tools_field = |, "tools": { i_tools_json }|.
+    ELSEIF i_tools_json IS NOT INITIAL AND lv_provider = 'ANTHROPIC'.
       lv_tools_field = |, "tools": { build_anthropic_tools( i_tools_json ) }|.
     ENDIF.
 
