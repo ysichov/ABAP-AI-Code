@@ -367,6 +367,21 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       CONDENSE lv_new_code.
     ENDIF.
 
+    " DIAGNOSTIC: report exactly why the diff code-review may be skipped, so the
+    " failing precondition is visible instead of silently falling back to a popup.
+    IF NOT ( lv_is_delete = abap_false
+         AND lv_new_code IS NOT INITIAL
+         AND mo_ui IS BOUND ).
+      DATA(lv_diag) =
+        |DIFF SKIPPED -> is_delete={ lv_is_delete }, |
+        && |new_code_len={ strlen( lv_new_code ) }, |
+        && |final_source_len={ strlen( is_result-final_source ) }, |
+        && |xml_payload_len={ strlen( is_result-xml_payload ) }, |
+        && |ui_bound={ COND #( WHEN mo_ui IS BOUND THEN 'X' ELSE '-' ) }, |
+        && |obj={ is_result-object_type } { is_result-object_name }|.
+      MESSAGE lv_diag TYPE 'I'.
+    ENDIF.
+
     " Diff review is mandatory for every save when UI is available. When the
     " tool did not supply the original source (e.g. create_sap_object on an
     " existing object), read the current version so the user still sees a diff;
@@ -389,6 +404,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         ENDIF.
       ENDIF.
       mv_review_pending = abap_true.
+      MESSAGE |DIFF OPENED -> { is_result-object_type } { is_result-object_name }, | &&
+              |old_len={ strlen( lv_old_code ) }, new_len={ strlen( lv_new_code ) }| TYPE 'I'.
       rv_message = mo_ui->review_and_save(
         i_old_code    = lv_old_code
         i_new_code    = lv_new_code
