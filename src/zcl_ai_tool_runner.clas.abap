@@ -70,7 +70,8 @@ CLASS zcl_ai_tool_runner DEFINITION
       IMPORTING
         !i_suffix  TYPE string
         !i_content TYPE string
-        !i_ext     TYPE string DEFAULT 'json'.
+        !i_ext     TYPE string DEFAULT 'json'
+        !i_step    TYPE i      DEFAULT 0.
 
     " Returns a corrective message when delete_sap_object is mis-used for a
     " partial deletion (a form, method, comment, line - it should be a modify),
@@ -254,9 +255,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         IMPORTING
           et_tool_calls   = lt_calls ).
 
-      write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request ).
-      write_log_file( i_suffix = 'Q'   i_content = lv_prompt i_ext = 'txt' ).
-      write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response ).
+      DATA(lv_step) = sy-index.
+      write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request  i_step = lv_step ).
+      write_log_file( i_suffix = 'Q'   i_content = lv_prompt i_ext = 'txt'       i_step = lv_step ).
+      write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response  i_step = lv_step ).
 
       complete_last_step(
         i_is_llm     = abap_true
@@ -279,7 +281,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           && |TOOL CALL: { ls_call-name }( { ls_call-arguments } )|.
       ENDLOOP.
       " Write LLM.md after lv_llm_log is built (includes tool calls when answer is empty)
-      write_log_file( i_suffix = 'LLM' i_content = lv_llm_log i_ext = 'md' ).
+      write_log_file( i_suffix = 'LLM' i_content = lv_llm_log i_ext = 'md' i_step = lv_step ).
       mo_messages->add_message(
         i_role             = 'assistant'
         i_agent            = 'TOOL_RUNNER'
@@ -332,7 +334,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         write_log_file( i_suffix  = 'TOOL'
                         i_content = |{ ls_call-name }({ ls_call-arguments })| &&
                                     cl_abap_char_utilities=>newline &&
-                                    lv_result ).
+                                    lv_result
+                        i_step    = lv_step ).
         mo_messages->add_message(
           i_role        = 'tool'
           i_agent       = ls_call-name
@@ -866,9 +869,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       lv_sep = mv_log_path && '/'.
     ENDIF.
 
+    DATA lv_step_part TYPE string.
+    IF i_step > 0.
+      lv_step_part = |_{ i_step }|.
+    ENDIF.
     DATA(lv_filename) = lv_sep
                      && lv_date && '_' && lv_time
                      && '_' && mv_session_num
+                     && lv_step_part
                      && '_' && i_suffix && '.' && i_ext.
 
     DATA lt_data TYPE TABLE OF string.
