@@ -12,7 +12,8 @@ public section.
       !I_PROVIDER type STRING
       !I_AGENTS_PATH type STRING
       !I_TEMPERATURE type STRING optional
-      !I_STREAM type ABAP_BOOL optional .
+      !I_STREAM type ABAP_BOOL optional
+      !I_LOG_PATH type STRING optional .
   methods SHOW .
   " Show diff, ask user to approve/decline changes via diff toolbar. Returns status message.
   methods REVIEW_AND_SAVE
@@ -74,6 +75,7 @@ private section.
   data MV_TEMPERATURE type STRING .
   data MV_STREAM type ABAP_BOOL .
   data MV_AGENTS_PATH type STRING .
+  data MV_LOG_PATH type STRING .
   data MV_APIKEY type STRING .
   data MV_MODEL type TEXT255 .
   data MV_PROVIDER type STRING .
@@ -195,6 +197,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     " Live step log in the middle pane - same behaviour as the legacy runner
     mo_tool_runner->set_html_viewer( mo_progress ).
+    " Pass current session counter so log filenames include it
+    mo_tool_runner->mv_session_num = mv_session_counter.
 
     DATA(lv_tool_answer) = mo_tool_runner->run( lv_prompt ).
 
@@ -311,7 +315,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mv_apikey      = i_apikey.
     mv_model       = i_model.
     mv_provider    = i_provider.
-
+    mv_log_path    = i_log_path.
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 
@@ -323,7 +327,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mo_tool_runner = NEW zcl_ai_tool_runner(
       io_llm     = mo_llm
       io_context = mo_tool_context
-      io_ui      = me ).
+      io_ui      = me
+      i_log_path = i_log_path ).
 
   endmethod.
 

@@ -26,11 +26,13 @@ public section.
       !I_TEMPERATURE type STRING optional
       !I_TOOLS_JSON type STRING optional
     exporting
-      !EV_TOK_IN     type I
-      !EV_TOK_OUT    type I
-      !EV_TOK_TOTAL  type I
-      !EV_TOK_CACHED type I
-      !ET_TOOL_CALLS type TT_TOOL_CALLS
+      !EV_TOK_IN       type I
+      !EV_TOK_OUT      type I
+      !EV_TOK_TOTAL    type I
+      !EV_TOK_CACHED   type I
+      !ET_TOOL_CALLS   type TT_TOOL_CALLS
+      !EV_RAW_REQUEST  type STRING
+      !EV_RAW_RESPONSE type STRING
     returning
       value(RV_ANSWER) type STRING .
 protected section.
@@ -161,6 +163,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
                  OTHERS                     = 4 ).
 
     DATA(lv_response) = o_client->response->get_cdata( ).
+    ev_raw_request  = payload.
+    ev_raw_response = lv_response.
     rv_answer = parse_response(
       EXPORTING
         i_json     = lv_response

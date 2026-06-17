@@ -37,9 +37,11 @@ public section.
     importing
       !I_TEMPERATURE type STRING .
 
-  data MV_LAST_TOK_IN  type I .
-  data MV_LAST_TOK_OUT type I .
-  data MV_LAST_TOK_CACHED type I .
+  data MV_LAST_TOK_IN      type I .
+  data MV_LAST_TOK_OUT     type I .
+  data MV_LAST_TOK_CACHED  type I .
+  data MV_LAST_RAW_REQUEST  type STRING .
+  data MV_LAST_RAW_RESPONSE type STRING .
 
 protected section.
 private section.
@@ -126,10 +128,12 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_temperature      = lv_temperature
         i_tools_json       = i_tools_json
       IMPORTING
-        ev_tok_in     = mv_last_tok_in
-        ev_tok_out    = mv_last_tok_out
-        ev_tok_cached = mv_last_tok_cached
-        et_tool_calls = et_tool_calls ).
+        ev_tok_in        = mv_last_tok_in
+        ev_tok_out       = mv_last_tok_out
+        ev_tok_cached    = mv_last_tok_cached
+        et_tool_calls    = et_tool_calls
+        ev_raw_request   = mv_last_raw_request
+        ev_raw_response  = mv_last_raw_response ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.

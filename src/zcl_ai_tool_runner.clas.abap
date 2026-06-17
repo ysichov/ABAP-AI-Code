@@ -10,7 +10,8 @@ CLASS zcl_ai_tool_runner DEFINITION
         !io_llm        TYPE REF TO zcl_abapai_llm_client
         !io_context    TYPE REF TO zcl_ai_tool_context
         !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
-        !io_ui         TYPE REF TO zcl_code_popup2 OPTIONAL.
+        !io_ui         TYPE REF TO zcl_code_popup2 OPTIONAL
+        !i_log_path    TYPE string OPTIONAL.
 
     " Agentic loop: LLM -> tool_calls -> execute -> results back -> LLM ...
     " Ends when the LLM answers without tool calls or c_max_iterations is hit.
@@ -37,6 +38,8 @@ CLASS zcl_ai_tool_runner DEFINITION
       IMPORTING
         !io_viewer TYPE REF TO cl_gui_html_viewer.
 
+    DATA mv_session_num TYPE i.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     TYPES:
@@ -61,6 +64,12 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
     DATA mv_review_pending TYPE abap_bool.
     DATA mv_user_prompt TYPE string.
+    DATA mv_log_path    TYPE string.
+
+    METHODS write_log_file
+      IMPORTING
+        !i_suffix  TYPE string
+        !i_content TYPE string.
 
     " Returns a corrective message when delete_sap_object is mis-used for a
     " partial deletion (a form, method, comment, line - it should be a modify),
@@ -118,10 +127,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD constructor.
 
-    mo_llm     = io_llm.
-    mo_context = io_context.
-    mo_prompts = io_prompts.
-    mo_ui      = io_ui.
+    mo_llm      = io_llm.
+    mo_context  = io_context.
+    mo_prompts  = io_prompts.
+    mo_ui       = io_ui.
+    mv_log_path = i_log_path.
     zcl_ai_tool_factory=>initialize( io_context ).
 
   ENDMETHOD.
@@ -243,6 +253,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         IMPORTING
           et_tool_calls   = lt_calls ).
 
+      write_log_file( i_suffix = 'Q'   i_content = mo_llm->mv_last_raw_request ).
+      write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response ).
+
       complete_last_step(
         i_is_llm     = abap_true
         i_seconds    = CONV #( mo_llm->get_last_seconds( ) )
@@ -312,6 +325,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           ELSE |Tool { ls_call-name }...| ) ).
         DATA(lv_result) = execute_tool_call( ls_call ).
         complete_last_step( ).
+        write_log_file( i_suffix  = 'TOOL'
+                        i_content = |{ ls_call-name }({ ls_call-arguments })| &&
+                                    cl_abap_char_utilities=>newline &&
+                                    lv_result ).
         mo_messages->add_message(
           i_role        = 'tool'
           i_agent       = ls_call-name
@@ -814,6 +831,49 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       && |</style></head><body>|
       && lv_rows
       && |</body></html>|.
+
+  ENDMETHOD.
+
+
+  METHOD write_log_file.
+    " Write i_content to mv_log_path\YYYYMMDD_HHMMSS_<session>_<i_suffix>.json
+    " on the presentation server using GUI_DOWNLOAD (UTF-8, no transfer dialog).
+    IF mv_log_path IS INITIAL OR i_content IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_date) = CONV string( sy-datum ).
+    DATA lv_time TYPE string.
+    DATA(lv_h)  = sy-uzeit(2).
+    DATA(lv_m)  = sy-uzeit+2(2).
+    DATA(lv_s)  = sy-uzeit+4(2).
+    lv_time = |{ lv_h }{ lv_m }{ lv_s }|.
+
+    DATA lv_sep TYPE string.
+    lv_sep = mv_log_path.
+    IF NOT ( lv_sep CP '*/' OR lv_sep CP '*\' ).
+      lv_sep = mv_log_path && '/'.
+    ENDIF.
+
+    DATA(lv_filename) = lv_sep
+                     && lv_date && '_' && lv_time
+                     && '_' && mv_session_num
+                     && '_' && i_suffix && '.json'.
+
+    DATA lt_data TYPE TABLE OF string.
+    APPEND i_content TO lt_data.
+
+    cl_gui_frontend_services=>gui_download(
+      EXPORTING
+        filename             = lv_filename
+        filetype             = 'ASC'
+        codepage             = '4110'
+        confirm_overwrite    = ' '
+        show_transfer_status = ' '
+      CHANGING
+        data_tab             = lt_data
+      EXCEPTIONS
+        OTHERS               = 1 ).
 
   ENDMETHOD.
 ENDCLASS.
