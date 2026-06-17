@@ -145,9 +145,20 @@ CLASS zcl_aitool_modify IMPLEMENTATION.
     REPLACE FIRST OCCURRENCE OF REGEX '<code_modified[^>]*>' IN rv_code WITH ''.
     REPLACE FIRST OCCURRENCE OF '</code_modified>' IN rv_code WITH ''.
     REPLACE FIRST OCCURRENCE OF REGEX '<change_summary>[^<]*</change_summary>' IN rv_code WITH ''.
-    " [\s\S] matches across line breaks - '.' alone does NOT in ABAP regex, so a
-    " multi-line <metadata> block would otherwise leak into the saved source.
-    REPLACE FIRST OCCURRENCE OF REGEX '<metadata>[\s\S]*</metadata>' IN rv_code WITH ''.
+    " Remove the (multi-line) <metadata> block. ABAP classic regex has no
+    " newline-spanning character class, so cut the section out manually instead
+    " of '<metadata>.*</metadata>' (which would only match on a single line).
+    DATA lv_m1  TYPE i.
+    DATA lv_m2  TYPE i.
+    DATA lv_mln TYPE i.
+    FIND FIRST OCCURRENCE OF '<metadata>' IN rv_code MATCH OFFSET lv_m1.
+    IF sy-subrc = 0.
+      FIND FIRST OCCURRENCE OF '</metadata>' IN rv_code MATCH OFFSET lv_m2.
+      IF sy-subrc = 0.
+        lv_mln = lv_m2 + strlen( '</metadata>' ) - lv_m1.
+        REPLACE SECTION OFFSET lv_m1 LENGTH lv_mln OF rv_code WITH ''.
+      ENDIF.
+    ENDIF.
 
   ENDMETHOD.
 
