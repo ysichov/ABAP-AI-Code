@@ -225,7 +225,10 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         WHEN 'FUGR' OR 'FM' OR 'FUNC'.
           APPEND VALUE #( sign = 'I' option = 'EQ' low = 'FUGR' ) TO lt_tadir_types.
         WHEN OTHERS.
-          " No filter - return all matching object names
+          " Default: only supported types (PROG, REPS, CLAS)
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'PROG' ) TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'REPS' ) TO lt_tadir_types.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = 'CLAS' ) TO lt_tadir_types.
       ENDCASE.
 
       DATA lt_tadir TYPE STANDARD TABLE OF tadir WITH NON-UNIQUE DEFAULT KEY.
