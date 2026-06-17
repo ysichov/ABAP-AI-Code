@@ -138,6 +138,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     AND sy-subrc <> 0.
       DATA(lv_word) = lv_trimmed_prompt.
       TRANSLATE lv_word TO UPPER CASE.
+      " Looks like a SAP object name (Z/Y namespace or contains underscore)
+      DATA lv_is_sap_name TYPE abap_bool.
+      DATA(lv_first) = lv_word(1).
+      IF lv_word CS '_' OR lv_first = 'Z' OR lv_first = 'Y'.
+        lv_is_sap_name = abap_true.
+      ENDIF.
+
       " Try CLASS first, then PROG, then wildcard search
       DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
       IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
@@ -167,6 +174,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_agent       = 'read_sap_object'
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = rv_answer ).
+        RETURN.
+      ELSEIF lv_is_sap_name = abap_true.
+        " SAP object name pattern but nothing found - no LLM needed
+        rv_answer = |Object { lv_word } not found. Check the name or use a wildcard (e.g. { lv_word }*).|.
         RETURN.
       ENDIF.
     ENDIF.
