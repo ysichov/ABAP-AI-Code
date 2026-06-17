@@ -325,12 +325,26 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     DATA(lv_is_delete) = boolc( is_result-xml_payload CS '<code_deleted' ).
 
+    " Proposed source for the diff. Normally the tool fills final_source; if it
+    " did not (e.g. only the raw envelope is available), recover the code from
+    " the xml_payload so a code review is still shown instead of a blind popup.
+    DATA(lv_new_code) = is_result-final_source.
+    IF lv_new_code IS INITIAL AND lv_is_delete = abap_false.
+      lv_new_code = is_result-xml_payload.
+      REPLACE FIRST OCCURRENCE OF REGEX '<code_modified[^>]*>' IN lv_new_code WITH ''.
+      REPLACE FIRST OCCURRENCE OF '</code_modified>' IN lv_new_code WITH ''.
+      REPLACE FIRST OCCURRENCE OF REGEX '<change_summary>[^<]*</change_summary>' IN lv_new_code WITH ''.
+      REPLACE FIRST OCCURRENCE OF REGEX '<metadata>[\s\S]*</metadata>' IN lv_new_code WITH ''.
+      REPLACE ALL OCCURRENCES OF REGEX '</?full_source>' IN lv_new_code WITH ''.
+      CONDENSE lv_new_code.
+    ENDIF.
+
     " Diff review is mandatory for every save when UI is available. When the
     " tool did not supply the original source (e.g. create_sap_object on an
     " existing object), read the current version so the user still sees a diff;
     " for a truly new object the diff is shown against empty code.
     IF lv_is_delete = abap_false
-    AND is_result-final_source IS NOT INITIAL
+    AND lv_new_code IS NOT INITIAL
     AND mo_ui IS BOUND.
       DATA(lv_old_code) = is_result-original_source.
       IF lv_old_code IS INITIAL.
@@ -348,7 +362,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDIF.
       rv_message = mo_ui->review_and_save(
         i_old_code    = lv_old_code
-        i_new_code    = is_result-final_source
+        i_new_code    = lv_new_code
         i_object_type = is_result-object_type
         i_object_name = is_result-object_name ).
       RETURN.
@@ -384,14 +398,14 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         i_object_type = is_result-object_type
         i_object_name = is_result-object_name ).
     ELSE.
-      IF is_result-final_source IS INITIAL.
+      IF lv_new_code IS INITIAL.
         rv_message = 'Error: no final source to save.'.
         RETURN.
       ENDIF.
       rv_message = zcl_code_object_saver=>save(
         i_object_type = is_result-object_type
         i_object_name = is_result-object_name
-        i_source      = is_result-final_source ).
+        i_source      = lv_new_code ).
     ENDIF.
 
   ENDMETHOD.
