@@ -129,35 +129,55 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD run.
 
-    " Optimization: if prompt is a single code word (object name), skip LLM and read directly
+    " Shortcut: single object name or search mask (word / word*) - skip LLM entirely
     DATA(lv_trimmed_prompt) = i_prompt.
     CONDENSE lv_trimmed_prompt.
-    FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_]' IN lv_trimmed_prompt.
+    " Allow letters, digits, underscore, and trailing wildcard *
+    FIND FIRST OCCURRENCE OF REGEX '[^A-Za-z0-9_*]' IN lv_trimmed_prompt.
     IF lv_trimmed_prompt IS NOT INITIAL
     AND lv_trimmed_prompt NA ' '
     AND sy-subrc <> 0.
       DATA(lv_word) = lv_trimmed_prompt.
       TRANSLATE lv_word TO UPPER CASE.
-      " Looks like a SAP object name (Z/Y namespace or contains underscore)
-      DATA lv_is_sap_name TYPE abap_bool.
-      DATA(lv_first) = lv_word(1).
-      IF lv_word CS '_' OR lv_first = 'Z' OR lv_first = 'Y'.
-        lv_is_sap_name = abap_true.
+
+      " Detect explicit wildcard (user typed z*, zys_*)
+      DATA lv_has_wildcard TYPE abap_bool.
+      IF lv_word CS '*'.
+        lv_has_wildcard = abap_true.
+        REPLACE ALL OCCURRENCES OF '*' IN lv_word WITH ''.
+        CONDENSE lv_word.
       ENDIF.
 
-      " Try CLASS first, then PROG, then wildcard search
-      DATA(lv_direct_source) = zcl_ai_code_reader=>read_class( lv_word ).
-      IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
-        CLEAR lv_direct_source.
-        lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
+      " SAP object name heuristic: Z/Y namespace or contains underscore
+      DATA lv_is_sap_name TYPE abap_bool.
+      IF lv_word IS NOT INITIAL.
+        DATA(lv_first) = lv_word(1).
+        IF lv_word CS '_' OR lv_first = 'Z' OR lv_first = 'Y'.
+          lv_is_sap_name = abap_true.
+        ENDIF.
       ENDIF.
-      IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
-        CLEAR lv_direct_source.
+
+      DATA lv_direct_source TYPE string.
+      " Exact lookup only when no explicit wildcard was given
+      IF lv_has_wildcard = abap_false.
+        lv_direct_source = zcl_ai_code_reader=>read_class( lv_word ).
+        IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
+          CLEAR lv_direct_source.
+          lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
+          IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
+            CLEAR lv_direct_source.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      " Wildcard search: always after an explicit *, or as fallback after exact miss
+      IF lv_direct_source IS INITIAL.
         lv_direct_source = zcl_ai_code_reader=>read_program( lv_word && '*' ).
         IF lv_direct_source CS 'not found' OR lv_direct_source CS 'No objects found'.
           CLEAR lv_direct_source.
         ENDIF.
       ENDIF.
+
       IF lv_direct_source IS NOT INITIAL.
         rv_answer = lv_direct_source.
         mo_messages = NEW zcl_ai_messages(
@@ -175,9 +195,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           i_prompt_type = 'AGENT_RESPONSE'
           i_content     = rv_answer ).
         RETURN.
-      ELSEIF lv_is_sap_name = abap_true.
-        " SAP object name pattern but nothing found - no LLM needed
-        rv_answer = |Object { lv_word } not found. Check the name or use a wildcard (e.g. { lv_word }*).|.
+      ELSEIF lv_is_sap_name = abap_true OR lv_has_wildcard = abap_true.
+        " Typed a SAP name or explicit mask but nothing found - no LLM needed
+        rv_answer = |Object { lv_word } not found. Check the name or add * for wildcard search.|.
         RETURN.
       ENDIF.
     ENDIF.
