@@ -14,9 +14,10 @@ REPORT z_abap_ai_code2.
 
 DATA go_popup TYPE REF TO zcl_code_popup2.
 
-" Remembers the key the model list was built for, so the live /v1/models
-" call fires only when the key changes - not on every screen refresh.
-DATA gv_loaded_key TYPE string.
+" Set once the model listbox has been filled, so the live /v1/models call
+" fires only once - not on every screen refresh. (The key is not needed for
+" the models endpoint.)
+DATA gv_models_loaded TYPE abap_bool.
 
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_anth RADIOBUTTON GROUP api USER-COMMAND prov,
@@ -43,11 +44,11 @@ INITIALIZATION.
     TABLES     p_exclude = lt_excl.
 
 AT SELECTION-SCREEN OUTPUT.
-  " Populate the model listbox live (Anthropic, for now) from the key entered
-  " on screen. Fires only when the key changed (cached in gv_loaded_key), so
-  " plain Enter does not re-hit the API.
-  IF p_anth = 'X' AND p_apikey IS NOT INITIAL
-     AND gv_loaded_key <> CONV string( p_apikey ).
+  " Populate the model listbox live (Anthropic, for now). The /v1/models
+  " endpoint does not need the key, so fetch as soon as Anthropic is chosen.
+  " Fires only once (cached in gv_models_loaded) - plain Enter does not re-hit
+  " the API.
+  IF p_anth = 'X' AND gv_models_loaded = abap_false.
 
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
@@ -86,7 +87,7 @@ AT SELECTION-SCREEN OUTPUT.
       ENDIF.
     ENDIF.
 
-    gv_loaded_key = CONV string( p_apikey ).
+    gv_models_loaded = abap_true.
   ENDIF.
 
 AT SELECTION-SCREEN.
