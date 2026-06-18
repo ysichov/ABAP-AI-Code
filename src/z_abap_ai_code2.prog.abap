@@ -52,9 +52,11 @@ AT SELECTION-SCREEN OUTPUT.
 
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
+    " Experiment: the models endpoint is hit with a dummy key (the real key is
+    " entered on screen and used only for actual model calls).
     zcl_code_ai_api=>list_models(
       EXPORTING i_url      = 'https://api.anthropic.com/v1/models'
-                i_apikey   = CONV string( p_apikey )
+                i_apikey   = 'dummykey'
                 i_provider = 'ANTHROPIC'
       IMPORTING et_ids     = lt_ids
                 e_error    = lv_err ).
