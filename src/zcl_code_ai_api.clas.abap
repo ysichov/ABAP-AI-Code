@@ -168,7 +168,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     ENDLOOP.
 
     IF et_ids IS INITIAL.
-      e_error = |Unexpected response: { lv_json(nmin( val1 = strlen( lv_json ) val2 = 150 )) }|.
+      DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 150 ).
+      e_error = |Unexpected response: { lv_json(lv_len) }|.
     ENDIF.
 
   endmethod.
