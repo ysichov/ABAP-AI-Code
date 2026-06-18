@@ -12,6 +12,18 @@ public section.
     END OF TY_TOOL_CALL .
   types TT_TOOL_CALLS type STANDARD TABLE OF TY_TOOL_CALL WITH NON-UNIQUE DEFAULT KEY .
 
+  " Lists available models via GET <i_url> (direct create_by_url, no SM59).
+  " I_PROVIDER selects the auth header: ANTHROPIC -> x-api-key + version,
+  " anything else -> Authorization: Bearer. Response "data[].id" -> ET_IDS.
+  class-methods LIST_MODELS
+    importing
+      !I_URL      type STRING
+      !I_APIKEY   type STRING
+      !I_PROVIDER type STRING default 'ANTHROPIC'
+      !I_SSL_ID   type SSFAPPLSSL default 'ANONYM'
+    exporting
+      !ET_IDS     type STRINGTAB
+      !E_ERROR    type STRING .
   class-methods ASK
     importing
       !I_PROMPT type STRING
@@ -96,6 +108,70 @@ ENDCLASS.
 
 
 CLASS ZCL_CODE_AI_API IMPLEMENTATION.
+
+
+  method LIST_MODELS.
+
+    DATA: lo_client   TYPE REF TO if_http_client,
+          lv_provider TYPE string.
+
+    CLEAR: et_ids, e_error.
+
+    lv_provider = i_provider.
+    TRANSLATE lv_provider TO UPPER CASE.
+
+    cl_http_client=>create_by_url(
+      EXPORTING url    = i_url
+                ssl_id = i_ssl_id
+      IMPORTING client = lo_client
+      EXCEPTIONS OTHERS = 4 ).
+    IF sy-subrc <> 0.
+      e_error = |create_by_url failed rc={ sy-subrc } (check URL / SSL in STRUST)|.
+      RETURN.
+    ENDIF.
+
+    lo_client->request->set_method( 'GET' ).
+    IF lv_provider = 'ANTHROPIC'.
+      lo_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
+      lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
+    ELSE.
+      lo_client->request->set_header_field( name = 'Authorization' value = |Bearer { i_apikey }| ).
+    ENDIF.
+    " Suppress the SAP logon popup so a 401/403 returns the JSON body.
+    lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
+
+    lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
+    IF sy-subrc <> 0.
+      e_error = 'HTTP send failed'.
+      RETURN.
+    ENDIF.
+    lo_client->receive( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
+    IF sy-subrc <> 0.
+      e_error = 'HTTP receive failed'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_json) = lo_client->response->get_cdata( ).
+
+    " Both Anthropic and OpenAI-compatible APIs return models under "data[].id".
+    TYPES: BEGIN OF ty_m,
+             id TYPE string,
+           END OF ty_m,
+           BEGIN OF ty_res,
+             data TYPE STANDARD TABLE OF ty_m WITH DEFAULT KEY,
+           END OF ty_res.
+    DATA ls_res TYPE ty_res.
+    /ui2/cl_json=>deserialize( EXPORTING json = lv_json CHANGING data = ls_res ).
+
+    LOOP AT ls_res-data INTO DATA(ls).
+      APPEND ls-id TO et_ids.
+    ENDLOOP.
+
+    IF et_ids IS INITIAL.
+      e_error = |Unexpected response: { lv_json(nmin( val1 = strlen( lv_json ) val2 = 150 )) }|.
+    ENDIF.
+
+  endmethod.
 
 
   method ASK.
