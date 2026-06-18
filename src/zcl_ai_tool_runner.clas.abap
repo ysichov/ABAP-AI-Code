@@ -283,6 +283,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         i_tok_out    = mo_llm->mv_last_tok_out
         i_tok_cached = mo_llm->mv_last_tok_cached ).
 
+      " Show thinking text as a progress entry right after the LLM step.
+      IF mo_llm->mv_last_thinking IS NOT INITIAL.
+        show_step( i_text = |Thinking: { mo_llm->mv_last_thinking }| i_prompt_type = 'LLM' ).
+        complete_last_step( ).
+      ENDIF.
+
       " Persist the user turn to the multi-turn history (both paths)
       APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
 
