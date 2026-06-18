@@ -39,8 +39,12 @@ public section.
   methods SET_MAX_TOKENS
     importing
       !I_MAX_TOKENS type I .
+  methods SET_THINKING_BUDGET
+    importing
+      !I_BUDGET type I .
 
   data MV_LAST_TOK_IN      type I .
+  data MV_LAST_THINKING    type STRING .
   data MV_LAST_TOK_OUT     type I .
   data MV_LAST_TOK_CACHED  type I .
   data MV_LAST_RAW_REQUEST  type STRING .
@@ -62,6 +66,7 @@ private section.
   data MV_TOK_OUT_STR type STRING .
   data MV_TEMPERATURE type STRING .
   data MV_MAX_TOKENS  type I .
+  data MV_THINKING_BUDGET type I .
 ENDCLASS.
 
 
@@ -95,10 +100,12 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_json_schema      = i_json_schema
         i_temperature      = lv_temperature
         i_max_tokens       = mv_max_tokens
+        i_thinking_budget  = mv_thinking_budget
       IMPORTING
         ev_tok_in     = mv_last_tok_in
         ev_tok_out    = mv_last_tok_out
-        ev_tok_cached = mv_last_tok_cached ).
+        ev_tok_cached = mv_last_tok_cached
+        ev_thinking   = mv_last_thinking ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.
@@ -133,13 +140,15 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_temperature      = lv_temperature
         i_max_tokens       = mv_max_tokens
         i_tools_json       = i_tools_json
+        i_thinking_budget  = mv_thinking_budget
       IMPORTING
         ev_tok_in        = mv_last_tok_in
         ev_tok_out       = mv_last_tok_out
         ev_tok_cached    = mv_last_tok_cached
         et_tool_calls    = et_tool_calls
         ev_raw_request   = mv_last_raw_request
-        ev_raw_response  = mv_last_raw_response ).
+        ev_raw_response  = mv_last_raw_response
+        ev_thinking      = mv_last_thinking ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.
@@ -177,6 +186,13 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
   method SET_MAX_TOKENS.
 
     mv_max_tokens = i_max_tokens.
+
+  endmethod.
+
+
+  method SET_THINKING_BUDGET.
+
+    mv_thinking_budget = i_budget.
 
   endmethod.
 ENDCLASS.

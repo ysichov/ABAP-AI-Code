@@ -271,6 +271,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       lv_q_full = lv_q_full && |[user]: { lv_prompt }|.
       write_log_file( i_suffix = 'Q'   i_content = lv_q_full i_ext = 'txt'       i_step = lv_step ).
       write_log_file( i_suffix = 'LLM' i_content = mo_llm->mv_last_raw_response  i_step = lv_step ).
+      " Extended thinking (Anthropic): log the reasoning separately when present.
+      IF mo_llm->mv_last_thinking IS NOT INITIAL.
+        write_log_file( i_suffix = 'THINK' i_content = mo_llm->mv_last_thinking i_ext = 'md' i_step = lv_step ).
+      ENDIF.
 
       complete_last_step(
         i_is_llm     = abap_true

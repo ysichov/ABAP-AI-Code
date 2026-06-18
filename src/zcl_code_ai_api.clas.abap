@@ -38,6 +38,7 @@ public section.
       !I_TEMPERATURE type STRING optional
       !I_TOOLS_JSON type STRING optional
       !I_MAX_TOKENS type I optional
+      !I_THINKING_BUDGET type I default 0
     exporting
       !EV_TOK_IN       type I
       !EV_TOK_OUT      type I
@@ -46,6 +47,7 @@ public section.
       !ET_TOOL_CALLS   type TT_TOOL_CALLS
       !EV_RAW_REQUEST  type STRING
       !EV_RAW_RESPONSE type STRING
+      !EV_THINKING     type STRING
     returning
       value(RV_ANSWER) type STRING .
 protected section.
@@ -63,6 +65,7 @@ private section.
       !I_TEMPERATURE type STRING optional
       !I_TOOLS_JSON type STRING optional
       !I_MAX_TOKENS type I optional
+      !I_THINKING_BUDGET type I default 0
     returning
       value(RV_JSON) type STRING .
   " Converts the OpenAI-format tools array (each entry
@@ -101,6 +104,7 @@ private section.
       !EV_TOK_TOTAL  type I
       !EV_TOK_CACHED type I
       !ET_TOOL_CALLS type TT_TOOL_CALLS
+      !EV_THINKING   type STRING
     returning
       value(RV_ANSWER) type STRING .
 ENDCLASS.
@@ -198,7 +202,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_json_schema      = i_json_schema
       i_temperature      = i_temperature
       i_tools_json       = i_tools_json
-      i_max_tokens       = i_max_tokens ).
+      i_max_tokens       = i_max_tokens
+      i_thinking_budget  = i_thinking_budget ).
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING  destination              = i_dest
@@ -254,7 +259,8 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
         ev_tok_out    = ev_tok_out
         ev_tok_total  = ev_tok_total
         ev_tok_cached = ev_tok_cached
-        et_tool_calls = et_tool_calls ).
+        et_tool_calls = et_tool_calls
+        ev_thinking   = ev_thinking ).
 
   endmethod.
 
@@ -347,9 +353,25 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     lv_messages = lv_messages && lv_msg_sep
       && |{ '{' }"role": "user", "content": "{ lv_prompt }"{ '}' }|.
 
+    " Extended thinking (Anthropic only): when a budget is requested, emit the
+    " thinking block. Anthropic forbids temperature with thinking (must be 1),
+    " so the temperature field is dropped in that case. budget min is 1024.
+    DATA lv_thinking_field TYPE string.
+    DATA lv_budget         TYPE i.
+    DATA lv_thinking_on    TYPE abap_bool.
+    IF lv_provider = 'ANTHROPIC' AND i_thinking_budget > 0.
+      lv_thinking_on = abap_true.
+      lv_budget = i_thinking_budget.
+      IF lv_budget < 1024.
+        lv_budget = 1024.
+      ENDIF.
+      lv_thinking_field = |, "thinking": { '{' }"type": "enabled", "budget_tokens": { lv_budget }{ '}' }|.
+    ENDIF.
+
     " Optional temperature field (e.g. "0.2" or "1.0") - omitted when not provided
+    " or when extended thinking is on (Anthropic requires the default).
     DATA lv_temp_field TYPE string.
-    IF i_temperature IS NOT INITIAL.
+    IF i_temperature IS NOT INITIAL AND lv_thinking_on = abap_false.
       lv_temp_field = |, "temperature": { i_temperature }|.
     ENDIF.
 
@@ -367,14 +389,22 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     " max_tokens: 0 = omit field (no limit, OpenAI/Mistral only).
     " Anthropic requires it - fall back to 32000 when caller passes 0.
+    " max_tokens must exceed budget_tokens when thinking is on (the budget is
+    " part of the output allowance), so bump it if the caller's value is too low.
+    DATA lv_maxt TYPE i.
+    lv_maxt = i_max_tokens.
+    IF lv_thinking_on = abap_true AND lv_maxt <= lv_budget.
+      lv_maxt = lv_budget + 4096.
+    ENDIF.
+
     DATA lv_maxt_field TYPE string.
-    IF i_max_tokens > 0.
-      lv_maxt_field = |, "max_tokens": { i_max_tokens }|.
+    IF lv_maxt > 0.
+      lv_maxt_field = |, "max_tokens": { lv_maxt }|.
     ELSEIF lv_provider = 'ANTHROPIC'.
       lv_maxt_field = |, "max_tokens": 32000|.
     ENDIF.
 
-    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }]{ lv_maxt_field }{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
+    rv_json = |{ '{' }"model": "{ i_model }"{ lv_system_field }, "messages": [{ lv_messages }]{ lv_maxt_field }{ lv_thinking_field }{ lv_temp_field }{ lv_response_format }{ lv_tools_field }{ '}' }|.
     IF lv_provider = 'OPENAI' AND i_prompt_cache_key IS NOT INITIAL.
       lv_prompt_cache_key = i_prompt_cache_key.
       REPLACE ALL OCCURRENCES OF '\' IN lv_prompt_cache_key WITH '\\'.
@@ -608,8 +638,9 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
              cache_creation_input_tokens TYPE string,
            END OF t_usage,
            BEGIN OF t_content_block,
-             type TYPE string,
-             text TYPE string,
+             type     TYPE string,
+             text     TYPE string,
+             thinking TYPE string,
            END OF t_content_block,
            t_content_blocks TYPE STANDARD TABLE OF t_content_block WITH NON-UNIQUE DEFAULT KEY,
            BEGIN OF t_anthropic_res,
@@ -657,7 +688,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
           response        TYPE t_anthropic_res,
           openai_response TYPE t_openai_res.
 
-    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached, et_tool_calls.
+    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached, et_tool_calls, ev_thinking.
 
     lv_provider = i_provider.
     TRANSLATE lv_provider TO UPPER CASE.
@@ -716,6 +747,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
             rv_answer = rv_answer && cl_abap_char_utilities=>newline.
           ENDIF.
           rv_answer = rv_answer && ls_block-text.
+        ELSEIF ls_block-type = 'thinking' AND ls_block-thinking IS NOT INITIAL.
+          " Keep the reasoning separate from the user-facing answer.
+          IF ev_thinking IS NOT INITIAL.
+            ev_thinking = ev_thinking && cl_abap_char_utilities=>newline.
+          ENDIF.
+          ev_thinking = ev_thinking && ls_block-thinking.
         ENDIF.
       ENDLOOP.
     ENDIF.

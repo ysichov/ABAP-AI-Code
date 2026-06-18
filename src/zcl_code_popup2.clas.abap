@@ -14,7 +14,8 @@ public section.
       !I_TEMPERATURE type STRING optional
       !I_STREAM type ABAP_BOOL optional
       !I_LOG_PATH type STRING optional
-      !I_MAX_TOKENS type I optional .
+      !I_MAX_TOKENS type I optional
+      !I_THINKING_BUDGET type I optional .
   methods SHOW .
   " Show diff, ask user to approve/decline changes via diff toolbar. Returns status message.
   methods REVIEW_AND_SAVE
@@ -320,6 +321,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mv_log_path    = i_log_path.
     mv_max_tokens  = i_max_tokens.
     mo_llm->set_max_tokens( i_max_tokens ).
+    mo_llm->set_thinking_budget( i_thinking_budget ).
 
     mo_prompts = NEW zcl_ai_agents_prompts( i_agents_path = i_agents_path ).
 

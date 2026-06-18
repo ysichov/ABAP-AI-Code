@@ -30,6 +30,8 @@ PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
             p_temp   TYPE text10  DEFAULT '0.2',
             p_maxt   TYPE i       DEFAULT 20000,
             p_nomax  AS CHECKBOX,
+            p_think  AS CHECKBOX,                 " enable extended thinking (Anthropic)
+            p_thbud  TYPE i       DEFAULT 10000,  " thinking token budget
             p_log    TYPE text255.
 SELECTION-SCREEN END OF BLOCK b_api.
 
@@ -110,6 +112,8 @@ AT SELECTION-SCREEN.
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp )
     i_max_tokens  = COND i( WHEN p_nomax = 'X' THEN 0 ELSE p_maxt )
+    " Extended thinking only applies to Anthropic; 0 = off.
+    i_thinking_budget = COND i( WHEN p_think = 'X' AND p_anth = 'X' THEN p_thbud ELSE 0 )
     i_log_path    = CONV string( p_log ) ).
 
   go_popup->show( ).
