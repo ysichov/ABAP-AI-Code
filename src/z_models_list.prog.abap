@@ -50,9 +50,17 @@ CLASS lcl_models IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Override the path so we hit /v1/models regardless of the SM59 path prefix.
-    cl_http_utility=>set_request_uri( request = lo_client->request
-                                      uri     = '/v1/models' ).
+    " The SM59 destination usually carries a path prefix (e.g. /v1/messages),
+    " which ICF prepends. Read the resolved URI and point it at the models
+    " endpoint: swap a "messages" segment for "models", else fall back to
+    " /v1/models for a host-only destination.
+    DATA(lv_uri) = lo_client->request->get_header_field( name = '~request_uri' ).
+    IF lv_uri CS 'messages'.
+      REPLACE ALL OCCURRENCES OF 'messages' IN lv_uri WITH 'models'.
+    ELSE.
+      lv_uri = '/v1/models'.
+    ENDIF.
+    lo_client->request->set_header_field( name = '~request_uri' value = lv_uri ).
     lo_client->request->set_method( 'GET' ).
     IF i_openai = abap_true.
       lo_client->request->set_header_field( name = 'Authorization' value = |Bearer { i_apikey }| ).
