@@ -84,6 +84,13 @@ AT SELECTION-SCREEN OUTPUT.
 
       gv_models_loaded = abap_true.
     ENDIF.
+  ELSEIF p_anth <> 'X'.
+    " Not Anthropic: clear the leftover Anthropic list and force a reload when
+    " Anthropic is selected again.
+    CALL FUNCTION 'VRM_SET_VALUES'
+      EXPORTING id     = 'P_MODEL'
+                values = VALUE vrm_values( ).
+    CLEAR: p_model, gv_models_loaded.
   ENDIF.
 
 AT SELECTION-SCREEN.
