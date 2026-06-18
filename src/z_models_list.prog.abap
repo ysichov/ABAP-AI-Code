@@ -73,6 +73,9 @@ CLASS lcl_models IMPLEMENTATION.
     " of prompting the user for a password.
     lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
 
+    " Diagnostic: capture the URI actually being sent.
+    DATA(lv_sent_uri) = lo_client->request->get_header_field( name = '~request_uri' ).
+
     lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
       e_error = 'HTTP send failed'.
@@ -96,7 +99,7 @@ CLASS lcl_models IMPLEMENTATION.
 
     IF ls_res-data IS INITIAL.
       DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 200 ).
-      e_error = |Empty / unexpected response: { lv_json(lv_len) }|.
+      e_error = |URI=[{ lv_sent_uri }] resp: { lv_json(lv_len) }|.
       RETURN.
     ENDIF.
 
