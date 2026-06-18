@@ -52,44 +52,38 @@ AT SELECTION-SCREEN OUTPUT.
 
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
-    " Experiment: the models endpoint is hit with a dummy key (the real key is
-    " entered on screen and used only for actual model calls).
     zcl_code_ai_api=>list_models(
       EXPORTING i_url      = 'https://api.anthropic.com/v1/models'
-                i_apikey   = 'dummykey'
+                i_apikey   = CONV string( p_apikey )
                 i_provider = 'ANTHROPIC'
       IMPORTING et_ids     = lt_ids
                 e_error    = lv_err ).
 
-    " Fallback to known aliases if the live call failed (wrong key / SSL / net).
-    IF lt_ids IS INITIAL.
-      lt_ids = VALUE #( ( `claude-haiku-4-5` )
-                        ( `claude-sonnet-4-6` )
-                        ( `claude-opus-4-8` )
-                        ( `claude-fable-5` ) ).
-    ENDIF.
-
-    DATA lt_vrm TYPE vrm_values.
-    LOOP AT lt_ids INTO DATA(lv_id).
-      APPEND VALUE #( key = lv_id text = lv_id ) TO lt_vrm.
-    ENDLOOP.
-    CALL FUNCTION 'VRM_SET_VALUES'
-      EXPORTING id     = 'P_MODEL'
-                values = lt_vrm.
-
-    " Default to a haiku model when nothing valid is selected yet.
-    IF p_model IS INITIAL OR NOT line_exists( lt_ids[ table_line = p_model ] ).
-      CLEAR p_model.
-      LOOP AT lt_ids INTO lv_id WHERE table_line CS 'haiku'.
-        p_model = lv_id.
-        EXIT.
+    " Only fill the listbox if the live call returned something. On failure
+    " leave it empty (no static defaults) and retry on the next refresh.
+    IF lt_ids IS NOT INITIAL.
+      DATA lt_vrm TYPE vrm_values.
+      LOOP AT lt_ids INTO DATA(lv_id).
+        APPEND VALUE #( key = lv_id text = lv_id ) TO lt_vrm.
       ENDLOOP.
-      IF p_model IS INITIAL.
-        p_model = lt_ids[ 1 ].
-      ENDIF.
-    ENDIF.
+      CALL FUNCTION 'VRM_SET_VALUES'
+        EXPORTING id     = 'P_MODEL'
+                  values = lt_vrm.
 
-    gv_models_loaded = abap_true.
+      " Default to a haiku model when nothing valid is selected yet.
+      IF p_model IS INITIAL OR NOT line_exists( lt_ids[ table_line = p_model ] ).
+        CLEAR p_model.
+        LOOP AT lt_ids INTO lv_id WHERE table_line CS 'haiku'.
+          p_model = lv_id.
+          EXIT.
+        ENDLOOP.
+        IF p_model IS INITIAL.
+          p_model = lt_ids[ 1 ].
+        ENDIF.
+      ENDIF.
+
+      gv_models_loaded = abap_true.
+    ENDIF.
   ENDIF.
 
 AT SELECTION-SCREEN.
