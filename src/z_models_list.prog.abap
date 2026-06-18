@@ -1,15 +1,20 @@
 *&---------------------------------------------------------------------*
 *& Report Z_MODELS_LIST
 *&---------------------------------------------------------------------*
-*& Fetches the list of available models from the Anthropic API
+*& Fetches the list of available models from an LLM provider
 *& (GET /v1/models) and displays them in an ALV grid.
+*& Calls the API directly via create_by_url - no SM59 destination needed.
 *&---------------------------------------------------------------------*
 REPORT z_models_list.
 
-PARAMETERS: p_dest   TYPE rfcdest OBLIGATORY,            " RFC destination (SM59)
-            p_apikey TYPE string  LOWER CASE OBLIGATORY, " API key
-            p_anth   RADIOBUTTON GROUP prov DEFAULT 'X',  " Anthropic
-            p_oai    RADIOBUTTON GROUP prov.              " OpenAI
+PARAMETERS: p_url   TYPE string LOWER CASE OBLIGATORY
+                    DEFAULT 'https://api.anthropic.com/v1/models',
+            p_apikey TYPE string LOWER CASE OBLIGATORY,        " API key
+            p_anth  RADIOBUTTON GROUP prov DEFAULT 'X',        " Anthropic auth/parsing
+            p_oai   RADIOBUTTON GROUP prov,                    " OpenAI-compatible auth/parsing
+            p_pxhost TYPE string LOWER CASE,                   " optional proxy host
+            p_pxport TYPE string LOWER CASE,                   " optional proxy service/port
+            p_sslid TYPE ssfapplssl DEFAULT 'ANONYM'.          " SSL client identity (STRUST)
 
 *&---------------------------------------------------------------------*
 *& Local class: thin wrapper around the /v1/models endpoint
@@ -25,14 +30,17 @@ CLASS lcl_models DEFINITION.
            END OF ty_model,
            tt_model TYPE STANDARD TABLE OF ty_model WITH DEFAULT KEY.
 
-    " Calls GET /v1/models; returns parsed models or fills e_error.
+    " Calls GET <i_url> directly (create_by_url, no SM59).
     " i_openai = 'X' switches auth/parsing to OpenAI, otherwise Anthropic.
     CLASS-METHODS fetch
-      IMPORTING i_dest    TYPE rfcdest
-                i_apikey  TYPE string
-                i_openai  TYPE abap_bool DEFAULT abap_false
-      EXPORTING et_models TYPE tt_model
-                e_error   TYPE string.
+      IMPORTING i_url       TYPE string
+                i_apikey    TYPE string
+                i_openai    TYPE abap_bool   DEFAULT abap_false
+                i_ssl_id    TYPE ssfapplssl  DEFAULT 'ANONYM'
+                i_proxy_host TYPE string     OPTIONAL
+                i_proxy_svc  TYPE string     OPTIONAL
+      EXPORTING et_models   TYPE tt_model
+                e_error     TYPE string.
 ENDCLASS.
 
 CLASS lcl_models IMPLEMENTATION.
@@ -40,27 +48,21 @@ CLASS lcl_models IMPLEMENTATION.
 
     DATA lo_client TYPE REF TO if_http_client.
 
-    cl_http_client=>create_by_destination(
-      EXPORTING  destination           = i_dest
-      IMPORTING  client                = lo_client
-      EXCEPTIONS destination_not_found = 1
-                 OTHERS                = 2 ).
+    cl_http_client=>create_by_url(
+      EXPORTING  url                = i_url
+                 ssl_id             = i_ssl_id
+                 proxy_host         = i_proxy_host
+                 proxy_service      = i_proxy_svc
+      IMPORTING  client             = lo_client
+      EXCEPTIONS argument_not_found = 1
+                 plugin_not_active  = 2
+                 internal_error     = 3
+                 OTHERS             = 4 ).
     IF sy-subrc <> 0.
-      e_error = |Destination { i_dest } not found (check SM59)|.
+      e_error = |create_by_url failed rc={ sy-subrc } (check URL / SSL in STRUST)|.
       RETURN.
     ENDIF.
 
-    " The SM59 destination usually carries a path prefix (e.g. /v1/messages),
-    " which ICF prepends. Read the resolved URI and point it at the models
-    " endpoint: swap a "messages" segment for "models", else fall back to
-    " /v1/models for a host-only destination.
-    DATA(lv_uri) = lo_client->request->get_header_field( name = '~request_uri' ).
-    IF lv_uri CS 'messages'.
-      REPLACE ALL OCCURRENCES OF 'messages' IN lv_uri WITH 'models'.
-    ELSE.
-      lv_uri = '/v1/models'.
-    ENDIF.
-    lo_client->request->set_header_field( name = '~request_uri' value = lv_uri ).
     lo_client->request->set_method( 'GET' ).
     IF i_openai = abap_true.
       lo_client->request->set_header_field( name = 'Authorization' value = |Bearer { i_apikey }| ).
@@ -72,9 +74,6 @@ CLASS lcl_models IMPLEMENTATION.
     " Suppress the SAP logon popup so a 401/403 returns the JSON body instead
     " of prompting the user for a password.
     lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
-
-    " Diagnostic: capture the URI actually being sent.
-    DATA(lv_sent_uri) = lo_client->request->get_header_field( name = '~request_uri' ).
 
     lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
@@ -90,7 +89,8 @@ CLASS lcl_models IMPLEMENTATION.
 
     DATA(lv_json) = lo_client->response->get_cdata( ).
 
-    " Response shape: { "data": [ { "type":"model","id":..,"display_name":..,"created_at":.. } ], ... }
+    " Response shape (both Anthropic and OpenAI-compatible):
+    "   { "data": [ { "id":.., "display_name":.., ... } ], ... }
     TYPES: BEGIN OF ty_res,
              data TYPE tt_model,
            END OF ty_res.
@@ -98,8 +98,8 @@ CLASS lcl_models IMPLEMENTATION.
     /ui2/cl_json=>deserialize( EXPORTING json = lv_json CHANGING data = ls_res ).
 
     IF ls_res-data IS INITIAL.
-      DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 200 ).
-      e_error = |URI=[{ lv_sent_uri }] resp: { lv_json(lv_len) }|.
+      DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 300 ).
+      e_error = |Empty / unexpected response: { lv_json(lv_len) }|.
       RETURN.
     ENDIF.
 
@@ -115,10 +115,14 @@ START-OF-SELECTION.
         lv_error  TYPE string.
 
   lcl_models=>fetch(
-    EXPORTING i_dest    = p_dest
-              i_apikey  = p_apikey
-    IMPORTING et_models = lt_models
-              e_error   = lv_error ).
+    EXPORTING i_url        = p_url
+              i_apikey     = p_apikey
+              i_openai     = p_oai
+              i_ssl_id     = p_sslid
+              i_proxy_host = p_pxhost
+              i_proxy_svc  = p_pxport
+    IMPORTING et_models    = lt_models
+              e_error      = lv_error ).
 
   IF lv_error IS NOT INITIAL.
     MESSAGE lv_error TYPE 'I'.
