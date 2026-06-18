@@ -43,7 +43,17 @@ CLASS zcl_ai_tool_factory IMPLEMENTATION.
 
   METHOD initialize.
 
+    " The registry is CLASS-DATA and survives across program runs in the same
+    " session. Tool instances cache the context (and its LLM client) handed to
+    " them on first init. If we just returned here, a later run with a different
+    " provider/key (e.g. switching OpenAI -> Anthropic) would leave the tools
+    " pointing at the OLD client - their internal ask() calls would then use the
+    " wrong auth (e.g. Bearer for Anthropic -> "Invalid bearer token"). So on a
+    " repeat call, re-point every cached tool at the current context.
     IF mv_initialized = abap_true.
+      LOOP AT mt_registry INTO DATA(ls_existing).
+        ls_existing-instance->init( io_context ).
+      ENDLOOP.
       RETURN.
     ENDIF.
 

@@ -334,7 +334,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       io_llm     = mo_llm
       io_context = mo_tool_context
       io_ui      = me
-      i_log_path = i_log_path ).
+      i_log_path = i_log_path
+      i_provider = i_provider ).
 
   endmethod.
 

@@ -102,10 +102,12 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_max_tokens       = mv_max_tokens
         i_thinking_budget  = mv_thinking_budget
       IMPORTING
-        ev_tok_in     = mv_last_tok_in
-        ev_tok_out    = mv_last_tok_out
-        ev_tok_cached = mv_last_tok_cached
-        ev_thinking   = mv_last_thinking ).
+        ev_tok_in       = mv_last_tok_in
+        ev_tok_out      = mv_last_tok_out
+        ev_tok_cached   = mv_last_tok_cached
+        ev_thinking     = mv_last_thinking
+        ev_raw_request  = mv_last_raw_request
+        ev_raw_response = mv_last_raw_response ).
 
     GET RUN TIME FIELD mv_end.
     mv_elapsed = ( mv_end - mv_start ) / 1000000.

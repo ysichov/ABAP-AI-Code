@@ -234,6 +234,10 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     o_client->request->set_method( 'POST' ).
     o_client->request->set_cdata( payload ).
 
+    " Suppress the SAP logon popup so a 401/403 returns the JSON error body
+    " instead of prompting the user for a user name / password.
+    o_client->propertytype_logon_popup = if_http_client=>co_disabled.
+
     o_client->send(
       EXCEPTIONS http_communication_failure = 1
                  OTHERS                     = 5 ).

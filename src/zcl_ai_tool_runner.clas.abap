@@ -11,7 +11,8 @@ CLASS zcl_ai_tool_runner DEFINITION
         !io_context    TYPE REF TO zcl_ai_tool_context
         !io_prompts    TYPE REF TO zcl_ai_agents_prompts OPTIONAL
         !io_ui         TYPE REF TO zcl_code_popup2 OPTIONAL
-        !i_log_path    TYPE string OPTIONAL.
+        !i_log_path    TYPE string OPTIONAL
+        !i_provider    TYPE string OPTIONAL.
 
     " Agentic loop: LLM -> tool_calls -> execute -> results back -> LLM ...
     " Ends when the LLM answers without tool calls or c_max_iterations is hit.
@@ -65,6 +66,9 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mv_review_pending TYPE abap_bool.
     DATA mv_user_prompt TYPE string.
     DATA mv_log_path    TYPE string.
+    " Per-session log folder (<log_path>/<date>_<time>), created once. All log
+    " files for the session live here, so their names carry no date.
+    DATA mv_log_dir     TYPE string.
 
     METHODS write_log_file
       IMPORTING
@@ -72,6 +76,9 @@ CLASS zcl_ai_tool_runner DEFINITION
         !i_content TYPE string
         !i_ext     TYPE string DEFAULT 'json'
         !i_step    TYPE i      DEFAULT 0.
+
+    " Appends one token-budget row per question to <log_dir>/_tokens.md.
+    METHODS write_session_tokens.
 
     " Returns a corrective message when delete_sap_object is mis-used for a
     " partial deletion (a form, method, comment, line - it should be a modify),
@@ -135,6 +142,34 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     mo_ui       = io_ui.
     mv_log_path = i_log_path.
     zcl_ai_tool_factory=>initialize( io_context ).
+
+    " Log folder layout: <log_path>/<PROVIDER>/<date>_<time>. The provider split
+    " matters for separate token accounting (esp. Anthropic). Files inside drop
+    " the date prefix (the folder already carries it).
+    IF mv_log_path IS NOT INITIAL.
+      DATA lv_base TYPE string.
+      lv_base = mv_log_path.
+      IF NOT ( lv_base CP '*/' OR lv_base CP '*\' ).
+        lv_base = mv_log_path && '/'.
+      ENDIF.
+
+      DATA(lv_provider) = i_provider.
+      TRANSLATE lv_provider TO UPPER CASE.
+      IF lv_provider IS INITIAL.
+        lv_provider = 'ANTHROPIC'.
+      ENDIF.
+
+      " Create the provider folder first, then the per-session folder under it.
+      DATA(lv_prov_dir) = |{ lv_base }{ lv_provider }|.
+      cl_gui_frontend_services=>directory_create(
+        EXPORTING  directory = lv_prov_dir
+        EXCEPTIONS OTHERS    = 1 ).
+
+      mv_log_dir = |{ lv_prov_dir }/{ sy-datum }_{ sy-uzeit }|.
+      cl_gui_frontend_services=>directory_create(
+        EXPORTING  directory = mv_log_dir
+        EXCEPTIONS OTHERS    = 1 ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -320,6 +355,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       IF lt_calls IS INITIAL.
         rv_answer = lv_answer.
         APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
+        write_session_tokens( ).
         RETURN.
       ENDIF.
 
@@ -367,6 +403,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         " Tool error - show it directly, do not feed back to LLM
         IF lv_result CP 'Error:*'.
           rv_answer = |Tool { ls_call-name }: { lv_result }|.
+          write_session_tokens( ).
           RETURN.
         ENDIF.
 
@@ -382,6 +419,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " is driven by the diff toolbar (approve/decline) from here on.
       IF mv_review_pending = abap_true.
         rv_answer = lv_results.
+        write_session_tokens( ).
         RETURN.
       ENDIF.
 
@@ -397,6 +435,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     ENDDO.
 
     rv_answer = |Error: tool loop did not finish within { c_max_iterations } iterations.|.
+    write_session_tokens( ).
 
   ENDMETHOD.
 
@@ -819,34 +858,24 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
 
   METHOD write_log_file.
-    " Write i_content to mv_log_path\YYYYMMDD_HHMMSS_<session>_<i_suffix>.json
-    " on the presentation server using GUI_DOWNLOAD (UTF-8, no transfer dialog).
-    IF mv_log_path IS INITIAL OR i_content IS INITIAL.
+    " Write i_content to <log_dir>/<time>_<session><step>_<suffix>.<ext> on the
+    " presentation server via GUI_DOWNLOAD (UTF-8). The date lives in the folder
+    " name (mv_log_dir), so it is not repeated in the file name.
+    IF mv_log_dir IS INITIAL OR i_content IS INITIAL.
       RETURN.
     ENDIF.
 
-    DATA(lv_date) = CONV string( sy-datum ).
     DATA lv_time TYPE string.
     DATA(lv_h)  = sy-uzeit(2).
     DATA(lv_m)  = sy-uzeit+2(2).
     DATA(lv_s)  = sy-uzeit+4(2).
     lv_time = |{ lv_h }{ lv_m }{ lv_s }|.
 
-    DATA lv_sep TYPE string.
-    lv_sep = mv_log_path.
-    IF NOT ( lv_sep CP '*/' OR lv_sep CP '*\' ).
-      lv_sep = mv_log_path && '/'.
-    ENDIF.
-
     DATA lv_step_part TYPE string.
     IF i_step > 0.
       lv_step_part = |_{ i_step }|.
     ENDIF.
-    DATA(lv_filename) = lv_sep
-                     && lv_date && '_' && lv_time
-                     && '_' && mv_session_num
-                     && lv_step_part
-                     && '_' && i_suffix && '.' && i_ext.
+    DATA(lv_filename) = |{ mv_log_dir }/{ lv_time }_{ mv_session_num }{ lv_step_part }_{ i_suffix }.{ i_ext }|.
 
     DATA lt_data TYPE TABLE OF string.
     DATA(lv_norm) = i_content.
@@ -863,6 +892,47 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         show_transfer_status = ' '
       CHANGING
         data_tab             = lt_data
+      EXCEPTIONS
+        OTHERS               = 1 ).
+
+  ENDMETHOD.
+
+
+  METHOD write_session_tokens.
+    " One running token-budget file per session. Each finished question appends
+    " a row with its totals (the date is in the folder name).
+    IF mv_log_dir IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_total) = mv_total_tok_in + mv_total_tok_out.
+    DATA(lv_time)  = |{ sy-uzeit(2) }:{ sy-uzeit+2(2) }:{ sy-uzeit+4(2) }|.
+
+    " Keep the question short and on one line for the row.
+    DATA(lv_q) = mv_user_prompt.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf  IN lv_q WITH ' '.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_q WITH ' '.
+    IF strlen( lv_q ) > 60.
+      lv_q = lv_q(60).
+    ENDIF.
+
+    DATA lt_row TYPE TABLE OF string.
+    APPEND |{ lv_time } | &&
+           |in:{ mv_total_tok_in } out:{ mv_total_tok_out } | &&
+           |cached:{ mv_total_tok_cached } total:{ lv_total } | &&
+           |{ mv_total_seconds }s | &&
+           |{ lv_q }| TO lt_row.
+
+    cl_gui_frontend_services=>gui_download(
+      EXPORTING
+        filename             = |{ mv_log_dir }/_tokens.md|
+        filetype             = 'ASC'
+        codepage             = '4110'
+        append               = 'X'
+        confirm_overwrite    = ' '
+        show_transfer_status = ' '
+      CHANGING
+        data_tab             = lt_row
       EXCEPTIONS
         OTHERS               = 1 ).
 
