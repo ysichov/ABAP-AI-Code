@@ -1,72 +1,107 @@
 *&---------------------------------------------------------------------*
 *& Report Z_MODELS_LIST
 *&---------------------------------------------------------------------*
-*& Список доступных моделей Anthropic API
+*& Fetches the list of available models from the Anthropic API
+*& (GET /v1/models) and displays them in an ALV grid.
 *&---------------------------------------------------------------------*
-
 REPORT z_models_list.
 
-DATA: lt_models TYPE TABLE OF LINE,
-      ls_model  TYPE LINE.
+PARAMETERS: p_dest   TYPE rfcdest OBLIGATORY,           " RFC destination (SM59) -> api.anthropic.com
+            p_apikey TYPE string  LOWER CASE OBLIGATORY. " Anthropic API key
 
-TYPES: BEGIN OF ty_model,
-         model_id   TYPE string,
-         name       TYPE string,
-         max_tokens TYPE i,
-         released   TYPE string,
-       END OF ty_model.
+*&---------------------------------------------------------------------*
+*& Local class: thin wrapper around the /v1/models endpoint
+*&---------------------------------------------------------------------*
+CLASS lcl_models DEFINITION.
+  PUBLIC SECTION.
+    TYPES: BEGIN OF ty_model,
+             id           TYPE string,
+             display_name TYPE string,
+             created_at   TYPE string,
+           END OF ty_model,
+           tt_model TYPE STANDARD TABLE OF ty_model WITH DEFAULT KEY.
 
-DATA: lt_model_data TYPE TABLE OF ty_model,
-      ls_model_data TYPE ty_model.
+    " Calls GET /v1/models; returns parsed models or fills e_error.
+    CLASS-METHODS fetch
+      IMPORTING i_dest    TYPE rfcdest
+                i_apikey  TYPE string
+      EXPORTING et_models TYPE tt_model
+                e_error   TYPE string.
+ENDCLASS.
 
+CLASS lcl_models IMPLEMENTATION.
+  METHOD fetch.
+
+    DATA lo_client TYPE REF TO if_http_client.
+
+    cl_http_client=>create_by_destination(
+      EXPORTING  destination           = i_dest
+      IMPORTING  client                = lo_client
+      EXCEPTIONS destination_not_found = 1
+                 OTHERS                = 2 ).
+    IF sy-subrc <> 0.
+      e_error = |Destination { i_dest } not found (check SM59)|.
+      RETURN.
+    ENDIF.
+
+    " Override the path so we hit /v1/models regardless of the SM59 path prefix.
+    cl_http_utility=>set_request_uri( request = lo_client->request
+                                      uri     = '/v1/models' ).
+    lo_client->request->set_method( 'GET' ).
+    lo_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
+    lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
+
+    lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
+    IF sy-subrc <> 0.
+      e_error = 'HTTP send failed'.
+      RETURN.
+    ENDIF.
+
+    lo_client->receive( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
+    IF sy-subrc <> 0.
+      e_error = 'HTTP receive failed'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_json) = lo_client->response->get_cdata( ).
+
+    " Response shape: { "data": [ { "type":"model","id":..,"display_name":..,"created_at":.. } ], ... }
+    TYPES: BEGIN OF ty_res,
+             data TYPE tt_model,
+           END OF ty_res.
+    DATA ls_res TYPE ty_res.
+    /ui2/cl_json=>deserialize( EXPORTING json = lv_json CHANGING data = ls_res ).
+
+    IF ls_res-data IS INITIAL.
+      e_error = |Empty / unexpected response: { lv_json+0(200) }|.
+      RETURN.
+    ENDIF.
+
+    et_models = ls_res-data.
+
+  ENDMETHOD.
+ENDCLASS.
+
+*&---------------------------------------------------------------------*
 START-OF-SELECTION.
 
-  PERFORM fill_models.
-  PERFORM display_models.
+  DATA: lt_models TYPE lcl_models=>tt_model,
+        lv_error  TYPE string.
 
-FORM fill_models.
+  lcl_models=>fetch(
+    EXPORTING i_dest    = p_dest
+              i_apikey  = p_apikey
+    IMPORTING et_models = lt_models
+              e_error   = lv_error ).
 
-  CLEAR lt_model_data.
+  IF lv_error IS NOT INITIAL.
+    MESSAGE lv_error TYPE 'I'.
+    RETURN.
+  ENDIF.
 
-  ls_model_data-model_id = 'claude-opus-4-8'.
-  ls_model_data-name = 'Opus 4.8'.
-  ls_model_data-max_tokens = 20000.
-  ls_model_data-released = '2025-01'.
-  APPEND ls_model_data TO lt_model_data.
-
-  ls_model_data-model_id = 'claude-sonnet-4-6'.
-  ls_model_data-name = 'Sonnet 4.6'.
-  ls_model_data-max_tokens = 200000.
-  ls_model_data-released = '2024-07'.
-  APPEND ls_model_data TO lt_model_data.
-
-  ls_model_data-model_id = 'claude-haiku-4-5-20251001'.
-  ls_model_data-name = 'Haiku 4.5'.
-  ls_model_data-max_tokens = 8000.
-  ls_model_data-released = '2025-10'.
-  APPEND ls_model_data TO lt_model_data.
-
-  ls_model_data-model_id = 'claude-fable-5'.
-  ls_model_data-name = 'Fable 5'.
-  ls_model_data-max_tokens = 4000.
-  ls_model_data-released = '2025'.
-  APPEND ls_model_data TO lt_model_data.
-
-ENDFORM.
-
-FORM display_models.
-
-  WRITE: / 'Anthropic API доступні моделі'.
-  WRITE: / '=' NO-GAP REPEAT 60.
-  ULINE.
-
-  LOOP AT lt_model_data INTO ls_model_data.
-    WRITE: / ls_model_data-model_id,
-             ls_model_data-name,
-             ls_model_data-max_tokens,
-             ls_model_data-released.
-  ENDLOOP.
-
-  ULINE.
-
-ENDFORM.
+  cl_salv_table=>factory(
+    IMPORTING r_salv_table = DATA(lo_alv)
+    CHANGING  t_table      = lt_models ).
+  lo_alv->get_functions( )->set_all( ).
+  lo_alv->get_columns( )->set_optimize( ).
+  lo_alv->display( ).
