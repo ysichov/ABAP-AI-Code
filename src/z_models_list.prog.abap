@@ -7,14 +7,25 @@
 *&---------------------------------------------------------------------*
 REPORT z_models_list.
 
-PARAMETERS: p_url   TYPE string LOWER CASE OBLIGATORY
-                    DEFAULT 'https://api.anthropic.com/v1/models',
+PARAMETERS: p_prov  TYPE c LENGTH 10 AS LISTBOX VISIBLE LENGTH 20
+                    DEFAULT 'ANTHROPIC' USER-COMMAND prov,     " known provider
+            p_url   TYPE string LOWER CASE,                    " optional URL override (else from provider)
             p_apikey TYPE string LOWER CASE OBLIGATORY,        " API key
-            p_anth  RADIOBUTTON GROUP prov DEFAULT 'X',        " Anthropic auth/parsing
-            p_oai   RADIOBUTTON GROUP prov,                    " OpenAI-compatible auth/parsing
             p_pxhost TYPE string LOWER CASE,                   " optional proxy host
             p_pxport TYPE string LOWER CASE,                   " optional proxy service/port
             p_sslid TYPE ssfapplssl DEFAULT 'ANONYM'.          " SSL client identity (STRUST)
+
+*&---------------------------------------------------------------------*
+*& Known providers: code -> ( /v1/models URL, OpenAI-compatible flag )
+*&---------------------------------------------------------------------*
+INITIALIZATION.
+  DATA lt_vrm TYPE vrm_values.
+  lt_vrm = VALUE #( ( key = 'ANTHROPIC' text = 'Anthropic' )
+                    ( key = 'OPENAI'    text = 'OpenAI' )
+                    ( key = 'MISTRAL'   text = 'Mistral' ) ).
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING id     = 'P_PROV'
+              values = lt_vrm.
 
 *&---------------------------------------------------------------------*
 *& Local class: thin wrapper around the /v1/models endpoint
@@ -41,9 +52,29 @@ CLASS lcl_models DEFINITION.
                 i_proxy_svc  TYPE string     OPTIONAL
       EXPORTING et_models   TYPE tt_model
                 e_error     TYPE string.
+
+    " Resolves a provider code to its /v1/models URL and OpenAI-compat flag.
+    CLASS-METHODS provider_defaults
+      IMPORTING i_provider TYPE clike
+      EXPORTING e_url      TYPE string
+                e_openai   TYPE abap_bool.
 ENDCLASS.
 
 CLASS lcl_models IMPLEMENTATION.
+  METHOD provider_defaults.
+    CASE i_provider.
+      WHEN 'OPENAI'.
+        e_url    = 'https://api.openai.com/v1/models'.
+        e_openai = abap_true.
+      WHEN 'MISTRAL'.
+        e_url    = 'https://api.mistral.ai/v1/models'.
+        e_openai = abap_true.       " OpenAI-compatible auth + response shape
+      WHEN OTHERS.                  " ANTHROPIC
+        e_url    = 'https://api.anthropic.com/v1/models'.
+        e_openai = abap_false.
+    ENDCASE.
+  ENDMETHOD.
+
   METHOD fetch.
 
     DATA lo_client TYPE REF TO if_http_client.
@@ -112,12 +143,23 @@ ENDCLASS.
 START-OF-SELECTION.
 
   DATA: lt_models TYPE lcl_models=>tt_model,
-        lv_error  TYPE string.
+        lv_error  TYPE string,
+        lv_url    TYPE string,
+        lv_openai TYPE abap_bool.
+
+  " Provider drives URL + auth/parsing; p_url (if filled) overrides the URL.
+  lcl_models=>provider_defaults(
+    EXPORTING i_provider = p_prov
+    IMPORTING e_url      = lv_url
+              e_openai   = lv_openai ).
+  IF p_url IS NOT INITIAL.
+    lv_url = p_url.
+  ENDIF.
 
   lcl_models=>fetch(
-    EXPORTING i_url        = p_url
+    EXPORTING i_url        = lv_url
               i_apikey     = p_apikey
-              i_openai     = p_oai
+              i_openai     = lv_openai
               i_ssl_id     = p_sslid
               i_proxy_host = p_pxhost
               i_proxy_svc  = p_pxport
