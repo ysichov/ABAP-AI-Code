@@ -83,7 +83,8 @@ CLASS lcl_models IMPLEMENTATION.
     /ui2/cl_json=>deserialize( EXPORTING json = lv_json CHANGING data = ls_res ).
 
     IF ls_res-data IS INITIAL.
-      e_error = |Empty / unexpected response: { lv_json+0(200) }|.
+      DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 200 ).
+      e_error = |Empty / unexpected response: { lv_json(lv_len) }|.
       RETURN.
     ENDIF.
 
