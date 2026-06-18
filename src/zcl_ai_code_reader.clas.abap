@@ -29,15 +29,18 @@ CLASS zcl_ai_code_reader DEFINITION
     CLASS-METHODS read_program
       IMPORTING i_program      TYPE string
                 i_object_type  TYPE string OPTIONAL
+      EXPORTING ev_not_found   TYPE abap_bool
       RETURNING VALUE(rv_text) TYPE string.
 
     CLASS-METHODS read_class
       IMPORTING i_class        TYPE string
+      EXPORTING ev_not_found   TYPE abap_bool
       RETURNING VALUE(rv_text) TYPE string.
 
     CLASS-METHODS read_method
       IMPORTING i_class        TYPE string
                 i_method       TYPE string
+      EXPORTING ev_not_found   TYPE abap_bool
       RETURNING VALUE(rv_text) TYPE string.
 
     " Removes from a read_class( ) text all "--- Method NAME ---" blocks whose
@@ -250,6 +253,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
       ENDIF.
 
       IF lt_tadir IS INITIAL.
+        ev_not_found = abap_true.
         rv_text = |No objects found in TADIR matching { lv_program }.|.
         RETURN.
       ENDIF.
@@ -295,6 +299,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
             permission_error = 3
             OTHERS           = 4.
         IF sy-subrc <> 0.
+          ev_not_found = abap_true.
           rv_text = |Source for program { lv_program } was not found or cannot be read.|.
           IF lv_tadir_object IS NOT INITIAL.
             rv_text = rv_text
@@ -350,6 +355,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
           AND object   = 'CLAS'
           AND obj_name LIKE lv_like
         ORDER BY obj_name.
+      ev_not_found = abap_true.
       IF lt_found IS INITIAL.
         rv_text = |Class { lv_class } was not found.|.
       ELSE.
@@ -433,6 +439,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
           AND object   = 'CLAS'
           AND obj_name LIKE lv_meth_like
         ORDER BY obj_name.
+      ev_not_found = abap_true.
       IF lt_meth_found IS INITIAL.
         rv_text = |Class { lv_class } was not found.|.
       ELSE.
@@ -448,6 +455,7 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
     READ TABLE lt_methods INTO DATA(ls_method)
       WITH KEY cpdkey-cpdname = lv_method.
     IF sy-subrc <> 0.
+      ev_not_found = abap_true.
       rv_text = |Method { lv_class }=>{ lv_method } was not found.|.
       RETURN.
     ENDIF.

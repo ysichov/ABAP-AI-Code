@@ -16,6 +16,8 @@ CLASS zcl_aitool_read DEFINITION
       IMPORTING
         !i_type          TYPE string
         !i_name          TYPE string
+      EXPORTING
+        !ev_not_found    TYPE abap_bool
       RETURNING VALUE(rv_source) TYPE string.
 ENDCLASS.
 
@@ -54,9 +56,19 @@ CLASS zcl_aitool_read IMPLEMENTATION.
       CONDENSE lv_single_name.
       CHECK lv_single_name IS NOT INITIAL.
 
+      DATA lv_not_found TYPE abap_bool.
       DATA(lv_single_source) = read_single(
-        i_type = lv_type
-        i_name = lv_single_name ).
+        EXPORTING i_type       = lv_type
+                  i_name       = lv_single_name
+        IMPORTING ev_not_found = lv_not_found ).
+
+      " The reader signals a missing object explicitly. Do NOT feed "not found"
+      " back to the LLM (it would hallucinate / retry): set error_text so the
+      " tool runner stops the loop and reports straight away.
+      IF lv_not_found = abap_true.
+        rs_result-error_text = |read_sap_object: { lv_type } { lv_single_name } not found|.
+        RETURN.
+      ENDIF.
 
       IF lv_source IS NOT INITIAL.
         lv_source = lv_source
@@ -81,27 +93,33 @@ CLASS zcl_aitool_read IMPLEMENTATION.
   METHOD read_single.
 
     " Wildcard pattern (e.g. ZCL_AITOOL_*): TADIR list via read_program,
-    " which maps CLAS/PROG/FUGR to the right TADIR types
+    " which maps CLAS/PROG/FUGR to the right TADIR types. An empty match sets
+    " ev_not_found too, so the loop stops instead of feeding it back to the LLM.
     IF i_name CA '*+'.
       rv_source = zcl_ai_code_reader=>read_program(
-        i_program     = i_name
-        i_object_type = i_type ).
+        EXPORTING i_program     = i_name
+                  i_object_type = i_type
+        IMPORTING ev_not_found  = ev_not_found ).
       RETURN.
     ENDIF.
 
     CASE i_type.
       WHEN 'CLAS'.
-        rv_source = zcl_ai_code_reader=>read_class( i_name ).
+        rv_source = zcl_ai_code_reader=>read_class(
+          EXPORTING i_class      = i_name
+          IMPORTING ev_not_found = ev_not_found ).
       WHEN 'METH'.
         SPLIT i_name AT '=>' INTO DATA(lv_class) DATA(lv_method).
         rv_source = zcl_ai_code_reader=>read_method(
-          i_class  = lv_class
-          i_method = lv_method ).
+          EXPORTING i_class      = lv_class
+                    i_method     = lv_method
+          IMPORTING ev_not_found = ev_not_found ).
       WHEN OTHERS.
         " PROG / REPS / FUNC and everything else
         rv_source = zcl_ai_code_reader=>read_program(
-          i_program     = i_name
-          i_object_type = i_type ).
+          EXPORTING i_program     = i_name
+                    i_object_type = i_type
+          IMPORTING ev_not_found  = ev_not_found ).
     ENDCASE.
 
   ENDMETHOD.
