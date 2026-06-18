@@ -41,15 +41,17 @@ INITIALIZATION.
   " Populate the model listbox (Anthropic, for now). The key is not yet in
   " p_apikey here (MEMORY ID is applied later), so read it straight from
   " SAP memory under its parameter id 'api'.
-  DATA lv_apikey TYPE string.
+  DATA lv_apikey TYPE text255.
   GET PARAMETER ID 'api' FIELD lv_apikey.
+  DATA lv_key TYPE string.
+  lv_key = lv_apikey.
 
   DATA: lt_ids TYPE stringtab,
         lv_err TYPE string.
-  IF lv_apikey IS NOT INITIAL.
+  IF lv_key IS NOT INITIAL.
     zcl_code_ai_api=>list_models(
       EXPORTING i_url      = 'https://api.anthropic.com/v1/models'
-                i_apikey   = lv_apikey
+                i_apikey   = lv_key
                 i_provider = 'ANTHROPIC'
       IMPORTING et_ids     = lt_ids
                 e_error    = lv_err ).
