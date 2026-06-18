@@ -8,12 +8,13 @@
 REPORT z_models_list.
 
 PARAMETERS: p_prov  TYPE c LENGTH 10 AS LISTBOX VISIBLE LENGTH 20
-                    DEFAULT 'ANTHROPIC' USER-COMMAND prov,     " known provider
+                    DEFAULT 'ANTHROPIC',                       " known provider
             p_url   TYPE string LOWER CASE,                    " optional URL override (else from provider)
             p_apikey TYPE string LOWER CASE OBLIGATORY,        " API key
             p_pxhost TYPE string LOWER CASE,                   " optional proxy host
             p_pxport TYPE string LOWER CASE,                   " optional proxy service/port
-            p_sslid TYPE ssfapplssl DEFAULT 'ANONYM'.          " SSL client identity (STRUST)
+            p_sslid TYPE ssfapplssl DEFAULT 'ANONYM',          " SSL client identity (STRUST)
+            p_latest AS CHECKBOX.                              " show only *-latest aliases
 
 *&---------------------------------------------------------------------*
 *& Known providers: code -> ( /v1/models URL, OpenAI-compatible flag )
@@ -169,6 +170,13 @@ START-OF-SELECTION.
   IF lv_error IS NOT INITIAL.
     MESSAGE lv_error TYPE 'I'.
     RETURN.
+  ENDIF.
+
+  " Optional filter: keep only "*-latest" aliases (drops dated snapshots/dupes).
+  IF p_latest = abap_true.
+    DELETE lt_models WHERE id NP '*-latest'.
+    SORT lt_models BY id.
+    DELETE ADJACENT DUPLICATES FROM lt_models COMPARING id.
   ENDIF.
 
   cl_salv_table=>factory(
