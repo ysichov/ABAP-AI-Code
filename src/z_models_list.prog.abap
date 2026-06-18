@@ -61,6 +61,10 @@ CLASS lcl_models IMPLEMENTATION.
       lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
     ENDIF.
 
+    " Suppress the SAP logon popup so a 401/403 returns the JSON body instead
+    " of prompting the user for a password.
+    lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
+
     lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
       e_error = 'HTTP send failed'.
