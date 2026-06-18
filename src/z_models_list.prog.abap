@@ -6,8 +6,10 @@
 *&---------------------------------------------------------------------*
 REPORT z_models_list.
 
-PARAMETERS: p_dest   TYPE rfcdest OBLIGATORY,           " RFC destination (SM59) -> api.anthropic.com
-            p_apikey TYPE string  LOWER CASE OBLIGATORY. " Anthropic API key
+PARAMETERS: p_dest   TYPE rfcdest OBLIGATORY,            " RFC destination (SM59)
+            p_apikey TYPE string  LOWER CASE OBLIGATORY, " API key
+            p_anth   RADIOBUTTON GROUP prov DEFAULT 'X',  " Anthropic
+            p_oai    RADIOBUTTON GROUP prov.              " OpenAI
 
 *&---------------------------------------------------------------------*
 *& Local class: thin wrapper around the /v1/models endpoint
@@ -16,15 +18,19 @@ CLASS lcl_models DEFINITION.
   PUBLIC SECTION.
     TYPES: BEGIN OF ty_model,
              id           TYPE string,
-             display_name TYPE string,
-             created_at   TYPE string,
+             display_name TYPE string,  " Anthropic
+             created_at   TYPE string,  " Anthropic
+             created      TYPE string,  " OpenAI (unix ts)
+             owned_by     TYPE string,  " OpenAI
            END OF ty_model,
            tt_model TYPE STANDARD TABLE OF ty_model WITH DEFAULT KEY.
 
     " Calls GET /v1/models; returns parsed models or fills e_error.
+    " i_openai = 'X' switches auth/parsing to OpenAI, otherwise Anthropic.
     CLASS-METHODS fetch
       IMPORTING i_dest    TYPE rfcdest
                 i_apikey  TYPE string
+                i_openai  TYPE abap_bool DEFAULT abap_false
       EXPORTING et_models TYPE tt_model
                 e_error   TYPE string.
 ENDCLASS.
@@ -48,8 +54,12 @@ CLASS lcl_models IMPLEMENTATION.
     cl_http_utility=>set_request_uri( request = lo_client->request
                                       uri     = '/v1/models' ).
     lo_client->request->set_method( 'GET' ).
-    lo_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
-    lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
+    IF i_openai = abap_true.
+      lo_client->request->set_header_field( name = 'Authorization' value = |Bearer { i_apikey }| ).
+    ELSE.
+      lo_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
+      lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
+    ENDIF.
 
     lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
