@@ -23,9 +23,9 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_ANTH</KEY>
-     <ENTRY>Anthropic</ENTRY>
-     <LENGTH>17</LENGTH>
+     <KEY>P_PROV</KEY>
+     <ENTRY>Provider</ENTRY>
+     <LENGTH>30</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -38,12 +38,6 @@
      <KEY>P_MODEL</KEY>
      <ENTRY>Model</ENTRY>
      <LENGTH>13</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_OAI</KEY>
-     <ENTRY>OpenAI</ENTRY>
-     <LENGTH>14</LENGTH>
     </item>
     <item>
      <ID>S</ID>

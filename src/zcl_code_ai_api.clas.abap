@@ -12,6 +12,14 @@ public section.
     END OF TY_TOOL_CALL .
   types TT_TOOL_CALLS type STANDARD TABLE OF TY_TOOL_CALL WITH NON-UNIQUE DEFAULT KEY .
 
+  " Provider base URL for direct create_by_url calls (no SM59 destination).
+  " ANTHROPIC -> api.anthropic.com, OPENAI -> api.openai.com,
+  " MISTRAL -> api.mistral.ai. The endpoint path is appended by the caller.
+  class-methods BASE_URL
+    importing
+      !I_PROVIDER type STRING
+    returning
+      value(RV_URL) type STRING .
   " Lists available models via GET <i_url> (direct create_by_url, no SM59).
   " I_PROVIDER selects the auth header: ANTHROPIC -> x-api-key + version,
   " anything else -> Authorization: Bearer. Response "data[].id" -> ET_IDS.
@@ -53,14 +61,6 @@ public section.
 protected section.
 private section.
 
-  " Provider base URL for direct create_by_url calls (no SM59 destination).
-  " ANTHROPIC -> api.anthropic.com, OPENAI -> api.openai.com,
-  " MISTRAL -> api.mistral.ai. The endpoint path is appended by the caller.
-  class-methods BASE_URL
-    importing
-      !I_PROVIDER type STRING
-    returning
-      value(RV_URL) type STRING .
   class-methods BUILD_PAYLOAD
     importing
       !I_PROMPT type STRING

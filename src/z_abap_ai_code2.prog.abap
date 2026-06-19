@@ -14,16 +14,21 @@ REPORT z_abap_ai_code2.
 
 DATA go_popup TYPE REF TO zcl_code_popup2.
 
-" Set once the model listbox has been filled, so the live /v1/models call
-" fires only once - not on every screen refresh. (The key is not needed for
-" the models endpoint.)
-DATA gv_models_loaded TYPE abap_bool.
+" Provider key codes for the listbox; also passed straight to the API as the
+" provider name (already upper-case, no provider_of() mapping needed).
+TYPES ty_prov TYPE c LENGTH 12.
+
+" Remembers the provider+key the model list was built for, so the live
+" /v1/models call fires only when provider or key changes - not on every Enter.
+DATA gv_loaded_key TYPE string.
+" Cached model listbox values - re-applied on every PBO so the list persists
+" across screen round-trips (e.g. toggling the thinking checkbox).
+DATA gt_model_vrm TYPE vrm_values.
 
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
-PARAMETERS: p_anth RADIOBUTTON GROUP api USER-COMMAND prov,
-            p_oai  RADIOBUTTON GROUP api DEFAULT 'X'.
-
-PARAMETERS: p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
+PARAMETERS: p_prov   TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
+                     USER-COMMAND prov DEFAULT 'ANTHROPIC',
+            p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api,
             p_tools  TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.2',
@@ -45,33 +50,38 @@ INITIALIZATION.
     TABLES     p_exclude = lt_excl.
 
 AT SELECTION-SCREEN OUTPUT.
-  " Populate the model listbox live (Anthropic, for now). The /v1/models
-  " endpoint does not need the key, so fetch as soon as Anthropic is chosen.
-  " Fires only once (cached in gv_models_loaded) - plain Enter does not re-hit
-  " the API.
-  IF p_anth = 'X' AND gv_models_loaded = abap_false.
+  " Provider listbox values must be (re)set on every PBO, otherwise they are
+  " lost after a round-trip and the selection does not stick. The text shows
+  " the base URL the provider resolves to.
+  DATA lt_prov TYPE vrm_values.
+  lt_prov = VALUE #(
+    ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
+    ( key = 'OPENAI'    text = 'https://api.openai.com' ) ).
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING id     = 'P_PROV'
+              values = lt_prov.
+
+  " Re-fetch the model list live only when provider or key changed; otherwise
+  " reuse the cached list. Re-fetch is skipped on plain Enter (state unchanged).
+  DATA(lv_state) = |{ p_prov }\|{ p_apikey }|.
+  IF p_apikey IS NOT INITIAL AND gv_loaded_key <> lv_state.
 
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
     zcl_code_ai_api=>list_models(
-      EXPORTING i_url      = 'https://api.anthropic.com/v1/models'
+      EXPORTING i_url      = |{ zcl_code_ai_api=>base_url( CONV string( p_prov ) ) }/v1/models|
                 i_apikey   = CONV string( p_apikey )
-                i_provider = 'ANTHROPIC'
+                i_provider = CONV string( p_prov )
       IMPORTING et_ids     = lt_ids
                 e_error    = lv_err ).
 
-    " Only fill the listbox if the live call returned something. On failure
-    " leave it empty (no static defaults) and retry on the next refresh.
-    IF lt_ids IS NOT INITIAL.
-      DATA lt_vrm TYPE vrm_values.
-      LOOP AT lt_ids INTO DATA(lv_id).
-        APPEND VALUE #( key = lv_id text = lv_id ) TO lt_vrm.
-      ENDLOOP.
-      CALL FUNCTION 'VRM_SET_VALUES'
-        EXPORTING id     = 'P_MODEL'
-                  values = lt_vrm.
+    CLEAR gt_model_vrm.
+    LOOP AT lt_ids INTO DATA(lv_id).
+      APPEND VALUE #( key = lv_id text = lv_id ) TO gt_model_vrm.
+    ENDLOOP.
 
-      " Default to a haiku model when nothing valid is selected yet.
+    IF lt_ids IS NOT INITIAL.
+      " Default to a haiku model when the current one is not in the new list.
       IF p_model IS INITIAL OR NOT line_exists( lt_ids[ table_line = p_model ] ).
         CLEAR p_model.
         LOOP AT lt_ids INTO lv_id WHERE table_line CS 'haiku'.
@@ -82,17 +92,21 @@ AT SELECTION-SCREEN OUTPUT.
           p_model = lt_ids[ 1 ].
         ENDIF.
       ENDIF.
-
-      gv_models_loaded = abap_true.
+      " Remember the loaded state only on success, so a failed call is retried.
+      gv_loaded_key = lv_state.
+    ELSE.
+      " Fetch failed / empty: clear the stale model and surface the error.
+      CLEAR p_model.
+      IF lv_err IS NOT INITIAL.
+        MESSAGE lv_err TYPE 'W'.
+      ENDIF.
     ENDIF.
-  ELSEIF p_anth <> 'X'.
-    " Not Anthropic: clear the leftover Anthropic list and force a reload when
-    " Anthropic is selected again.
-    CALL FUNCTION 'VRM_SET_VALUES'
-      EXPORTING id     = 'P_MODEL'
-                values = VALUE vrm_values( ).
-    CLEAR: p_model, gv_models_loaded.
   ENDIF.
+
+  " Model listbox values, like the provider list, must be set on every PBO.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING id     = 'P_MODEL'
+              values = gt_model_vrm.
 
 AT SELECTION-SCREEN.
   CHECK sy-ucomm IS INITIAL OR sy-ucomm = 'UCCHECK'.
@@ -106,12 +120,12 @@ AT SELECTION-SCREEN.
   go_popup = NEW zcl_code_popup2(
     i_model       = p_model
     i_apikey      = CONV string( p_apikey )
-    i_provider    = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
+    i_provider    = CONV string( p_prov )
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp )
     i_max_tokens  = COND i( WHEN p_nomax = 'X' THEN 0 ELSE p_maxt )
     " Extended thinking only applies to Anthropic; 0 = off.
-    i_thinking_budget = COND i( WHEN p_think = 'X' AND p_anth = 'X' THEN p_thbud ELSE 0 )
+    i_thinking_budget = COND i( WHEN p_think = 'X' AND p_prov = 'ANTHROPIC' THEN p_thbud ELSE 0 )
     i_log_path    = CONV string( p_log ) ).
 
   go_popup->show( ).
