@@ -61,6 +61,14 @@ public section.
 protected section.
 private section.
 
+  " Canonical wire format for a provider: ANTHROPIC stays ANTHROPIC, everything
+  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Selects the
+  " payload shape and auth header, while BASE_URL keeps the real host per provider.
+  class-methods PROVIDER_OF
+    importing
+      !I_PROVIDER type STRING
+    returning
+      value(RV_PROVIDER) type STRING .
   class-methods BUILD_PAYLOAD
     importing
       !I_PROMPT type STRING
@@ -130,6 +138,15 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
                        WHEN 'MISTRAL' THEN 'https://api.mistral.ai'
                        WHEN 'OPENAI'  THEN 'https://api.openai.com'
                        ELSE 'https://api.anthropic.com' ).
+
+  endmethod.
+
+
+  method PROVIDER_OF.
+
+    DATA(lv_prov) = i_provider.
+    TRANSLATE lv_prov TO UPPER CASE.
+    rv_provider = COND #( WHEN lv_prov = 'ANTHROPIC' THEN 'ANTHROPIC' ELSE 'OPENAI' ).
 
   endmethod.
 
@@ -217,12 +234,18 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_provider = 'ANTHROPIC'.
     ENDIF.
 
+    " Raw provider (lv_provider) selects the host (api.anthropic / openai /
+    " mistral). The canonical wire format (lv_wire) is ANTHROPIC or OPENAI and
+    " drives the payload shape, auth header and response parsing - Mistral and
+    " any other OpenAI-compatible provider map to OPENAI here.
+    DATA(lv_wire) = provider_of( lv_provider ).
+
     payload = build_payload(
       i_prompt           = i_prompt
       i_system_prompt    = i_system_prompt
       it_history         = it_history
       i_model            = i_model
-      i_provider         = lv_provider
+      i_provider         = lv_wire
       i_prompt_cache_key = i_prompt_cache_key
       i_json_schema      = i_json_schema
       i_temperature      = i_temperature
@@ -233,7 +256,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     " Build the endpoint URL directly from the provider - no SM59 destination.
     " Anthropic: /v1/messages ; OpenAI-compatible (OpenAI/Mistral): /v1/chat/completions
     DATA(lv_url) = base_url( lv_provider ) &&
-      COND string( WHEN lv_provider = 'ANTHROPIC'
+      COND string( WHEN lv_wire = 'ANTHROPIC'
                    THEN '/v1/messages'
                    ELSE '/v1/chat/completions' ).
 
@@ -248,7 +271,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     ENDIF.
 
     o_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
-    IF lv_provider = 'OPENAI'.
+    IF lv_wire = 'OPENAI'.
       lv_auth = i_apikey.
       IF lv_auth CP 'Bearer *' OR lv_auth CP 'bearer *'.
         o_client->request->set_header_field( name = 'Authorization' value = lv_auth ).
@@ -295,7 +318,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     rv_answer = parse_response(
       EXPORTING
         i_json     = lv_response
-        i_provider = lv_provider
+        i_provider = lv_wire
       IMPORTING
         ev_tok_in     = ev_tok_in
         ev_tok_out    = ev_tok_out

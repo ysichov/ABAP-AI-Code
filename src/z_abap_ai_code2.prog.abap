@@ -56,7 +56,8 @@ AT SELECTION-SCREEN OUTPUT.
   DATA lt_prov TYPE vrm_values.
   lt_prov = VALUE #(
     ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
-    ( key = 'OPENAI'    text = 'https://api.openai.com' ) ).
+    ( key = 'OPENAI'    text = 'https://api.openai.com' )
+    ( key = 'MISTRAL'   text = 'https://api.mistral.ai' ) ).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = lt_prov.
