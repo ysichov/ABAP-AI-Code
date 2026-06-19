@@ -17,6 +17,7 @@ DATA go_popup TYPE REF TO zcl_code_popup2.
 " Provider key codes for the listbox; also passed straight to the API as the
 " provider name (already upper-case, no provider_of() mapping needed).
 TYPES ty_prov TYPE c LENGTH 12.
+TYPES ty_name TYPE c LENGTH 30.
 
 " Remembers the provider+key the model list was built for, so the live
 " /v1/models call fires only when provider or key changes - not on every Enter.
@@ -28,7 +29,7 @@ DATA gt_model_vrm TYPE vrm_values.
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_prov   TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
                      USER-COMMAND prov DEFAULT 'ANTHROPIC',
-            p_name   TYPE c LENGTH 30 AS LISTBOX VISIBLE LENGTH 30
+            p_name   TYPE ty_name AS LISTBOX VISIBLE LENGTH 30
                      USER-COMMAND keys,
             p_pwd    TYPE text255,
             p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
