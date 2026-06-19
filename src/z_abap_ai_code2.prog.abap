@@ -96,7 +96,7 @@ AT SELECTION-SCREEN OUTPUT.
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
     zcl_code_ai_api=>list_models(
-      EXPORTING i_url      = |{ zcl_code_ai_api=>base_url( CONV string( p_prov ) ) }/v1/models|
+      EXPORTING i_url      = |{ zcl_code_ai_api=>base_url( CONV string( p_prov ) ) }/models|
                 i_apikey   = lv_apikey
                 i_provider = CONV string( p_prov )
       IMPORTING et_ids     = lt_ids

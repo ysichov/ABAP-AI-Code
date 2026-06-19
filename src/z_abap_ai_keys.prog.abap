@@ -31,9 +31,10 @@ INITIALIZATION.
   SELECT SINGLE @abap_true FROM zaicode_provider INTO @DATA(lv_exists).
   IF sy-subrc <> 0.
     INSERT zaicode_provider FROM TABLE @( VALUE #(
-      ( provider = 'ANTHROPIC' url = 'https://api.anthropic.com' anthropic = abap_true )
-      ( provider = 'OPENAI'    url = 'https://api.openai.com' )
-      ( provider = 'MISTRAL'   url = 'https://api.mistral.ai' ) ) ).
+      ( provider = 'ANTHROPIC' url = 'https://api.anthropic.com/v1' anthropic = abap_true )
+      ( provider = 'OPENAI'    url = 'https://api.openai.com/v1' )
+      ( provider = 'MISTRAL'   url = 'https://api.mistral.ai/v1' )
+      ( provider = 'GEMINI'    url = 'https://generativelanguage.googleapis.com/v1beta/openai' ) ) ).
     IF sy-subrc = 0.
       COMMIT WORK.
     ENDIF.

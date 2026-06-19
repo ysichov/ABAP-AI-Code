@@ -12,22 +12,23 @@ public section.
     END OF TY_TOOL_CALL .
   types TT_TOOL_CALLS type STANDARD TABLE OF TY_TOOL_CALL WITH NON-UNIQUE DEFAULT KEY .
 
-  " Provider base URL for direct create_by_url calls (no SM59 destination).
-  " ANTHROPIC -> api.anthropic.com, OPENAI -> api.openai.com,
-  " MISTRAL -> api.mistral.ai. The endpoint path is appended by the caller.
+  " Provider base URL including the version segment (e.g. api.openai.com/v1,
+  " api.anthropic.com/v1, Google's generativelanguage.googleapis.com/v1beta/openai).
+  " Read from ZAICODE_PROVIDER; the resource path (/messages, /chat/completions,
+  " /models) is appended by the caller. No SM59 destination involved.
   class-methods BASE_URL
     importing
       !I_PROVIDER type STRING
     returning
       value(RV_URL) type STRING .
-  " Listbox (VRM) values for the provider dropdown, filled from the customizing
-  " table ZAICODE_PROVIDER (falls back to the built-in providers when empty).
+  " Listbox (VRM) values for the provider dropdown - solely from the customizing
+  " table ZAICODE_PROVIDER (empty when the table has no rows).
   class-methods GET_PROVIDERS
     returning
       value(RT_VALUES) type VRM_VALUES .
   " Canonical wire format for a provider: ANTHROPIC stays ANTHROPIC, everything
-  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Driven by the
-  " ANTHROPIC flag in ZAICODE_PROVIDER (falls back to the name).
+  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Driven solely by
+  " the ANTHROPIC flag in ZAICODE_PROVIDER.
   class-methods PROVIDER_OF
     importing
       !I_PROVIDER type STRING
@@ -140,19 +141,11 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     DATA(lv_prov) = i_provider.
     TRANSLATE lv_prov TO UPPER CASE.
 
-    " Primary source: the customizing table ZAICODE_PROVIDER (maintained by hand).
+    " Single source of truth: the URL is whatever ZAICODE_PROVIDER holds for the
+    " provider (empty when the row is missing - no built-in fallback).
     SELECT SINGLE url FROM zaicode_provider
       INTO @rv_url
       WHERE provider = @lv_prov.
-    IF sy-subrc = 0 AND rv_url IS NOT INITIAL.
-      RETURN.
-    ENDIF.
-
-    " Fallback for the built-in providers when the table is not yet maintained.
-    rv_url = SWITCH #( lv_prov
-                       WHEN 'MISTRAL' THEN 'https://api.mistral.ai'
-                       WHEN 'OPENAI'  THEN 'https://api.openai.com'
-                       ELSE 'https://api.anthropic.com' ).
 
   endmethod.
 
@@ -163,25 +156,19 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     TRANSLATE lv_prov TO UPPER CASE.
 
     " The ANTHROPIC flag in ZAICODE_PROVIDER decides the wire format: set = the
-    " provider speaks the Anthropic API, unset = OpenAI-compatible.
+    " provider speaks the Anthropic API, unset (or missing) = OpenAI-compatible.
     SELECT SINGLE anthropic FROM zaicode_provider
       INTO @DATA(lv_anth)
       WHERE provider = @lv_prov.
-    IF sy-subrc = 0.
-      rv_provider = COND #( WHEN lv_anth = abap_true THEN 'ANTHROPIC' ELSE 'OPENAI' ).
-      RETURN.
-    ENDIF.
-
-    " Fallback by name when the provider is not in the table.
-    rv_provider = COND #( WHEN lv_prov = 'ANTHROPIC' THEN 'ANTHROPIC' ELSE 'OPENAI' ).
+    rv_provider = COND #( WHEN lv_anth = abap_true THEN 'ANTHROPIC' ELSE 'OPENAI' ).
 
   endmethod.
 
 
   method GET_PROVIDERS.
 
-    " Listbox values for the P_PROV dropdown, filled from ZAICODE_PROVIDER.
-    " key = provider code (stored in the parameter), text = "<provider> <url>".
+    " Listbox values for the P_PROV dropdown - solely from ZAICODE_PROVIDER.
+    " key = provider code (stored in the parameter), text = base URL.
     SELECT provider, url FROM zaicode_provider
       INTO TABLE @DATA(lt_prov)
       ORDER BY provider.
@@ -189,15 +176,6 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       APPEND VALUE #( key  = ls_prov-provider
                       text = ls_prov-url ) TO rt_values.
     ENDLOOP.
-
-    " Fallback to the built-in providers when the table is still empty, so the
-    " dropdown is never blank on a fresh install.
-    IF rt_values IS INITIAL.
-      rt_values = VALUE #(
-        ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
-        ( key = 'OPENAI'    text = 'https://api.openai.com' )
-        ( key = 'MISTRAL'   text = 'https://api.mistral.ai' ) ).
-    ENDIF.
 
   endmethod.
 
@@ -264,6 +242,11 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       APPEND ls-id TO et_ids.
     ENDLOOP.
 
+    " Some providers (e.g. Mistral) list the same model id more than once
+    " (aliases / capability variants) - return a unique, sorted list.
+    SORT et_ids.
+    DELETE ADJACENT DUPLICATES FROM et_ids.
+
     IF et_ids IS INITIAL.
       DATA(lv_len) = nmin( val1 = strlen( lv_json ) val2 = 150 ).
       e_error = |Unexpected response: { lv_json(lv_len) }|.
@@ -304,12 +287,13 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_max_tokens       = i_max_tokens
       i_thinking_budget  = i_thinking_budget ).
 
-    " Build the endpoint URL directly from the provider - no SM59 destination.
-    " Anthropic: /v1/messages ; OpenAI-compatible (OpenAI/Mistral): /v1/chat/completions
+    " Build the endpoint URL: the provider base (already includes the version
+    " segment, e.g. .../v1 or Google's .../v1beta/openai) + the resource path.
+    " Anthropic: /messages ; OpenAI-compatible (OpenAI/Mistral/Gemini): /chat/completions
     DATA(lv_url) = base_url( lv_provider ) &&
       COND string( WHEN lv_wire = 'ANTHROPIC'
-                   THEN '/v1/messages'
-                   ELSE '/v1/chat/completions' ).
+                   THEN '/messages'
+                   ELSE '/chat/completions' ).
 
     cl_http_client=>create_by_url(
       EXPORTING  url    = lv_url
