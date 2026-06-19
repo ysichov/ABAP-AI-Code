@@ -67,9 +67,9 @@ START-OF-SELECTION.
   SELECT provider keyname secret FROM zaicode_apikey
     INTO (lv_prov_e, lv_name_e, lv_secret_e)
     UP TO 1 ROWS
-    WHERE username = sy-uname AND secret <> ''.
+    WHERE username = sy-uname.
   ENDSELECT.
-  IF sy-subrc = 0.
+  IF sy-subrc = 0 AND lv_secret_e IS NOT INITIAL.
     TRY.
         zcl_aicode_crypto=>decrypt(
           i_username = sy-uname
