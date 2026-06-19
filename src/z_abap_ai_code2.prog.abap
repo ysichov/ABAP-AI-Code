@@ -53,14 +53,9 @@ AT SELECTION-SCREEN OUTPUT.
   " Provider listbox values must be (re)set on every PBO, otherwise they are
   " lost after a round-trip and the selection does not stick. The text shows
   " the base URL the provider resolves to.
-  DATA lt_prov TYPE vrm_values.
-  lt_prov = VALUE #(
-    ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
-    ( key = 'OPENAI'    text = 'https://api.openai.com' )
-    ( key = 'MISTRAL'   text = 'https://api.mistral.ai' ) ).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
-              values = lt_prov.
+              values = zcl_code_ai_api=>get_providers( ).
 
   " Re-fetch the model list live only when provider or key changed; otherwise
   " reuse the cached list. Re-fetch is skipped on plain Enter (state unchanged).

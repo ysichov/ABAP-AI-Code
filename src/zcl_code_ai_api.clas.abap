@@ -20,6 +20,11 @@ public section.
       !I_PROVIDER type STRING
     returning
       value(RV_URL) type STRING .
+  " Listbox (VRM) values for the provider dropdown, filled from the customizing
+  " table ZAICODE_PROVIDER (falls back to the built-in providers when empty).
+  class-methods GET_PROVIDERS
+    returning
+      value(RT_VALUES) type VRM_VALUES .
   " Lists available models via GET <i_url> (direct create_by_url, no SM59).
   " I_PROVIDER selects the auth header: ANTHROPIC -> x-api-key + version,
   " anything else -> Authorization: Bearer. Response "data[].id" -> ET_IDS.
@@ -134,6 +139,16 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     DATA(lv_prov) = i_provider.
     TRANSLATE lv_prov TO UPPER CASE.
+
+    " Primary source: the customizing table ZAICODE_PROVIDER (maintained by hand).
+    SELECT SINGLE url FROM zaicode_provider
+      INTO @rv_url
+      WHERE provider = @lv_prov.
+    IF sy-subrc = 0 AND rv_url IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+
+    " Fallback for the built-in providers when the table is not yet maintained.
     rv_url = SWITCH #( lv_prov
                        WHEN 'MISTRAL' THEN 'https://api.mistral.ai'
                        WHEN 'OPENAI'  THEN 'https://api.openai.com'
@@ -146,7 +161,43 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     DATA(lv_prov) = i_provider.
     TRANSLATE lv_prov TO UPPER CASE.
+
+    " The ANTHROPIC flag in ZAICODE_PROVIDER decides the wire format: set = the
+    " provider speaks the Anthropic API, unset = OpenAI-compatible.
+    SELECT SINGLE anthropic FROM zaicode_provider
+      INTO @DATA(lv_anth)
+      WHERE provider = @lv_prov.
+    IF sy-subrc = 0.
+      rv_provider = COND #( WHEN lv_anth = abap_true THEN 'ANTHROPIC' ELSE 'OPENAI' ).
+      RETURN.
+    ENDIF.
+
+    " Fallback by name when the provider is not in the table.
     rv_provider = COND #( WHEN lv_prov = 'ANTHROPIC' THEN 'ANTHROPIC' ELSE 'OPENAI' ).
+
+  endmethod.
+
+
+  method GET_PROVIDERS.
+
+    " Listbox values for the P_PROV dropdown, filled from ZAICODE_PROVIDER.
+    " key = provider code (stored in the parameter), text = "<provider> <url>".
+    SELECT provider, url FROM zaicode_provider
+      INTO TABLE @DATA(lt_prov)
+      ORDER BY provider.
+    LOOP AT lt_prov INTO DATA(ls_prov).
+      APPEND VALUE #( key  = ls_prov-provider
+                      text = |{ ls_prov-provider } { ls_prov-url }| ) TO rt_values.
+    ENDLOOP.
+
+    " Fallback to the built-in providers when the table is still empty, so the
+    " dropdown is never blank on a fresh install.
+    IF rt_values IS INITIAL.
+      rt_values = VALUE #(
+        ( key = 'ANTHROPIC' text = 'ANTHROPIC https://api.anthropic.com' )
+        ( key = 'OPENAI'    text = 'OPENAI https://api.openai.com' )
+        ( key = 'MISTRAL'   text = 'MISTRAL https://api.mistral.ai' ) ).
+    ENDIF.
 
   endmethod.
 

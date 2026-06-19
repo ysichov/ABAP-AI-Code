@@ -26,16 +26,26 @@ PARAMETERS: p_prov TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
             p_pwd2 TYPE text255.
 SELECTION-SCREEN END OF BLOCK b_api.
 
+INITIALIZATION.
+  " Seed the provider customizing table on first use so the dropdown is never
+  " empty. Only runs when the table has no rows yet - later edits are kept.
+  SELECT SINGLE @abap_true FROM zaicode_provider INTO @DATA(lv_exists).
+  IF sy-subrc <> 0.
+    INSERT zaicode_provider FROM TABLE @( VALUE #(
+      ( provider = 'ANTHROPIC' url = 'https://api.anthropic.com' anthropic = abap_true )
+      ( provider = 'OPENAI'    url = 'https://api.openai.com' )
+      ( provider = 'MISTRAL'   url = 'https://api.mistral.ai' ) ) ).
+    IF sy-subrc = 0.
+      COMMIT WORK.
+    ENDIF.
+  ENDIF.
+
 AT SELECTION-SCREEN OUTPUT.
-  " Provider listbox - re-set on every PBO so the selection sticks.
-  DATA lt_prov TYPE vrm_values.
-  lt_prov = VALUE #(
-    ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
-    ( key = 'OPENAI'    text = 'https://api.openai.com' )
-    ( key = 'MISTRAL'   text = 'https://api.mistral.ai' ) ).
+  " Provider listbox - re-set on every PBO so the selection sticks. Filled from
+  " the customizing table ZAICODE_PROVIDER (maintained by hand in SM30/SE16).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
-              values = lt_prov.
+              values = zcl_code_ai_api=>get_providers( ).
 
   " Default the URL to the provider base URL when the user has not typed one.
   IF p_url IS INITIAL.
