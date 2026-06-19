@@ -28,8 +28,10 @@ DATA gt_model_vrm TYPE vrm_values.
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_prov   TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
                      USER-COMMAND prov DEFAULT 'ANTHROPIC',
+            p_name   TYPE c LENGTH 30 AS LISTBOX VISIBLE LENGTH 30
+                     USER-COMMAND keys,
+            p_pwd    TYPE text255,
             p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
-            p_apikey TYPE text255 MEMORY ID api,
             p_tools  TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.2',
             p_maxt   TYPE i       DEFAULT 20000,
@@ -57,16 +59,44 @@ AT SELECTION-SCREEN OUTPUT.
     EXPORTING id     = 'P_PROV'
               values = zcl_code_ai_api=>get_providers( ).
 
-  " Re-fetch the model list live only when provider or key changed; otherwise
-  " reuse the cached list. Re-fetch is skipped on plain Enter (state unchanged).
-  DATA(lv_state) = |{ p_prov }\|{ p_apikey }|.
-  IF p_apikey IS NOT INITIAL AND gv_loaded_key <> lv_state.
+  " Key-name listbox: the encrypted keys this user stored for the provider
+  " (entered via Z_ABAP_AI_KEYS). Only the name is shown - never the key.
+  SELECT keyname FROM zaicode_apikey
+    INTO TABLE @DATA(lt_names)
+    WHERE username = @sy-uname AND provider = @p_prov
+    ORDER BY keyname.
+  DATA lt_name_vrm TYPE vrm_values.
+  LOOP AT lt_names INTO DATA(ls_name).
+    APPEND VALUE #( key = ls_name-keyname text = ls_name-keyname ) TO lt_name_vrm.
+  ENDLOOP.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING id     = 'P_NAME'
+              values = lt_name_vrm.
+  " Default the key name to the first available when none is selected yet.
+  IF p_name IS INITIAL OR NOT line_exists( lt_names[ keyname = p_name ] ).
+    p_name = VALUE #( lt_names[ 1 ]-keyname OPTIONAL ).
+  ENDIF.
+
+  " Re-fetch the model list live only when provider, key name or password
+  " changed; otherwise reuse the cached list (skipped on plain Enter).
+  DATA(lv_state) = |{ p_prov }\|{ p_name }\|{ p_pwd }|.
+  IF p_name IS NOT INITIAL AND p_pwd IS NOT INITIAL AND gv_loaded_key <> lv_state.
+
+    " Decrypt the chosen key with the entered password before listing models.
+    DATA: lv_apikey TYPE string,
+          lv_kerr   TYPE string.
+    PERFORM decrypt_key USING p_prov p_name p_pwd
+                        CHANGING lv_apikey lv_kerr.
+    IF lv_kerr IS NOT INITIAL.
+      CLEAR: gt_model_vrm, p_model, gv_loaded_key.
+      MESSAGE lv_kerr TYPE 'W'.
+    ELSE.
 
     DATA: lt_ids TYPE stringtab,
           lv_err TYPE string.
     zcl_code_ai_api=>list_models(
       EXPORTING i_url      = |{ zcl_code_ai_api=>base_url( CONV string( p_prov ) ) }/v1/models|
-                i_apikey   = CONV string( p_apikey )
+                i_apikey   = lv_apikey
                 i_provider = CONV string( p_prov )
       IMPORTING et_ids     = lt_ids
                 e_error    = lv_err ).
@@ -97,6 +127,7 @@ AT SELECTION-SCREEN OUTPUT.
         MESSAGE lv_err TYPE 'W'.
       ENDIF.
     ENDIF.
+    ENDIF.
   ENDIF.
 
   " Model listbox values, like the provider list, must be set on every PBO.
@@ -109,13 +140,24 @@ AT SELECTION-SCREEN.
 
   " Launch the popup only once every required field is filled; otherwise just
   " stay on the screen (Enter still refreshes the model listbox above).
-  IF p_apikey IS INITIAL OR p_model IS INITIAL.
+  IF p_name IS INITIAL OR p_pwd IS INITIAL OR p_model IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  " Decrypt the selected key with the entered password; a wrong password keeps
+  " the user on the screen instead of starting a session with no key.
+  DATA: lv_apikey TYPE string,
+        lv_kerr   TYPE string.
+  PERFORM decrypt_key USING p_prov p_name p_pwd
+                      CHANGING lv_apikey lv_kerr.
+  IF lv_kerr IS NOT INITIAL.
+    MESSAGE lv_kerr TYPE 'E'.
     RETURN.
   ENDIF.
 
   go_popup = NEW zcl_code_popup2(
     i_model       = p_model
-    i_apikey      = CONV string( p_apikey )
+    i_apikey      = lv_apikey
     i_provider    = CONV string( p_prov )
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp )
@@ -125,3 +167,39 @@ AT SELECTION-SCREEN.
     i_log_path    = CONV string( p_log ) ).
 
   go_popup->show( ).
+
+*----------------------------------------------------------------------*
+* Read the encrypted key for (current user, provider, name) and decrypt
+* it with the entered password. CV_ERR is filled when no key exists or
+* the password is wrong; CV_KEY then stays empty.
+*----------------------------------------------------------------------*
+FORM decrypt_key USING uv_prov TYPE ty_prov
+                       uv_name TYPE c
+                       uv_pwd  TYPE clike
+                 CHANGING cv_key TYPE string
+                          cv_err TYPE string.
+
+  CLEAR: cv_key, cv_err.
+
+  SELECT SINGLE secret FROM zaicode_apikey
+    INTO @DATA(lv_secret)
+    WHERE username = @sy-uname
+      AND provider = @uv_prov
+      AND keyname  = @uv_name.
+  IF sy-subrc <> 0 OR lv_secret IS INITIAL.
+    cv_err = 'No stored key for this provider / name'.
+    RETURN.
+  ENDIF.
+
+  TRY.
+      cv_key = zcl_aicode_crypto=>decrypt(
+        i_username = sy-uname
+        i_provider = CONV string( uv_prov )
+        i_name     = CONV string( uv_name )
+        i_password = CONV string( uv_pwd )
+        i_secret   = lv_secret ).
+    CATCH cx_sec_sxml_encrypt_error.
+      cv_err = 'Wrong password for the selected key'.
+  ENDTRY.
+
+ENDFORM.

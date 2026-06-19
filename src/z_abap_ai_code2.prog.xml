@@ -29,9 +29,15 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_APIKEY</KEY>
-     <ENTRY>API Key</ENTRY>
-     <LENGTH>15</LENGTH>
+     <KEY>P_NAME</KEY>
+     <ENTRY>Key name</ENTRY>
+     <LENGTH>30</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PWD</KEY>
+     <ENTRY>Password</ENTRY>
+     <LENGTH>30</LENGTH>
     </item>
     <item>
      <ID>S</ID>
