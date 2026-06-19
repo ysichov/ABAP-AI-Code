@@ -136,6 +136,19 @@ AT SELECTION-SCREEN OUTPUT.
     EXPORTING id     = 'P_MODEL'
               values = gt_model_vrm.
 
+  " Mask the password (invisible input) and hide the extended-thinking fields
+  " for non-Anthropic providers - thinking is an Anthropic-only feature.
+  DATA(lv_is_anth) = xsdbool( zcl_code_ai_api=>provider_of( CONV string( p_prov ) ) = 'ANTHROPIC' ).
+  LOOP AT SCREEN.
+    IF screen-name = 'P_PWD'.
+      screen-invisible = '1'.
+      MODIFY SCREEN.
+    ELSEIF screen-name CS 'P_THINK' OR screen-name CS 'P_THBUD'.
+      screen-active = COND #( WHEN lv_is_anth = abap_true THEN '1' ELSE '0' ).
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
 AT SELECTION-SCREEN.
   CHECK sy-ucomm IS INITIAL OR sy-ucomm = 'UCCHECK'.
 
@@ -163,8 +176,10 @@ AT SELECTION-SCREEN.
     i_agents_path = CONV string( p_tools )
     i_temperature = CONV string( p_temp )
     i_max_tokens  = COND i( WHEN p_nomax = 'X' THEN 0 ELSE p_maxt )
-    " Extended thinking only applies to Anthropic; 0 = off.
-    i_thinking_budget = COND i( WHEN p_think = 'X' AND p_prov = 'ANTHROPIC' THEN p_thbud ELSE 0 )
+    " Extended thinking only applies to Anthropic-flavoured providers; 0 = off.
+    i_thinking_budget = COND i( WHEN p_think = 'X'
+                                 AND zcl_code_ai_api=>provider_of( CONV string( p_prov ) ) = 'ANTHROPIC'
+                                THEN p_thbud ELSE 0 )
     i_log_path    = CONV string( p_log ) ).
 
   go_popup->show( ).

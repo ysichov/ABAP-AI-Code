@@ -46,6 +46,14 @@ AT SELECTION-SCREEN OUTPUT.
     EXPORTING id     = 'P_PROV'
               values = zcl_code_ai_api=>get_providers( ).
 
+  " Mask both password fields (invisible input).
+  LOOP AT SCREEN.
+    IF screen-name = 'P_PWD' OR screen-name = 'P_PWD2'.
+      screen-invisible = '1'.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
 START-OF-SELECTION.
 
   " --- Basic input validation ---------------------------------------------

@@ -25,6 +25,14 @@ public section.
   class-methods GET_PROVIDERS
     returning
       value(RT_VALUES) type VRM_VALUES .
+  " Canonical wire format for a provider: ANTHROPIC stays ANTHROPIC, everything
+  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Driven by the
+  " ANTHROPIC flag in ZAICODE_PROVIDER (falls back to the name).
+  class-methods PROVIDER_OF
+    importing
+      !I_PROVIDER type STRING
+    returning
+      value(RV_PROVIDER) type STRING .
   " Lists available models via GET <i_url> (direct create_by_url, no SM59).
   " I_PROVIDER selects the auth header: ANTHROPIC -> x-api-key + version,
   " anything else -> Authorization: Bearer. Response "data[].id" -> ET_IDS.
@@ -66,14 +74,6 @@ public section.
 protected section.
 private section.
 
-  " Canonical wire format for a provider: ANTHROPIC stays ANTHROPIC, everything
-  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Selects the
-  " payload shape and auth header, while BASE_URL keeps the real host per provider.
-  class-methods PROVIDER_OF
-    importing
-      !I_PROVIDER type STRING
-    returning
-      value(RV_PROVIDER) type STRING .
   class-methods BUILD_PAYLOAD
     importing
       !I_PROMPT type STRING
