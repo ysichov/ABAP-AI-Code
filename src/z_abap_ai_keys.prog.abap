@@ -32,7 +32,7 @@ INITIALIZATION.
   IF sy-subrc <> 0.
     INSERT zaicode_provider FROM TABLE @( VALUE #(
       ( provider = 'ANTHROPIC' url = 'https://api.anthropic.com/v1' anthropic = abap_true )
-      ( provider = 'OPENAI'    url = 'https://api.openai.com/v1' )
+      ( provider = 'OPENAI'    url = 'https://api.openai.com/v1' cachekey = abap_true )
       ( provider = 'MISTRAL'   url = 'https://api.mistral.ai/v1' )
       ( provider = 'GEMINI'    url = 'https://generativelanguage.googleapis.com/v1beta/openai' ) ) ).
     IF sy-subrc = 0.

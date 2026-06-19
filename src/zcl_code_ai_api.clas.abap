@@ -274,13 +274,21 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     " any other OpenAI-compatible provider map to OPENAI here.
     DATA(lv_wire) = provider_of( lv_provider ).
 
+    " Whether this provider accepts the OpenAI prompt_cache_key field.
+    SELECT SINGLE cachekey FROM zaicode_provider
+      INTO @DATA(lv_cachekey)
+      WHERE provider = @lv_provider.
+
     payload = build_payload(
       i_prompt           = i_prompt
       i_system_prompt    = i_system_prompt
       it_history         = it_history
       i_model            = i_model
       i_provider         = lv_wire
-      i_prompt_cache_key = i_prompt_cache_key
+      " prompt_cache_key is an OpenAI-only field; other OpenAI-compatible hosts
+      " (Gemini, Mistral, ...) reject unknown fields. Send it only when the
+      " provider's CACHEKEY flag is set in ZAICODE_PROVIDER.
+      i_prompt_cache_key = COND #( WHEN lv_cachekey = abap_true THEN i_prompt_cache_key )
       i_json_schema      = i_json_schema
       i_temperature      = i_temperature
       i_tools_json       = i_tools_json
