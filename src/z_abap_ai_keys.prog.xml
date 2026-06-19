@@ -35,12 +35,6 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_URL</KEY>
-     <ENTRY>Base URL</ENTRY>
-     <LENGTH>30</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
      <KEY>P_KEY</KEY>
      <ENTRY>API Key</ENTRY>
      <LENGTH>30</LENGTH>

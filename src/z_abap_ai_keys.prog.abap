@@ -20,7 +20,6 @@ SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_prov TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
                    USER-COMMAND prov DEFAULT 'ANTHROPIC',
             p_name TYPE c LENGTH 30 DEFAULT 'DEFAULT',
-            p_url  TYPE text255,
             p_key  TYPE text255,
             p_pwd  TYPE text255,
             p_pwd2 TYPE text255.
@@ -46,11 +45,6 @@ AT SELECTION-SCREEN OUTPUT.
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = zcl_code_ai_api=>get_providers( ).
-
-  " Default the URL to the provider base URL when the user has not typed one.
-  IF p_url IS INITIAL.
-    p_url = zcl_code_ai_api=>base_url( CONV string( p_prov ) ).
-  ENDIF.
 
 START-OF-SELECTION.
 
@@ -110,7 +104,6 @@ START-OF-SELECTION.
   ls_row-username = sy-uname.
   ls_row-provider = p_prov.
   ls_row-keyname  = p_name.
-  ls_row-url      = p_url.
   ls_row-secret   = lv_secret.
   MODIFY zaicode_apikey FROM ls_row.
   IF sy-subrc = 0.

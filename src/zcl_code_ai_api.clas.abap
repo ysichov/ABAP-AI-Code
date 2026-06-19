@@ -187,16 +187,16 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       ORDER BY provider.
     LOOP AT lt_prov INTO DATA(ls_prov).
       APPEND VALUE #( key  = ls_prov-provider
-                      text = |{ ls_prov-provider } { ls_prov-url }| ) TO rt_values.
+                      text = ls_prov-url ) TO rt_values.
     ENDLOOP.
 
     " Fallback to the built-in providers when the table is still empty, so the
     " dropdown is never blank on a fresh install.
     IF rt_values IS INITIAL.
       rt_values = VALUE #(
-        ( key = 'ANTHROPIC' text = 'ANTHROPIC https://api.anthropic.com' )
-        ( key = 'OPENAI'    text = 'OPENAI https://api.openai.com' )
-        ( key = 'MISTRAL'   text = 'MISTRAL https://api.mistral.ai' ) ).
+        ( key = 'ANTHROPIC' text = 'https://api.anthropic.com' )
+        ( key = 'OPENAI'    text = 'https://api.openai.com' )
+        ( key = 'MISTRAL'   text = 'https://api.mistral.ai' ) ).
     ENDIF.
 
   endmethod.
