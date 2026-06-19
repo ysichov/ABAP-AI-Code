@@ -25,21 +25,27 @@ DATA gv_loaded_key TYPE string.
 " Cached model listbox values - re-applied on every PBO so the list persists
 " across screen round-trips (e.g. toggling the thinking checkbox).
 DATA gt_model_vrm TYPE vrm_values.
+" Set once the (mandatory) password has been entered and the first Enter was
+" pressed: only then are the remaining fields revealed and a launch is allowed.
+DATA gv_unlocked TYPE abap_bool.
 
 SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
-PARAMETERS: p_prov   TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
-                     USER-COMMAND prov DEFAULT 'ANTHROPIC',
+" Password is mandatory and comes first; everything else (MODIF ID DET) stays
+" hidden until the password is entered and confirmed with Enter.
+PARAMETERS: p_pwd    TYPE text255 OBLIGATORY,
+            p_prov   TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
+                     USER-COMMAND prov DEFAULT 'ANTHROPIC'     MODIF ID det,
             p_name   TYPE ty_name AS LISTBOX VISIBLE LENGTH 30
-                     USER-COMMAND keys,
-            p_pwd    TYPE text255,
-            p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
-            p_tools  TYPE text255 OBLIGATORY,
-            p_temp   TYPE text10  DEFAULT '0.2',
-            p_maxt   TYPE i       DEFAULT 20000,
-            p_nomax  AS CHECKBOX,
-            p_think  AS CHECKBOX,                 " enable extended thinking (Anthropic)
-            p_thbud  TYPE i       DEFAULT 10000,  " thinking token budget
-            p_log    TYPE text255.
+                     USER-COMMAND keys                         MODIF ID det,
+            p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45
+                     MEMORY ID model                           MODIF ID det,
+            p_tools  TYPE text255 OBLIGATORY                   MODIF ID det,
+            p_temp   TYPE text10  DEFAULT '0.2'                MODIF ID det,
+            p_maxt   TYPE i       DEFAULT 20000                MODIF ID det,
+            p_nomax  AS CHECKBOX                               MODIF ID det,
+            p_think  AS CHECKBOX                               MODIF ID det,
+            p_thbud  TYPE i       DEFAULT 10000                MODIF ID det,
+            p_log    TYPE text255                              MODIF ID det.
 SELECTION-SCREEN END OF BLOCK b_api.
 
 INITIALIZATION.
@@ -136,15 +142,26 @@ AT SELECTION-SCREEN OUTPUT.
     EXPORTING id     = 'P_MODEL'
               values = gt_model_vrm.
 
-  " Mask the password (invisible input) and hide the extended-thinking fields
-  " for non-Anthropic providers - thinking is an Anthropic-only feature.
+  " Screen visibility:
+  "  - password (P_PWD) is always shown but masked (invisible input);
+  "  - everything else (MODIF ID DET) stays hidden until the password is entered
+  "    and confirmed with the first Enter (gv_unlocked);
+  "  - the extended-thinking fields are hidden for non-Anthropic providers even
+  "    once unlocked, since thinking is an Anthropic-only feature.
   DATA(lv_is_anth) = xsdbool( zcl_code_ai_api=>provider_of( CONV string( p_prov ) ) = 'ANTHROPIC' ).
   LOOP AT SCREEN.
     IF screen-name = 'P_PWD'.
       screen-invisible = '1'.
       MODIFY SCREEN.
-    ELSEIF screen-name CS 'P_THINK' OR screen-name CS 'P_THBUD'.
-      screen-active = COND #( WHEN lv_is_anth = abap_true THEN '1' ELSE '0' ).
+    ELSEIF screen-group1 = 'DET'.
+      IF gv_unlocked = abap_false.
+        screen-active = '0'.
+      ELSEIF ( screen-name CS 'P_THINK' OR screen-name CS 'P_THBUD' )
+             AND lv_is_anth = abap_false.
+        screen-active = '0'.
+      ELSE.
+        screen-active = '1'.
+      ENDIF.
       MODIFY SCREEN.
     ENDIF.
   ENDLOOP.
@@ -152,9 +169,16 @@ AT SELECTION-SCREEN OUTPUT.
 AT SELECTION-SCREEN.
   CHECK sy-ucomm IS INITIAL OR sy-ucomm = 'UCCHECK'.
 
+  " First Enter after the (mandatory) password has been entered just reveals the
+  " rest of the screen - it does not launch yet.
+  IF gv_unlocked = abap_false.
+    gv_unlocked = abap_true.
+    RETURN.
+  ENDIF.
+
   " Launch the popup only once every required field is filled; otherwise just
   " stay on the screen (Enter still refreshes the model listbox above).
-  IF p_name IS INITIAL OR p_pwd IS INITIAL OR p_model IS INITIAL.
+  IF p_name IS INITIAL OR p_model IS INITIAL.
     RETURN.
   ENDIF.
 
