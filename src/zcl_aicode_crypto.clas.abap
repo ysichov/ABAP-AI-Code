@@ -16,6 +16,11 @@ class ZCL_AICODE_CRYPTO definition
 *"* prepends it again; payloads are converted string<->xstring and Base64-wrapped.
   public section.
 
+    " Minimum password length enforced by the key-entry program. A longer
+    " password is the other half of brute-force resistance (next to key
+    " stretching) - it widens the search space an attacker must cover.
+    constants C_MIN_PASSWORD_LENGTH type I value 10 ##NO_TEXT.
+
     " Encrypt I_APIKEY for (I_USERNAME, I_PROVIDER), protected by I_PASSWORD.
     " Returns the Base64 ciphertext to store in ZAICODE_APIKEY-SECRET.
     class-methods ENCRYPT
@@ -50,7 +55,13 @@ class ZCL_AICODE_CRYPTO definition
     " Separator between the embedded user name and the API key in the plaintext.
     constants C_SEP type C length 1 value cl_abap_char_utilities=>horizontal_tab ##NO_TEXT.
 
-    " 32-byte AES-256 key = SHA-256( password : username ). Never persisted.
+    " Key-stretching rounds: the AES key is hashed this many times so each
+    " password guess costs an attacker C_KDF_ITERATIONS SHA-256 hashes, while the
+    " legitimate user pays it once (~sub-second). Raise to harden, lower if the
+    " one-time derivation feels slow on the app server.
+    constants C_KDF_ITERATIONS type I value 50000 ##NO_TEXT.
+
+    " 32-byte AES-256 key, stretched from ( password : username ). Never persisted.
     class-methods DERIVE_KEY
       importing
         !I_PASSWORD type STRING
@@ -77,12 +88,27 @@ CLASS ZCL_AICODE_CRYPTO IMPLEMENTATION.
 
   method DERIVE_KEY.
 
+    " Initial hash of ( password : username ) -> 32 bytes (AES-256 key length).
     DATA(lv_seed) = |{ i_password }:{ i_username }|.
+    DATA lv_x TYPE xstring.
     cl_abap_message_digest=>calculate_hash_for_char(
-      EXPORTING if_algorithm  = 'SHA-256'
-                if_data       = lv_seed
-      IMPORTING ef_hashx      = r_key ).
-    " SHA-256 yields exactly 32 bytes -> AES-256 key length.
+      EXPORTING if_algorithm = 'SHA-256'
+                if_data      = lv_seed
+      IMPORTING ef_hashx     = lv_x ).
+
+    " Key stretching: re-hash the 32-byte value C_KDF_ITERATIONS times. This is a
+    " one-time cost for the user but multiplies an attacker's brute-force effort
+    " by the same factor (each password guess must repeat the whole chain).
+    DATA lv_tmp TYPE xstring.
+    DO c_kdf_iterations TIMES.
+      cl_abap_message_digest=>calculate_hash_for_raw(
+        EXPORTING if_algorithm = 'SHA-256'
+                  if_data      = lv_x
+        IMPORTING ef_hashx     = lv_tmp ).
+      lv_x = lv_tmp.
+    ENDDO.
+
+    r_key = lv_x.
 
   endmethod.
 

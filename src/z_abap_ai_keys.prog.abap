@@ -65,6 +65,9 @@ START-OF-SELECTION.
   IF p_pwd IS INITIAL.
     MESSAGE 'Enter a password' TYPE 'E'.
   ENDIF.
+  IF strlen( p_pwd ) < zcl_aicode_crypto=>c_min_password_length.
+    MESSAGE |Password must be at least { zcl_aicode_crypto=>c_min_password_length } characters| TYPE 'E'.
+  ENDIF.
   IF p_pwd <> p_pwd2.
     MESSAGE 'Passwords do not match' TYPE 'E'.
   ENDIF.
