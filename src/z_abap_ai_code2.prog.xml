@@ -35,12 +35,6 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_DEST</KEY>
-     <ENTRY>Destination</ENTRY>
-     <LENGTH>19</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
      <KEY>P_MODEL</KEY>
      <ENTRY>Model</ENTRY>
      <LENGTH>13</LENGTH>

@@ -6,7 +6,6 @@ public section.
 
   methods CONSTRUCTOR
     importing
-      !I_DEST type TEXT255
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
       !I_PROVIDER type STRING
@@ -304,7 +303,6 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
   method CONSTRUCTOR.
 
     mo_llm = NEW zcl_abapai_llm_client(
-      i_dest     = i_dest
       i_model    = i_model
       i_apikey   = i_apikey
       i_provider = i_provider ).

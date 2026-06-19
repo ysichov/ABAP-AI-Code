@@ -6,7 +6,6 @@ public section.
 
   methods CONSTRUCTOR
     importing
-      !I_DEST type TEXT255
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
       !I_PROVIDER type STRING .
@@ -53,7 +52,6 @@ public section.
 protected section.
 private section.
 
-  data MV_DEST type TEXT255 .
   data MV_MODEL type TEXT255 .
   data MV_APIKEY type STRING .
   data MV_PROVIDER type STRING .
@@ -92,7 +90,6 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_prompt           = i_prompt
         i_system_prompt    = i_system_prompt
         it_history         = it_history
-        i_dest             = mv_dest
         i_model            = mv_model
         i_apikey           = mv_apikey
         i_provider         = mv_provider
@@ -134,7 +131,6 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
         i_prompt           = i_prompt
         i_system_prompt    = i_system_prompt
         it_history         = it_history
-        i_dest             = mv_dest
         i_model            = mv_model
         i_apikey           = mv_apikey
         i_provider         = mv_provider
@@ -162,7 +158,6 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
 
   method CONSTRUCTOR.
 
-    mv_dest     = i_dest.
     mv_model    = i_model.
     mv_apikey   = i_apikey.
     mv_provider = i_provider.

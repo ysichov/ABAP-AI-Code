@@ -29,10 +29,10 @@ public section.
       !I_PROMPT type STRING
       !I_SYSTEM_PROMPT type STRING optional
       !IT_HISTORY type ZCL_AI_MESSAGES=>TT_MESSAGES optional
-      !I_DEST type TEXT255
       !I_MODEL type TEXT255
       !I_APIKEY type STRING
       !I_PROVIDER type STRING default 'ANTHROPIC'
+      !I_SSL_ID type SSFAPPLSSL default 'ANONYM'
       !I_PROMPT_CACHE_KEY type STRING optional
       !I_JSON_SCHEMA type STRING optional
       !I_TEMPERATURE type STRING optional
@@ -53,6 +53,14 @@ public section.
 protected section.
 private section.
 
+  " Provider base URL for direct create_by_url calls (no SM59 destination).
+  " ANTHROPIC -> api.anthropic.com, OPENAI -> api.openai.com,
+  " MISTRAL -> api.mistral.ai. The endpoint path is appended by the caller.
+  class-methods BASE_URL
+    importing
+      !I_PROVIDER type STRING
+    returning
+      value(RV_URL) type STRING .
   class-methods BUILD_PAYLOAD
     importing
       !I_PROMPT type STRING
@@ -114,6 +122,18 @@ ENDCLASS.
 CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
 
+  method BASE_URL.
+
+    DATA(lv_prov) = i_provider.
+    TRANSLATE lv_prov TO UPPER CASE.
+    rv_url = SWITCH #( lv_prov
+                       WHEN 'MISTRAL' THEN 'https://api.mistral.ai'
+                       WHEN 'OPENAI'  THEN 'https://api.openai.com'
+                       ELSE 'https://api.anthropic.com' ).
+
+  endmethod.
+
+
   method LIST_MODELS.
 
     DATA: lo_client   TYPE REF TO if_http_client,
@@ -144,14 +164,19 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     " Suppress the SAP logon popup so a 401/403 returns the JSON body.
     lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
 
+    DATA lv_err_code TYPE i.
+    DATA lv_err_msg  TYPE string.
+
     lo_client->send( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
-      e_error = 'HTTP send failed'.
+      lo_client->get_last_error( IMPORTING code = lv_err_code message = lv_err_msg ).
+      e_error = |HTTP send failed (code={ lv_err_code } msg={ lv_err_msg })|.
       RETURN.
     ENDIF.
     lo_client->receive( EXCEPTIONS http_communication_failure = 1 OTHERS = 2 ).
     IF sy-subrc <> 0.
-      e_error = 'HTTP receive failed'.
+      lo_client->get_last_error( IMPORTING code = lv_err_code message = lv_err_msg ).
+      e_error = |HTTP receive failed (code={ lv_err_code } msg={ lv_err_msg })|.
       RETURN.
     ENDIF.
 
@@ -205,17 +230,20 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       i_max_tokens       = i_max_tokens
       i_thinking_budget  = i_thinking_budget ).
 
-    CALL METHOD cl_http_client=>create_by_destination
-      EXPORTING  destination              = i_dest
-      IMPORTING  client                   = o_client
-      EXCEPTIONS destination_not_found    = 2
-                 OTHERS                   = 5.
+    " Build the endpoint URL directly from the provider - no SM59 destination.
+    " Anthropic: /v1/messages ; OpenAI-compatible (OpenAI/Mistral): /v1/chat/completions
+    DATA(lv_url) = base_url( lv_provider ) &&
+      COND string( WHEN lv_provider = 'ANTHROPIC'
+                   THEN '/v1/messages'
+                   ELSE '/v1/chat/completions' ).
 
-    IF sy-subrc = 2.
-      rv_answer = 'Error: Destination not found (check SM59)'.
-      RETURN.
-    ELSEIF sy-subrc <> 0.
-      rv_answer = |Error: cl_http_client rc={ sy-subrc }|.
+    cl_http_client=>create_by_url(
+      EXPORTING  url    = lv_url
+                 ssl_id = i_ssl_id
+      IMPORTING  client = o_client
+      EXCEPTIONS OTHERS = 5 ).
+    IF sy-subrc <> 0.
+      rv_answer = |Error: create_by_url failed rc={ sy-subrc } (check URL / SSL in STRUST)|.
       RETURN.
     ENDIF.
 
@@ -238,18 +266,28 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     " instead of prompting the user for a user name / password.
     o_client->propertytype_logon_popup = if_http_client=>co_disabled.
 
+    DATA lv_err_code TYPE i.
+    DATA lv_err_msg  TYPE string.
+
     o_client->send(
       EXCEPTIONS http_communication_failure = 1
                  OTHERS                     = 5 ).
 
     IF sy-subrc <> 0.
-      rv_answer = 'Error: HTTP send failed'.
+      o_client->get_last_error( IMPORTING code = lv_err_code message = lv_err_msg ).
+      rv_answer = |Error: HTTP send failed (code={ lv_err_code } msg={ lv_err_msg })|.
       RETURN.
     ENDIF.
 
     o_client->receive(
       EXCEPTIONS http_communication_failure = 1
                  OTHERS                     = 4 ).
+
+    IF sy-subrc <> 0.
+      o_client->get_last_error( IMPORTING code = lv_err_code message = lv_err_msg ).
+      rv_answer = |Error: HTTP receive failed (code={ lv_err_code } msg={ lv_err_msg })|.
+      RETURN.
+    ENDIF.
 
     DATA(lv_response) = o_client->response->get_cdata( ).
     ev_raw_request  = payload.

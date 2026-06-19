@@ -23,8 +23,7 @@ SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_anth RADIOBUTTON GROUP api USER-COMMAND prov,
             p_oai  RADIOBUTTON GROUP api DEFAULT 'X'.
 
-PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
-            p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
+PARAMETERS: p_model  TYPE text255 AS LISTBOX VISIBLE LENGTH 45 MEMORY ID model,
             p_apikey TYPE text255 MEMORY ID api,
             p_tools  TYPE text255 OBLIGATORY,
             p_temp   TYPE text10  DEFAULT '0.2',
@@ -100,12 +99,11 @@ AT SELECTION-SCREEN.
 
   " Launch the popup only once every required field is filled; otherwise just
   " stay on the screen (Enter still refreshes the model listbox above).
-  IF p_dest IS INITIAL OR p_apikey IS INITIAL OR p_model IS INITIAL.
+  IF p_apikey IS INITIAL OR p_model IS INITIAL.
     RETURN.
   ENDIF.
 
   go_popup = NEW zcl_code_popup2(
-    i_dest        = p_dest
     i_model       = p_model
     i_apikey      = CONV string( p_apikey )
     i_provider    = COND string( WHEN p_oai = 'X' THEN 'OPENAI' ELSE 'ANTHROPIC' )
