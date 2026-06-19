@@ -19,43 +19,7 @@
     <item>
      <ID>R</ID>
      <ENTRY>AI agent runner - tool-based flow</ENTRY>
-     <LENGTH>42</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_PROV</KEY>
-     <ENTRY>Provider</ENTRY>
-     <LENGTH>30</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_NAME</KEY>
-     <ENTRY>Key name</ENTRY>
-     <LENGTH>30</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_PWD</KEY>
-     <ENTRY>Password</ENTRY>
-     <LENGTH>30</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_MODEL</KEY>
-     <ENTRY>Model</ENTRY>
-     <LENGTH>13</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_TEMP</KEY>
-     <ENTRY>Temperature</ENTRY>
-     <LENGTH>19</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_TOOLS</KEY>
-     <ENTRY>Tools Path</ENTRY>
-     <LENGTH>19</LENGTH>
+     <LENGTH>33</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -71,9 +35,57 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_MODEL</KEY>
+     <ENTRY>Model</ENTRY>
+     <LENGTH>13</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_NAME</KEY>
+     <ENTRY>Key name</ENTRY>
+     <LENGTH>30</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_NOMAX</KEY>
      <ENTRY>No limit</ENTRY>
      <LENGTH>17</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PROV</KEY>
+     <ENTRY>Provider</ENTRY>
+     <LENGTH>30</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PWD</KEY>
+     <ENTRY>Password</ENTRY>
+     <LENGTH>30</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_TEMP</KEY>
+     <ENTRY>Temperature</ENTRY>
+     <LENGTH>19</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_THBUD</KEY>
+     <ENTRY>Thinking Budget Token</ENTRY>
+     <LENGTH>29</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_THINK</KEY>
+     <ENTRY>Thinking</ENTRY>
+     <LENGTH>16</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_TOOLS</KEY>
+     <ENTRY>Tools Path</ENTRY>
+     <LENGTH>19</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
