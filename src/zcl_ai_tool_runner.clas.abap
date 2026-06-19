@@ -160,14 +160,20 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDIF.
 
       " Create the provider folder first, then the per-session folder under it.
+      " rc is a mandatory CHANGING parameter of directory_create - it is filled
+      " with the frontend return code; we rely on the exceptions, so it is only
+      " captured to satisfy the signature (an existing folder is not an error).
+      DATA lv_rc TYPE i.
       DATA(lv_prov_dir) = |{ lv_base }{ lv_provider }|.
       cl_gui_frontend_services=>directory_create(
         EXPORTING  directory = lv_prov_dir
+        CHANGING   rc        = lv_rc
         EXCEPTIONS OTHERS    = 1 ).
 
       mv_log_dir = |{ lv_prov_dir }/{ sy-datum }_{ sy-uzeit }|.
       cl_gui_frontend_services=>directory_create(
         EXPORTING  directory = mv_log_dir
+        CHANGING   rc        = lv_rc
         EXCEPTIONS OTHERS    = 1 ).
     ENDIF.
 
