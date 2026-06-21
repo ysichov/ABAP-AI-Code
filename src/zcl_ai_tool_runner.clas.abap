@@ -707,6 +707,20 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
                && lv_tools.
     ENDIF.
 
+    " Read-only guidance. Phrased conditionally so it is correct whether or not
+    " the write add-on is installed: the model only acts on it when it has no
+    " create/modify/delete tool available. Keeps the install hint in one place
+    " without the base depending on the tool classes.
+    rv_prompt = rv_prompt
+             && cl_abap_char_utilities=>newline
+             && cl_abap_char_utilities=>newline
+             && |## Code modification capability| && cl_abap_char_utilities=>newline
+             && |Creating, modifying or deleting ABAP objects requires the optional | &&
+                |ABAP-AI-CODE-TOOLS add-on. If you do NOT have a create/modify/delete | &&
+                |tool available in this session, do not attempt or simulate the change - | &&
+                |tell the user it requires installing | &&
+                |https://github.com/ysichov/ABAP-AI-CODE-TOOLS|.
+
   ENDMETHOD.
 
 
