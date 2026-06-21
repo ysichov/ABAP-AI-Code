@@ -652,27 +652,60 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF lv_is_delete = abap_true.
-      rv_message = zcl_code_object_saver=>delete(
-        i_object_type = is_result-object_type
-        i_object_name = is_result-object_name ).
-    ELSE.
-      IF lv_new_code IS INITIAL.
-        rv_message = 'Error: no final source to save.'.
+    " Invoke the write capability purely by dynamic name so the runner
+    " (read-only base) carries NO compile-time dependency on the saver and core
+    " needs NO interface. When the saver class is not installed (read-only
+    " delivery, e.g. the OTR translator client), the dynamic call raises
+    " cx_sy_dyn_call_error and the agent reports it instead of mutating anything.
+    TRY.
+        IF lv_is_delete = abap_true.
+          CALL METHOD ('ZCL_CODE_OBJECT_SAVER')=>delete
+            EXPORTING
+              i_object_type = is_result-object_type
+              i_object_name = is_result-object_name
+            RECEIVING
+              rv_message    = rv_message.
+        ELSE.
+          IF lv_new_code IS INITIAL.
+            rv_message = 'Error: no final source to save.'.
+            RETURN.
+          ENDIF.
+          CALL METHOD ('ZCL_CODE_OBJECT_SAVER')=>save
+            EXPORTING
+              i_object_type = is_result-object_type
+              i_object_name = is_result-object_name
+              i_source      = lv_new_code
+            RECEIVING
+              rv_message    = rv_message.
+        ENDIF.
+      CATCH cx_sy_dyn_call_error.
+        rv_message = 'Write capability is not installed (read-only platform) - '
+                  && 'nothing was changed. To enable create/modify/delete, install '
+                  && 'https://github.com/ysichov/ABAP-AI-CODE-TOOLS'.
         RETURN.
-      ENDIF.
-      rv_message = zcl_code_object_saver=>save(
-        i_object_type = is_result-object_type
-        i_object_name = is_result-object_name
-        i_source      = lv_new_code ).
-    ENDIF.
+    ENDTRY.
 
   ENDMETHOD.
 
 
   METHOD build_system_prompt.
 
+    " Static base: role / guardrails only. Tool-specific capabilities must NOT
+    " be hardcoded here - they are appended below from the registry so the prompt
+    " advertises exactly the tools that are actually installed (single source of
+    " truth shared with build_tools_json).
     rv_prompt = mo_context->read_agent_file( 'tool_runner.md' ).
+
+    DATA(lv_tools) = zcl_ai_tool_factory=>build_tools_prompt( ).
+    IF lv_tools IS NOT INITIAL.
+      rv_prompt = rv_prompt
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline
+               && |## Available tools|
+               && cl_abap_char_utilities=>newline
+               && cl_abap_char_utilities=>newline
+               && lv_tools.
+    ENDIF.
 
   ENDMETHOD.
 

@@ -29,6 +29,12 @@ INTERFACE zif_ai_tool
   METHODS get_schema
     RETURNING VALUE(rv_schema) TYPE string.
 
+  " Prompt fragment for this tool - reads <tool_name>.md from the agents folder.
+  " Assembled into the system prompt by the factory, so a tool that is not
+  " installed contributes neither schema (JSON) nor prompt text.
+  METHODS get_prompt_fragment
+    RETURNING VALUE(rv_fragment) TYPE string.
+
   " Execution. i_arguments = raw JSON arguments string from the LLM tool call
   METHODS execute
     IMPORTING

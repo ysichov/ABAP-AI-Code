@@ -608,11 +608,24 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     display_status( |Saving approved changes for { mv_diff_object_type } { mv_diff_object_name }...| ).
 
-    DATA(lv_save_message) = zcl_code_object_saver=>save(
-      i_object_type = mv_diff_object_type
-      i_object_name = mv_diff_object_name
-      i_source      = mv_diff_new_code
-      i_package     = mv_diff_package ).
+    " Dynamic call by name: the UI carries no compile-time dependency on the
+    " saver, so a read-only delivery (no write tools installed) still activates.
+    " Without the saver, the approve-save path reports read-only instead.
+    DATA lv_save_message TYPE string.
+    TRY.
+        CALL METHOD ('ZCL_CODE_OBJECT_SAVER')=>save
+          EXPORTING
+            i_object_type = mv_diff_object_type
+            i_object_name = mv_diff_object_name
+            i_source      = mv_diff_new_code
+            i_package     = mv_diff_package
+          RECEIVING
+            rv_message    = lv_save_message.
+      CATCH cx_sy_dyn_call_error.
+        lv_save_message = 'Write capability is not installed (read-only platform) - '
+                       && 'nothing was saved. To enable create/modify/delete, install '
+                       && 'https://github.com/ysichov/ABAP-AI-CODE-TOOLS'.
+    ENDTRY.
 
     IF mo_messages IS BOUND.
       mo_messages->add_message(
@@ -804,7 +817,18 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lv_fixed_syntax_error) = zcl_code_object_saver=>check_program_syntax( lv_fixed_source ).
+    " Dynamic call by name (no compile-time dependency on the saver). Without
+    " the saver installed the pre-save syntax check is simply skipped.
+    DATA lv_fixed_syntax_error TYPE string.
+    TRY.
+        CALL METHOD ('ZCL_CODE_OBJECT_SAVER')=>check_program_syntax
+          EXPORTING
+            i_source   = lv_fixed_source
+          RECEIVING
+            rv_message = lv_fixed_syntax_error.
+      CATCH cx_sy_dyn_call_error.
+        CLEAR lv_fixed_syntax_error.
+    ENDTRY.
     IF lv_fixed_syntax_error IS NOT INITIAL.
       mo_messages->add_message(
         i_role        = 'assistant'

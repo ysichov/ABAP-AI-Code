@@ -45,7 +45,11 @@ PARAMETERS: p_pwd    TYPE text255 OBLIGATORY,
             p_nomax  AS CHECKBOX                               MODIF ID det,
             p_think  AS CHECKBOX                               MODIF ID det,
             p_thbud  TYPE i       DEFAULT 10000                MODIF ID det,
-            p_log    TYPE text255                              MODIF ID det.
+            p_log    TYPE text255                              MODIF ID det,
+            " Wipe the password from memory after launch (recommended in PROD so
+            " a debugger cannot read it). Uncheck on local/dev systems to avoid
+            " re-typing it for each session.
+            p_wipe   AS CHECKBOX DEFAULT 'X'                   MODIF ID det.
 SELECTION-SCREEN END OF BLOCK b_api.
 
 INITIALIZATION.
@@ -191,6 +195,13 @@ AT SELECTION-SCREEN.
   IF lv_kerr IS NOT INITIAL.
     MESSAGE lv_kerr TYPE 'E'.
     RETURN.
+  ENDIF.
+
+  " The key is now decrypted; the password is no longer needed. Wiping it shrinks
+  " the debug blast radius to the single current key (not the master password).
+  " Disabled by unchecking P_WIPE on local/dev systems.
+  IF p_wipe = abap_true.
+    CLEAR p_pwd.
   ENDIF.
 
   go_popup = NEW zcl_code_popup2(

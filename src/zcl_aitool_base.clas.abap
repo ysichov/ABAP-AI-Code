@@ -57,6 +57,25 @@ CLASS zcl_aitool_base IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD zif_ai_tool~get_prompt_fragment.
+
+    " Convention: prompt fragment file name = tool name + '.md'.
+    " Kept as an external .md (editable in a text editor) rather than embedded
+    " in the class. The factory treats a missing fragment as a hard registration
+    " failure, so "forgot to copy the file" surfaces as a clear warning instead
+    " of a tool that silently misbehaves at prompt-assembly time.
+    rv_fragment = mo_context->read_agent_file(
+      zif_ai_tool~get_tool_name( ) && '.md' ).
+
+    DATA(lv_trimmed) = rv_fragment.
+    CONDENSE lv_trimmed.
+    IF lv_trimmed IS INITIAL.
+      CLEAR rv_fragment.
+    ENDIF.
+
+  ENDMETHOD.
+
+
   METHOD get_json_attribute.
 
     " Tolerant extraction via /ui2/cl_json into a generic map is overkill

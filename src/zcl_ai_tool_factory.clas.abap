@@ -30,6 +30,15 @@ CLASS zcl_ai_tool_factory DEFINITION
         !it_tool_names  TYPE string_table OPTIONAL  " subset filter; empty = all
       RETURNING VALUE(rv_json) TYPE string.
 
+    " Builds the tool section of the system prompt from all registered tools'
+    " prompt fragments. Same single source of truth as build_tools_json: a tool
+    " that is not installed contributes neither schema nor prompt text, so the
+    " LLM is never told about a capability it cannot call.
+    CLASS-METHODS build_tools_prompt
+      IMPORTING
+        !it_tool_names  TYPE string_table OPTIONAL  " subset filter; empty = all
+      RETURNING VALUE(rv_prompt) TYPE string.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     CLASS-DATA mt_registry    TYPE tt_registry.
@@ -98,6 +107,25 @@ CLASS zcl_ai_tool_factory IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      " Companion-file guard (fail-closed): a tool is only useful with BOTH its
+      " schema (<name>.json -> LLM tools array) and its prompt fragment
+      " (<name>.md -> system prompt). These are external files copied into the
+      " agents folder, not abapGit objects, so "forgot to copy the file" is a
+      " real footgun. Refuse registration with an explicit reason naming the
+      " missing file instead of registering a tool that would silently drop out
+      " of the JSON / desync the prompt.
+      IF lo_tool->get_schema( ) IS INITIAL.
+        MESSAGE |AI tool '{ lv_name }' ({ ls_impl-clsname }) NOT registered: | &&
+                |missing or invalid schema file '{ lv_name }.json' in agents folder| TYPE 'S'.
+        CONTINUE.
+      ENDIF.
+
+      IF lo_tool->get_prompt_fragment( ) IS INITIAL.
+        MESSAGE |AI tool '{ lv_name }' ({ ls_impl-clsname }) NOT registered: | &&
+                |missing prompt file '{ lv_name }.md' in agents folder| TYPE 'S'.
+        CONTINUE.
+      ENDIF.
+
       " Duplicate-name guard: first registration wins, duplicate is reported
       READ TABLE mt_registry TRANSPORTING NO FIELDS
         WITH KEY tool_name = lv_name.
@@ -161,6 +189,40 @@ CLASS zcl_ai_tool_factory IMPLEMENTATION.
     ENDLOOP.
 
     rv_json = |[{ lv_schemas }]|.
+
+  ENDMETHOD.
+
+
+  METHOD build_tools_prompt.
+
+    DATA lv_fragments TYPE string.
+
+    LOOP AT mt_registry INTO DATA(ls_reg).
+      " Optional subset filter - mirror build_tools_json so the prompt advertises
+      " exactly the same tools that are offered in the JSON for a given call.
+      IF it_tool_names IS SUPPLIED AND lines( it_tool_names ) > 0.
+        READ TABLE it_tool_names TRANSPORTING NO FIELDS
+          WITH KEY table_line = ls_reg-tool_name.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      DATA(lv_fragment) = ls_reg-instance->get_prompt_fragment( ).
+      IF lv_fragment IS INITIAL.
+        " Registration already enforces a fragment; guard anyway in case the
+        " file was removed after the registry was built in this session.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_fragments IS NOT INITIAL.
+        lv_fragments = lv_fragments && cl_abap_char_utilities=>newline
+                                    && cl_abap_char_utilities=>newline.
+      ENDIF.
+      lv_fragments = lv_fragments && lv_fragment.
+    ENDLOOP.
+
+    rv_prompt = lv_fragments.
 
   ENDMETHOD.
 ENDCLASS.
