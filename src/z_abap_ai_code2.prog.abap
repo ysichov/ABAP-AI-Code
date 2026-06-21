@@ -66,9 +66,16 @@ AT SELECTION-SCREEN OUTPUT.
   " Provider listbox values must be (re)set on every PBO, otherwise they are
   " lost after a round-trip and the selection does not stick. The text shows
   " the base URL the provider resolves to.
+  DATA(lt_provs) = zcl_code_ai_api=>get_providers( ).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
-              values = zcl_code_ai_api=>get_providers( ).
+              values = lt_provs.
+  " Auto-select the provider when exactly one is configured (and the current
+  " value is empty or no longer valid). Saves a pick in single-provider setups.
+  IF lines( lt_provs ) = 1
+     AND ( p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ) ).
+    p_prov = lt_provs[ 1 ]-key.
+  ENDIF.
 
   " Key-name listbox: the encrypted keys this user stored for the provider
   " (entered via Z_ABAP_AI_KEYS). Only the name is shown - never the key.
@@ -83,9 +90,14 @@ AT SELECTION-SCREEN OUTPUT.
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_NAME'
               values = lt_name_vrm.
-  " Default the key name to the first available when none is selected yet.
+  " Auto-select the key name only when exactly one key is stored for this
+  " user+provider. With several keys the user must choose, so an invalid/empty
+  " selection is left blank rather than defaulting to an arbitrary first entry.
   IF p_name IS INITIAL OR NOT line_exists( lt_names[ keyname = p_name ] ).
-    p_name = VALUE #( lt_names[ 1 ]-keyname OPTIONAL ).
+    CLEAR p_name.
+    IF lines( lt_names ) = 1.
+      p_name = lt_names[ 1 ]-keyname.
+    ENDIF.
   ENDIF.
 
   " Re-fetch the model list live only when provider, key name or password
