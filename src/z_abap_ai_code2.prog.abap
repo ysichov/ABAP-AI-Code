@@ -70,11 +70,20 @@ AT SELECTION-SCREEN OUTPUT.
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = lt_provs.
-  " Auto-select the provider when exactly one is configured (and the current
-  " value is empty or no longer valid). Saves a pick in single-provider setups.
-  IF lines( lt_provs ) = 1
-     AND ( p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ) ).
-    p_prov = lt_provs[ 1 ]-key.
+  " Auto-select the provider when the current value is empty or invalid. Many
+  " providers may be configured, but the user can only use the ones they have a
+  " stored key for - so if they have keys for exactly one provider, pre-select
+  " that one. Fall back to the single-configured-provider case otherwise.
+  IF p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ).
+    SELECT DISTINCT provider FROM zaicode_apikey
+      INTO TABLE @DATA(lt_user_provs)
+      WHERE username = @sy-uname.
+    IF lines( lt_user_provs ) = 1
+       AND line_exists( lt_provs[ key = lt_user_provs[ 1 ]-provider ] ).
+      p_prov = lt_user_provs[ 1 ]-provider.
+    ELSEIF lines( lt_provs ) = 1.
+      p_prov = lt_provs[ 1 ]-key.
+    ENDIF.
   ENDIF.
 
   " Key-name listbox: the encrypted keys this user stored for the provider
