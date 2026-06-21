@@ -70,20 +70,21 @@ AT SELECTION-SCREEN OUTPUT.
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = lt_provs.
-  " Auto-select the provider when the current value is empty or invalid. Many
-  " providers may be configured, but the user can only use the ones they have a
-  " stored key for - so if they have keys for exactly one provider, pre-select
-  " that one. Fall back to the single-configured-provider case otherwise.
-  IF p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ).
-    SELECT DISTINCT provider FROM zaicode_apikey
-      INTO TABLE @DATA(lt_user_provs)
-      WHERE username = @sy-uname.
-    IF lines( lt_user_provs ) = 1
-       AND line_exists( lt_provs[ key = lt_user_provs[ 1 ]-provider ] ).
-      p_prov = lt_user_provs[ 1 ]-provider.
-    ELSEIF lines( lt_provs ) = 1.
-      p_prov = lt_provs[ 1 ]-key.
-    ENDIF.
+  " Auto-select the usable provider. p_prov has DEFAULT 'ANTHROPIC' so it is
+  " never empty - the real signal is whether the user has a key for the current
+  " provider. If not, and they have keys for exactly one provider, switch to it
+  " (overrides the default). This snaps a single-key user straight to their
+  " provider; once they have a key for the selected provider, nothing changes.
+  SELECT DISTINCT provider FROM zaicode_apikey
+    INTO TABLE @DATA(lt_user_provs)
+    WHERE username = @sy-uname.
+  IF NOT line_exists( lt_user_provs[ provider = p_prov ] )
+     AND lines( lt_user_provs ) = 1
+     AND line_exists( lt_provs[ key = lt_user_provs[ 1 ]-provider ] ).
+    p_prov = lt_user_provs[ 1 ]-provider.
+  ELSEIF ( p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ) )
+         AND lines( lt_provs ) = 1.
+    p_prov = lt_provs[ 1 ]-key.
   ENDIF.
 
   " Key-name listbox: the encrypted keys this user stored for the provider
