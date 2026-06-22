@@ -22,11 +22,13 @@ CLASS zcl_ai_tool_context DEFINITION
         !i_filename       TYPE string
       RETURNING VALUE(rv_content) TYPE string.
 
-    " Back-reference to the orchestrator runner, set once by the runner. Used to
-    " route tool sub-agent LLM calls through the runner's instrumentation.
+    " Back-reference to the orchestrator runner, set once by the runner. Typed as
+    " a generic object ref ON PURPOSE: a concrete REF TO zcl_ai_tool_runner here
+    " would create a class<->class cycle (runner already references this context),
+    " which makes activation order fragile. The actual call is dynamic in ask( ).
     METHODS set_host
       IMPORTING
-        !io_host TYPE REF TO zcl_ai_tool_runner.
+        !io_host TYPE REF TO object.
 
     " THE entry point a tool must use for its own (sub-agent) LLM call. Routed
     " through the runner so the call is shown in the progress panel, logged and
@@ -44,7 +46,8 @@ CLASS zcl_ai_tool_context DEFINITION
   PROTECTED SECTION.
   PRIVATE SECTION.
     TYPES tt_strings TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    DATA mo_host TYPE REF TO zcl_ai_tool_runner.
+    " Generic ref to the runner (breaks the class<->class cycle - see set_host).
+    DATA mo_host TYPE REF TO object.
 ENDCLASS.
 
 
@@ -72,11 +75,16 @@ CLASS zcl_ai_tool_context IMPLEMENTATION.
   METHOD ask.
 
     IF mo_host IS BOUND.
-      " Instrumented path: shown in the panel, logged, counted in Total.
-      rv_answer = mo_host->agent_ask(
-        i_label         = i_label
-        i_prompt        = i_prompt
-        i_system_prompt = i_system_prompt ).
+      " Instrumented path: shown in the panel, logged, counted in Total. Called
+      " dynamically so this class carries no compile-time dependency on the runner
+      " (avoids the activation-order cycle).
+      CALL METHOD mo_host->('AGENT_ASK')
+        EXPORTING
+          i_label         = i_label
+          i_prompt        = i_prompt
+          i_system_prompt = i_system_prompt
+        RECEIVING
+          rv_answer       = rv_answer.
     ELSE.
       " Fallback (no runner attached, e.g. unit tests): raw client call.
       rv_answer = mo_llm->ask(
