@@ -6,8 +6,11 @@ returns the source as the tool result and never modifies anything.
 
 When to use:
 - The user wants to view, describe, explain, document, list or analyse code.
-- As a mandatory prerequisite before modify_sap_object or review_sap_code for the
-  same object (READ before MODIFY / REVIEW).
+- As a mandatory prerequisite before modify_sap_object for the same object
+  (READ before MODIFY).
+- To get the LIST of object names for a multi-object review (use a wildcard).
+  Do NOT read full source before review_sap_code - that tool reads the source
+  itself, so pre-reading only floods the context.
 
 Arguments:
 - object_type: one of PROG, CLAS, METH, FUNC, REPS, OTHER.

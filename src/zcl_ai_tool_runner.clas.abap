@@ -127,6 +127,17 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     METHODS build_system_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
+
+    " Shrinks the copy of a tool-results turn that is kept in mt_history and
+    " re-sent on every later iteration. read_sap_object source dumps are pure
+    " bloat there - review_sap_code re-reads the source itself and the
+    " orchestrator only needs the object names (kept in the head) to keep
+    " dispatching reviews. The FULL results were already sent once as i_prompt
+    " for the immediate next call; only the resent history copy is compacted.
+    METHODS compact_tool_results
+      IMPORTING
+        !i_text          TYPE string
+      RETURNING VALUE(rv_text) TYPE string.
 ENDCLASS.
 
 
@@ -330,8 +341,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         complete_last_step( ).
       ENDIF.
 
-      " Persist the user turn to the multi-turn history (both paths)
-      APPEND VALUE #( role = 'user' content = lv_prompt ) TO mt_history.
+      " Persist the user turn to the multi-turn history. The full lv_prompt was
+      " just sent as i_prompt above; the history copy is compacted so big
+      " read_sap_object source dumps are not re-sent on every later iteration.
+      APPEND VALUE #( role = 'user' content = compact_tool_results( lv_prompt ) ) TO mt_history.
 
       " Always log the LLM output (text and/or requested tool calls) so the
       " History popup pairs it with the prompt: input left, output right
@@ -720,6 +733,59 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
                 |tool available in this session, do not attempt or simulate the change - | &&
                 |tell the user it requires installing | &&
                 |https://github.com/ysichov/ABAP-AI-CODE-TOOLS|.
+
+  ENDMETHOD.
+
+
+  METHOD compact_tool_results.
+
+    rv_text = i_text.
+    " Cheap guard: small turns (e.g. the plain user question) need no work.
+    IF strlen( rv_text ) <= 4000.
+      RETURN.
+    ENDIF.
+
+    DATA lt_lines TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    SPLIT rv_text AT cl_abap_char_utilities=>newline INTO TABLE lt_lines.
+
+    DATA lv_out     TYPE string.
+    DATA lv_in_read TYPE abap_bool.   " currently inside a read_sap_object block
+    DATA lv_kept    TYPE i.           " head lines already kept from the block
+    DATA lv_dropped TYPE i.           " source lines dropped from the block
+    CONSTANTS c_head TYPE i VALUE 6.  " head lines kept (object headers / names)
+
+    LOOP AT lt_lines INTO DATA(lv_line).
+      " A TOOL RESULT marker closes any open read block and opens a new one.
+      IF lv_line CS 'TOOL RESULT ['.
+        IF lv_in_read = abap_true AND lv_dropped > 0.
+          lv_out = lv_out && |... [{ lv_dropped } source line(s) omitted from history]|
+                          && cl_abap_char_utilities=>newline.
+        ENDIF.
+        lv_in_read = xsdbool( lv_line CS 'TOOL RESULT [read_sap_object]' ).
+        CLEAR: lv_kept, lv_dropped.
+        lv_out = lv_out && lv_line && cl_abap_char_utilities=>newline.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_in_read = abap_true.
+        IF lv_kept < c_head.
+          lv_kept = lv_kept + 1.
+          lv_out = lv_out && lv_line && cl_abap_char_utilities=>newline.
+        ELSE.
+          lv_dropped = lv_dropped + 1.
+        ENDIF.
+      ELSE.
+        lv_out = lv_out && lv_line && cl_abap_char_utilities=>newline.
+      ENDIF.
+    ENDLOOP.
+
+    " Flush a trailing note if the text ended while still inside a read block.
+    IF lv_in_read = abap_true AND lv_dropped > 0.
+      lv_out = lv_out && |... [{ lv_dropped } source line(s) omitted from history]|
+                      && cl_abap_char_utilities=>newline.
+    ENDIF.
+
+    rv_text = lv_out.
 
   ENDMETHOD.
 
