@@ -91,7 +91,7 @@
      <ID>S</ID>
      <KEY>P_WIPE</KEY>
      <ENTRY>Wipe password after launch</ENTRY>
-     <LENGTH>30</LENGTH>
+     <LENGTH>34</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
