@@ -828,7 +828,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         CONDENSE lv_type.
         CONDENSE lv_obj.
         IF lv_obj IS NOT INITIAL.
-          rv_key = |{ lv_name }|{ lv_type }|{ lv_obj }|.
+          rv_key = |{ lv_name }\|{ lv_type }\|{ lv_obj }|.
         ENDIF.
     ENDCASE.
 
