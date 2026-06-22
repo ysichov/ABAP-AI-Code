@@ -76,6 +76,17 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mo_ui       TYPE REF TO zcl_code_popup2.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
+
+    " Per-question cache of idempotent tool results (read_sap_object,
+    " review_sap_code). Lets a repeated identical call (the LLM sometimes
+    " re-issues the same review, differing only in object-name case) be served
+    " without paying for the work twice. Reset on each run( ) and invalidated by
+    " any state-changing tool.
+    TYPES: BEGIN OF ty_tool_cache,
+             key    TYPE string,
+             result TYPE string,
+           END OF ty_tool_cache.
+    DATA mt_tool_cache TYPE STANDARD TABLE OF ty_tool_cache WITH NON-UNIQUE DEFAULT KEY.
     DATA mv_review_pending TYPE abap_bool.
     DATA mv_user_prompt TYPE string.
     DATA mv_log_path    TYPE string.
@@ -140,6 +151,23 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     METHODS build_system_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
+
+    " Cache key for an idempotent tool call (read_sap_object / review_sap_code),
+    " case-normalised by object type+name. Returns '' for tools that must not be
+    " cached (writers, or calls without an object).
+    METHODS tool_cache_key
+      IMPORTING
+        !i_name        TYPE string
+        !i_type        TYPE string
+        !i_object      TYPE string
+      RETURNING VALUE(rv_key) TYPE string.
+
+    " True for tools that change object state (modify/create/delete) - they
+    " invalidate the idempotent-result cache.
+    METHODS is_writer_tool
+      IMPORTING
+        !i_name          TYPE string
+      RETURNING VALUE(rv_writer) TYPE abap_bool.
 
     " Shrinks the copy of a tool-results turn that is kept in mt_history and
     " re-sent on every later iteration. read_sap_object source dumps are pure
@@ -304,6 +332,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CLEAR mv_total_tok_in.
     CLEAR mv_total_tok_out.
     CLEAR mv_total_tok_cached.
+    " Idempotent-result cache is per question
+    CLEAR mt_tool_cache.
 
     DO c_max_iterations TIMES.
 
@@ -390,6 +420,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " No tool calls -> this is the final user-facing answer
       IF lt_calls IS INITIAL.
         rv_answer = lv_answer.
+        " Dedicated answer log so the final reply is easy to find without
+        " hunting for the last *_LLM.md among all the step logs.
+        write_log_file( i_suffix = 'A' i_content = lv_answer i_ext = 'md' i_step = lv_step ).
         APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
         write_session_tokens( ).
         RETURN.
@@ -423,8 +456,41 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           WHEN lv_step_object IS NOT INITIAL
           THEN |Tool { ls_call-name } { lv_step_object }...|
           ELSE |Tool { ls_call-name }...| ) ).
-        DATA(lv_result) = execute_tool_call( ls_call ).
-        complete_last_step( ).
+        " Deterministic dedupe: the LLM sometimes re-issues the same idempotent
+        " call across iterations (e.g. review_sap_code for the same object,
+        " differing only in name case). Run it once; serve repeats from the
+        " per-question cache so an expensive sub-agent call is not paid twice.
+        DATA(lv_cache_key) = tool_cache_key(
+          i_name = ls_call-name i_type = lv_step_type i_object = lv_step_name ).
+        DATA lv_result TYPE string.
+        DATA(lv_cache_hit) = abap_false.
+        IF lv_cache_key IS NOT INITIAL.
+          READ TABLE mt_tool_cache INTO DATA(ls_cache) WITH KEY key = lv_cache_key.
+          IF sy-subrc = 0.
+            lv_result    = ls_cache-result.
+            lv_cache_hit = abap_true.
+          ENDIF.
+        ENDIF.
+
+        IF lv_cache_hit = abap_true.
+          " Mark the already-shown step as a cache hit - no sub-call, no wait.
+          FIELD-SYMBOLS <ls_cstep> TYPE ty_step.
+          READ TABLE mt_progress_steps ASSIGNING <ls_cstep> INDEX lines( mt_progress_steps ).
+          IF sy-subrc = 0.
+            <ls_cstep>-text = |{ <ls_cstep>-text } (cached - already done)|.
+          ENDIF.
+          complete_last_step( ).
+        ELSE.
+          lv_result = execute_tool_call( ls_call ).
+          complete_last_step( ).
+          IF lv_cache_key IS NOT INITIAL AND NOT lv_result CP 'Error:*'.
+            INSERT VALUE #( key = lv_cache_key result = lv_result ) INTO TABLE mt_tool_cache.
+          ENDIF.
+          " A state-changing tool invalidates cached reads/reviews.
+          IF is_writer_tool( ls_call-name ) = abap_true.
+            CLEAR mt_tool_cache.
+          ENDIF.
+        ENDIF.
         write_log_file( i_suffix  = 'TOOL'
                         i_content = |{ ls_call-name }({ ls_call-arguments })| &&
                                     cl_abap_char_utilities=>newline &&
@@ -785,6 +851,39 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD tool_cache_key.
+
+    DATA(lv_name) = i_name.
+    TRANSLATE lv_name TO UPPER CASE.
+
+    " Only idempotent, object-scoped reads are safe to cache.
+    CASE lv_name.
+      WHEN 'READ_SAP_OBJECT' OR 'REVIEW_SAP_CODE'.
+        DATA(lv_type) = i_type.
+        DATA(lv_obj)  = i_object.
+        TRANSLATE lv_type TO UPPER CASE.
+        TRANSLATE lv_obj  TO UPPER CASE.
+        CONDENSE lv_type.
+        CONDENSE lv_obj.
+        IF lv_obj IS NOT INITIAL.
+          rv_key = |{ lv_name }|{ lv_type }|{ lv_obj }|.
+        ENDIF.
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD is_writer_tool.
+
+    DATA(lv_name) = i_name.
+    TRANSLATE lv_name TO UPPER CASE.
+    rv_writer = xsdbool( lv_name = 'MODIFY_SAP_OBJECT'
+                      OR lv_name = 'CREATE_SAP_OBJECT'
+                      OR lv_name = 'DELETE_SAP_OBJECT' ).
+
+  ENDMETHOD.
+
+
   METHOD compact_tool_results.
 
     rv_text = i_text.
@@ -849,6 +948,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     CLEAR mt_history.
     CLEAR mo_messages.
+    CLEAR mt_tool_cache.
 
   ENDMETHOD.
 
