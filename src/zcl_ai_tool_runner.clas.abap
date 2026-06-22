@@ -390,6 +390,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " No tool calls -> this is the final user-facing answer
       IF lt_calls IS INITIAL.
         rv_answer = lv_answer.
+        " Dedicated answer log so the final reply is easy to find without
+        " hunting for the last *_LLM.md among all the step logs.
+        write_log_file( i_suffix = 'A' i_content = lv_answer i_ext = 'md' i_step = lv_step ).
         APPEND VALUE #( role = 'assistant' content = lv_answer ) TO mt_history.
         write_session_tokens( ).
         RETURN.
