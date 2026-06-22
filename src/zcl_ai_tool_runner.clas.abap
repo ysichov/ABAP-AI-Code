@@ -39,6 +39,19 @@ CLASS zcl_ai_tool_runner DEFINITION
       IMPORTING
         !io_viewer TYPE REF TO cl_gui_html_viewer.
 
+    " Single instrumented entry point for a tool's OWN (sub-agent) LLM call.
+    " Tools must route through here (via zcl_ai_tool_context=>ask) instead of
+    " calling the raw client, so the sub-call is shown in the progress panel,
+    " logged and added to the running token totals - exactly like the
+    " orchestrator's own calls. This keeps every tool (current and future)
+    " visible to the orchestrator with no per-tool bookkeeping.
+    METHODS agent_ask
+      IMPORTING
+        !i_label         TYPE string OPTIONAL
+        !i_prompt        TYPE string
+        !i_system_prompt TYPE string OPTIONAL
+      RETURNING VALUE(rv_answer) TYPE string.
+
     DATA mv_session_num TYPE i.
 
   PROTECTED SECTION.
@@ -153,6 +166,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     mo_ui       = io_ui.
     mv_log_path = i_log_path.
     zcl_ai_tool_factory=>initialize( io_context ).
+
+    " Route tool sub-agent LLM calls (zcl_ai_tool_context=>ask) back through this
+    " runner so they are shown, logged and counted like the orchestrator's own.
+    io_context->set_host( me ).
 
     " Log folder layout: <log_path>/<PROVIDER>/<date>_<time>. The provider split
     " matters for separate token accounting (esp. Anthropic). Files inside drop
@@ -737,6 +754,37 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD agent_ask.
+
+    " Show the sub-call as its own progress step BEFORE the blocking HTTP call,
+    " so the panel reflects what is happening instead of looking frozen.
+    show_step(
+      i_text        = COND #( WHEN i_label IS NOT INITIAL
+                              THEN |Asking AI: { i_label }|
+                              ELSE |Asking AI (sub-agent)| )
+      i_prompt_type = 'LLM' ).
+
+    rv_answer = mo_llm->ask(
+      i_prompt        = i_prompt
+      i_system_prompt = i_system_prompt ).
+
+    " Log the sub-call like an orchestrator step (raw request / response), so the
+    " whole "inner kitchen" is on disk too, not only on screen.
+    DATA(lv_step) = lines( mt_progress_steps ).
+    write_log_file( i_suffix = 'SUBQ'   i_content = mo_llm->mv_last_raw_request  i_step = lv_step ).
+    write_log_file( i_suffix = 'SUBLLM' i_content = mo_llm->mv_last_raw_response i_step = lv_step ).
+
+    " Complete the step with the sub-call's real numbers and fold them into Total.
+    complete_last_step(
+      i_is_llm     = abap_true
+      i_seconds    = CONV #( mo_llm->get_last_seconds( ) )
+      i_tok_in     = mo_llm->mv_last_tok_in
+      i_tok_out    = mo_llm->mv_last_tok_out
+      i_tok_cached = mo_llm->mv_last_tok_cached ).
+
+  ENDMETHOD.
+
+
   METHOD compact_tool_results.
 
     rv_text = i_text.
@@ -862,6 +910,13 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     FIELD-SYMBOLS <ls_step> TYPE ty_step.
     READ TABLE mt_progress_steps ASSIGNING <ls_step> INDEX lv_last.
     CHECK sy-subrc = 0.
+
+    " A sub-agent call (agent_ask) already completed this step with its own
+    " seconds/tokens. The post-execute complete_last_step( ) from the tool loop
+    " must not overwrite that with zeros.
+    IF <ls_step>-done = abap_true.
+      RETURN.
+    ENDIF.
 
     <ls_step>-done       = abap_true.
     <ls_step>-is_llm     = i_is_llm.

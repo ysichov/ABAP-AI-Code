@@ -40,7 +40,8 @@ CLASS zcl_aitool_example IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lv_answer) = mo_context->mo_llm->ask(
+    DATA(lv_answer) = mo_context->ask(
+      i_label         = |code example: { lv_topic }|
       i_prompt        = lv_topic
       i_system_prompt = lv_system_prompt ).
 

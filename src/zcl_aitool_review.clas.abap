@@ -61,7 +61,8 @@ CLASS zcl_aitool_review IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lv_answer) = mo_context->mo_llm->ask(
+    DATA(lv_answer) = mo_context->ask(
+      i_label         = |review { lv_type } { lv_name }|
       i_prompt        = |Object: { lv_type } { lv_name }{ cl_abap_char_utilities=>newline }{ lv_source }|
       i_system_prompt = lv_system_prompt ).
 
