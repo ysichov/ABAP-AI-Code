@@ -76,6 +76,16 @@ CLASS zcl_ai_tool_runner DEFINITION
     DATA mo_ui       TYPE REF TO zcl_code_popup2.
     DATA mo_messages TYPE REF TO zcl_ai_messages.
     DATA mt_history TYPE zcl_ai_messages=>tt_messages.
+
+    " Per-question cache of idempotent tool results (read_sap_object,
+    " review_sap_code). Lets a repeated identical call (the LLM sometimes
+    " re-issues the same review, differing only in object-name case) be served
+    " without re-running the work. Reset on each run( ); invalidated by writers.
+    TYPES: BEGIN OF ty_tool_cache,
+             key    TYPE string,
+             result TYPE string,
+           END OF ty_tool_cache.
+    DATA mt_tool_cache TYPE STANDARD TABLE OF ty_tool_cache WITH NON-UNIQUE DEFAULT KEY.
     DATA mv_review_pending TYPE abap_bool.
     DATA mv_user_prompt TYPE string.
     DATA mv_log_path    TYPE string.
@@ -140,6 +150,21 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     METHODS build_system_prompt
       RETURNING VALUE(rv_prompt) TYPE string.
+
+    " Cache key for an idempotent tool call (read_sap_object / review_sap_code),
+    " case-normalised by object type+name. '' for tools that must not be cached.
+    METHODS tool_cache_key
+      IMPORTING
+        !i_name        TYPE string
+        !i_type        TYPE string
+        !i_object      TYPE string
+      RETURNING VALUE(rv_key) TYPE string.
+
+    " True for tools that change object state (modify/create/delete).
+    METHODS is_writer_tool
+      IMPORTING
+        !i_name          TYPE string
+      RETURNING VALUE(rv_writer) TYPE abap_bool.
 
     " Shrinks the copy of a tool-results turn that is kept in mt_history and
     " re-sent on every later iteration. read_sap_object source dumps are pure
@@ -784,6 +809,39 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       i_tok_in     = mo_llm->mv_last_tok_in
       i_tok_out    = mo_llm->mv_last_tok_out
       i_tok_cached = mo_llm->mv_last_tok_cached ).
+
+  ENDMETHOD.
+
+
+  METHOD tool_cache_key.
+
+    DATA(lv_name) = i_name.
+    TRANSLATE lv_name TO UPPER CASE.
+
+    " Only idempotent, object-scoped reads are safe to cache.
+    CASE lv_name.
+      WHEN 'READ_SAP_OBJECT' OR 'REVIEW_SAP_CODE'.
+        DATA(lv_type) = i_type.
+        DATA(lv_obj)  = i_object.
+        TRANSLATE lv_type TO UPPER CASE.
+        TRANSLATE lv_obj  TO UPPER CASE.
+        CONDENSE lv_type.
+        CONDENSE lv_obj.
+        IF lv_obj IS NOT INITIAL.
+          rv_key = |{ lv_name }|{ lv_type }|{ lv_obj }|.
+        ENDIF.
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD is_writer_tool.
+
+    DATA(lv_name) = i_name.
+    TRANSLATE lv_name TO UPPER CASE.
+    rv_writer = xsdbool( lv_name = 'MODIFY_SAP_OBJECT'
+                      OR lv_name = 'CREATE_SAP_OBJECT'
+                      OR lv_name = 'DELETE_SAP_OBJECT' ).
 
   ENDMETHOD.
 
