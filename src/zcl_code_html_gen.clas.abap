@@ -169,6 +169,11 @@ private section.
       !I_TEXT type STRING
     returning
       value(RV_TEXT) type STRING .
+  class-methods HIGHLIGHT_ABAP_LINE
+    importing
+      !I_LINE type STRING
+    returning
+      value(RV_HTML) type STRING .
 ENDCLASS.
 
 
@@ -216,6 +221,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
              && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none;\}|
              && |.cd\{padding:1px 8px;white-space:pre;\}|
              && |.cd-error\{padding:1px 8px;white-space:pre;color:red;font-weight:bold;\}|
+             && |.kw\{color:#0a58ca;font-weight:600\}|
+             && |.s\{color:#c2410c\}|
+             && |.num\{color:#0a7d33\}|
+             && |.cm\{color:#6a737d;font-style:italic\}|
              && |</style></head><body><div class="answer">|
              && lv_render_text
              && lv_source_html
@@ -1015,9 +1024,14 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         WHEN lv_line CS 'was not found or cannot be read'
           THEN 'cd-error'
           ELSE 'cd' ).
+      " Error lines stay plain red; real code gets ABAP syntax highlighting
+      DATA(lv_cell) = COND string(
+        WHEN lv_class = 'cd-error'
+          THEN escape_html( i_text = lv_line )
+          ELSE highlight_abap_line( i_line = lv_line ) ).
       rv_html = rv_html
              && |<tr><td class="ln">{ lv_lno }</td>|
-             && |<td class="{ lv_class }">{ escape_html( i_text = lv_line ) }</td></tr>|.
+             && |<td class="{ lv_class }">{ lv_cell }</td></tr>|.
     ENDLOOP.
 
     rv_html = rv_html && |</tbody></table>|.
@@ -1032,6 +1046,142 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '<' IN rv_text WITH '&lt;'.
     REPLACE ALL OCCURRENCES OF '>' IN rv_text WITH '&gt;'.
     REPLACE ALL OCCURRENCES OF '"' IN rv_text WITH '&quot;'.
+
+  endmethod.
+
+
+  method HIGHLIGHT_ABAP_LINE.
+
+    " Single-pass ABAP tokenizer that wraps keywords, string literals,
+    " comments and numbers in <span> tags. Works on arbitrary text
+    " (e.g. code coming from an LLM) - no system presence required.
+
+    " Most common ABAP keywords (uppercase, space delimited, padded).
+    " Missing rare words only stay uncoloured - highlighting is cosmetic.
+    CONSTANTS lc_kw TYPE string VALUE
+      ` ABAP-SOURCE ADD AND APPEND ASSIGN ASSIGNING AT BACK BEGIN BINARY BLOCK BREAK-POINT ` &&
+      `BY CALL CASE CATCH CHANGING CHECK CLASS CLASS-DATA CLASS-METHODS CLEAR CLOSE CNT COLLECT ` &&
+      `COMMIT COMPONENT COMPUTE CONCATENATE COND CONDENSE CONSTANTS CONTINUE CONTROLS CONV ` &&
+      `CORRESPONDING CREATE DATA DEFAULT DEFINE DELETE DESCRIBE DETAIL DIVIDE DO ELSE ELSEIF ` &&
+      `END ENDAT ENDCASE ENDCLASS ENDDO ENDFORM ENDFUNCTION ENDIF ENDLOOP ENDMETHOD ENDMODULE ` &&
+      `ENDPROVIDE ENDSELECT ENDTRY ENDWHILE EXCEPTION EXCEPTIONS EXIT EXPORT EXPORTING FETCH ` &&
+      `FIELD FIELD-SYMBOLS FIELDS FINAL FOR FORM FREE FROM FUNCTION GET HASHED IF IMPORT ` &&
+      `IMPORTING IN INCLUDE INDEX INHERITING INITIAL INITIALIZATION INNER INSERT INTERFACE ` &&
+      `INTERFACES INTO IS JOIN KEY LEAVE LEFT LIKE LINE LOOP MESSAGE METHOD METHODS MODIFY ` &&
+      `MODULE MOVE MOVE-CORRESPONDING MULTIPLY NEW NOT OF OFF ON OPEN OR ORDER OTHERS OUTER ` &&
+      `PARAMETERS PERFORM PRIVATE PROTECTED PUBLIC RAISE RAISING RANGES READ RECEIVING REDEFINITION ` &&
+      `REF REFERENCE REFRESH REPLACE REPORT RESULT RETURN RETURNING RIGHT ROLLBACK SCAN SEARCH ` &&
+      `SECTION SELECT SELECTION-SCREEN SET SHIFT SINGLE SKIP SORT SORTED SPLIT STANDARD STATICS ` &&
+      `STRUCTURE SUBMIT SUBTRACT SUM SUPPLIED SWITCH TABLE TABLES TIMES TO TRANSFER TRANSLATE ` &&
+      `TRY TYPE TYPES UNASSIGN ULINE UP UPDATE USING VALUE WHEN WHERE WHILE WITH WORK WRITE XSDBOOL ` .
+
+    CONSTANTS lc_wordchars TYPE string VALUE
+      `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_`.
+
+    DATA lv_len   TYPE i.
+    DATA lv_i     TYPE i.
+    DATA lv_start TYPE i.
+    DATA lv_ch    TYPE string.
+    DATA lv_word  TYPE string.
+    DATA lv_up    TYPE string.
+    DATA lv_lit   TYPE string.
+    DATA lv_trim  TYPE string.
+
+    lv_len = strlen( i_line ).
+    IF lv_len = 0.
+      RETURN.
+    ENDIF.
+
+    " Full-line comment: first non-blank character is '*'
+    lv_trim = i_line.
+    SHIFT lv_trim LEFT DELETING LEADING space.
+    IF lv_trim IS NOT INITIAL AND lv_trim(1) = '*'.
+      rv_html = |<span class="cm">{ escape_html( i_line ) }</span>|.
+      RETURN.
+    ENDIF.
+
+    WHILE lv_i < lv_len.
+      lv_ch = substring( val = i_line off = lv_i len = 1 ).
+
+      IF lv_ch CO lc_wordchars.
+        " Accumulate an identifier / keyword / number token
+        lv_word = lv_word && lv_ch.
+        lv_i = lv_i + 1.
+        CONTINUE.
+      ENDIF.
+
+      " Hit a delimiter -> flush the pending word first
+      IF lv_word IS NOT INITIAL.
+        lv_up = lv_word.
+        TRANSLATE lv_up TO UPPER CASE.
+        IF lc_kw CS | { lv_up } |.
+          rv_html = rv_html && |<span class="kw">{ escape_html( lv_word ) }</span>|.
+        ELSEIF lv_word CO `0123456789`.
+          rv_html = rv_html && |<span class="num">{ lv_word }</span>|.
+        ELSE.
+          rv_html = rv_html && escape_html( lv_word ).
+        ENDIF.
+        CLEAR lv_word.
+      ENDIF.
+
+      CASE lv_ch.
+        WHEN `'`.
+          " Text field literal, '' is an escaped quote inside
+          lv_start = lv_i.
+          lv_i = lv_i + 1.
+          WHILE lv_i < lv_len.
+            IF substring( val = i_line off = lv_i len = 1 ) = `'`.
+              IF lv_i + 1 < lv_len
+                 AND substring( val = i_line off = lv_i + 1 len = 1 ) = `'`.
+                lv_i = lv_i + 2.
+                CONTINUE.
+              ENDIF.
+              lv_i = lv_i + 1.
+              EXIT.
+            ENDIF.
+            lv_i = lv_i + 1.
+          ENDWHILE.
+          lv_lit = substring( val = i_line off = lv_start len = lv_i - lv_start ).
+          rv_html = rv_html && |<span class="s">{ escape_html( lv_lit ) }</span>|.
+
+        WHEN `|`.
+          " String template literal
+          lv_start = lv_i.
+          lv_i = lv_i + 1.
+          WHILE lv_i < lv_len.
+            IF substring( val = i_line off = lv_i len = 1 ) = `|`.
+              lv_i = lv_i + 1.
+              EXIT.
+            ENDIF.
+            lv_i = lv_i + 1.
+          ENDWHILE.
+          lv_lit = substring( val = i_line off = lv_start len = lv_i - lv_start ).
+          rv_html = rv_html && |<span class="s">{ escape_html( lv_lit ) }</span>|.
+
+        WHEN `"`.
+          " Quote comment runs to the end of the line
+          lv_lit = substring( val = i_line off = lv_i ).
+          rv_html = rv_html && |<span class="cm">{ escape_html( lv_lit ) }</span>|.
+          RETURN.
+
+        WHEN OTHERS.
+          rv_html = rv_html && escape_html( lv_ch ).
+          lv_i = lv_i + 1.
+      ENDCASE.
+    ENDWHILE.
+
+    " Flush a trailing word at end of line
+    IF lv_word IS NOT INITIAL.
+      lv_up = lv_word.
+      TRANSLATE lv_up TO UPPER CASE.
+      IF lc_kw CS | { lv_up } |.
+        rv_html = rv_html && |<span class="kw">{ escape_html( lv_word ) }</span>|.
+      ELSEIF lv_word CO `0123456789`.
+        rv_html = rv_html && |<span class="num">{ lv_word }</span>|.
+      ELSE.
+        rv_html = rv_html && escape_html( lv_word ).
+      ENDIF.
+    ENDIF.
 
   endmethod.
 

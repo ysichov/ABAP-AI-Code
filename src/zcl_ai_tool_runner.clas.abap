@@ -329,6 +329,8 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CLEAR mv_total_tok_in.
     CLEAR mv_total_tok_out.
     CLEAR mv_total_tok_cached.
+    " Idempotent-result cache is per question
+    CLEAR mt_tool_cache.
 
     DO c_max_iterations TIMES.
 
@@ -451,8 +453,41 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           WHEN lv_step_object IS NOT INITIAL
           THEN |Tool { ls_call-name } { lv_step_object }...|
           ELSE |Tool { ls_call-name }...| ) ).
-        DATA(lv_result) = execute_tool_call( ls_call ).
-        complete_last_step( ).
+        " Deterministic dedupe: the LLM sometimes re-issues the same idempotent
+        " call across iterations (e.g. review_sap_code for the same object,
+        " differing only in name case). Run it once; serve repeats from the
+        " per-question cache so an expensive sub-agent call is not paid twice.
+        DATA(lv_cache_key) = tool_cache_key(
+          i_name = ls_call-name i_type = lv_step_type i_object = lv_step_name ).
+        DATA lv_result TYPE string.
+        DATA(lv_cache_hit) = abap_false.
+        IF lv_cache_key IS NOT INITIAL.
+          READ TABLE mt_tool_cache INTO DATA(ls_cache) WITH KEY key = lv_cache_key.
+          IF sy-subrc = 0.
+            lv_result    = ls_cache-result.
+            lv_cache_hit = abap_true.
+          ENDIF.
+        ENDIF.
+
+        IF lv_cache_hit = abap_true.
+          " Mark the already-shown step as a cache hit - no sub-call, no wait.
+          FIELD-SYMBOLS <ls_cstep> TYPE ty_step.
+          READ TABLE mt_progress_steps ASSIGNING <ls_cstep> INDEX lines( mt_progress_steps ).
+          IF sy-subrc = 0.
+            <ls_cstep>-text = |{ <ls_cstep>-text } (cached - already done)|.
+          ENDIF.
+          complete_last_step( ).
+        ELSE.
+          lv_result = execute_tool_call( ls_call ).
+          complete_last_step( ).
+          IF lv_cache_key IS NOT INITIAL AND NOT lv_result CP 'Error:*'.
+            INSERT VALUE #( key = lv_cache_key result = lv_result ) INTO TABLE mt_tool_cache.
+          ENDIF.
+          " A state-changing tool invalidates cached reads/reviews.
+          IF is_writer_tool( ls_call-name ) = abap_true.
+            CLEAR mt_tool_cache.
+          ENDIF.
+        ENDIF.
         write_log_file( i_suffix  = 'TOOL'
                         i_content = |{ ls_call-name }({ ls_call-arguments })| &&
                                     cl_abap_char_utilities=>newline &&
@@ -910,6 +945,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
     CLEAR mt_history.
     CLEAR mo_messages.
+    CLEAR mt_tool_cache.
 
   ENDMETHOD.
 
