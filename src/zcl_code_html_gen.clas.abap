@@ -1056,9 +1056,23 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     " comments and numbers in <span> tags. Works on arbitrary text
     " (e.g. code coming from an LLM) - no system presence required.
 
+    CONSTANTS lc_wordchars TYPE string VALUE
+      `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_`.
+
     " Most common ABAP keywords (uppercase, space delimited, padded).
+    " VALUE forbids '&&', so the list is concatenated in an assignment.
     " Missing rare words only stay uncoloured - highlighting is cosmetic.
-    CONSTANTS lc_kw TYPE string VALUE
+    DATA lv_kw    TYPE string.
+    DATA lv_len   TYPE i.
+    DATA lv_i     TYPE i.
+    DATA lv_start TYPE i.
+    DATA lv_ch    TYPE string.
+    DATA lv_word  TYPE string.
+    DATA lv_up    TYPE string.
+    DATA lv_lit   TYPE string.
+    DATA lv_trim  TYPE string.
+
+    lv_kw =
       ` ABAP-SOURCE ADD AND APPEND ASSIGN ASSIGNING AT BACK BEGIN BINARY BLOCK BREAK-POINT ` &&
       `BY CALL CASE CATCH CHANGING CHECK CLASS CLASS-DATA CLASS-METHODS CLEAR CLOSE CNT COLLECT ` &&
       `COMMIT COMPONENT COMPUTE CONCATENATE COND CONDENSE CONSTANTS CONTINUE CONTROLS CONV ` &&
@@ -1074,18 +1088,6 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       `SECTION SELECT SELECTION-SCREEN SET SHIFT SINGLE SKIP SORT SORTED SPLIT STANDARD STATICS ` &&
       `STRUCTURE SUBMIT SUBTRACT SUM SUPPLIED SWITCH TABLE TABLES TIMES TO TRANSFER TRANSLATE ` &&
       `TRY TYPE TYPES UNASSIGN ULINE UP UPDATE USING VALUE WHEN WHERE WHILE WITH WORK WRITE XSDBOOL ` .
-
-    CONSTANTS lc_wordchars TYPE string VALUE
-      `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_`.
-
-    DATA lv_len   TYPE i.
-    DATA lv_i     TYPE i.
-    DATA lv_start TYPE i.
-    DATA lv_ch    TYPE string.
-    DATA lv_word  TYPE string.
-    DATA lv_up    TYPE string.
-    DATA lv_lit   TYPE string.
-    DATA lv_trim  TYPE string.
 
     lv_len = strlen( i_line ).
     IF lv_len = 0.
@@ -1114,7 +1116,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       IF lv_word IS NOT INITIAL.
         lv_up = lv_word.
         TRANSLATE lv_up TO UPPER CASE.
-        IF lc_kw CS | { lv_up } |.
+        IF lv_kw CS | { lv_up } |.
           rv_html = rv_html && |<span class="kw">{ escape_html( lv_word ) }</span>|.
         ELSEIF lv_word CO `0123456789`.
           rv_html = rv_html && |<span class="num">{ lv_word }</span>|.
@@ -1174,7 +1176,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     IF lv_word IS NOT INITIAL.
       lv_up = lv_word.
       TRANSLATE lv_up TO UPPER CASE.
-      IF lc_kw CS | { lv_up } |.
+      IF lv_kw CS | { lv_up } |.
         rv_html = rv_html && |<span class="kw">{ escape_html( lv_word ) }</span>|.
       ELSEIF lv_word CO `0123456789`.
         rv_html = rv_html && |<span class="num">{ lv_word }</span>|.
