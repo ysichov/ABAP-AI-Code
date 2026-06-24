@@ -1536,7 +1536,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
                && |<td class="sh">{ lv_escaped }</td></tr>|.
       ELSE.
         lv_lno = lv_lno + 1.
-        DATA(lv_cell) = escape_html( i_text = lv_line ).
+        DATA(lv_cell) = highlight_abap_line( i_line = lv_line ).
         lv_rows = lv_rows
                && |<tr><td class="ln">{ lv_lno }</td>|
                && |<td class="cd">{ lv_cell }</td></tr>|.
@@ -1555,6 +1555,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |user-select:none;border-right:1px solid #e0e0e0;|
            && |white-space:nowrap;background:#fafafa\}|
            && |.cd\{padding:1px 8px;white-space:pre\}|
+           && |.kw\{color:#0a58ca;font-weight:600\}|
+           && |.s\{color:#c2410c\}|
+           && |.num\{color:#0a7d33\}|
+           && |.cm\{color:#6a737d;font-style:italic\}|
            && |.sh\{padding:4px 8px;color:#0066cc;font-weight:bold;|
            && |background:#f0f6ff;border-top:2px solid #cce0ff;white-space:pre\}|
            && |.th\{padding:6px 8px;color:#003d80;font-weight:bold;font-size:13px;|
@@ -1814,6 +1818,10 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
            && |border-right:1px solid #e0e0e0;white-space:nowrap;background:#fafafa;user-select:none\}|
            && |.cd\{padding:1px 8px;white-space:pre\}|
            && |.cd-error\{padding:1px 8px;white-space:pre;color:red;font-weight:bold\}|
+           && |.kw\{color:#0a58ca;font-weight:600\}|
+           && |.s\{color:#c2410c\}|
+           && |.num\{color:#0a7d33\}|
+           && |.cm\{color:#6a737d;font-style:italic\}|
            && |</style></head><body>|
            && lv_body
            && |</body></html>|.
