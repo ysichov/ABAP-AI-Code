@@ -731,14 +731,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       lv_can_diff = abap_false.
     ENDIF.
 
-    IF lv_can_diff = abap_false.
-      DATA(lv_f_delete) = COND string( WHEN lv_is_delete = abap_true THEN 'YES' ELSE 'no' ).
-      DATA(lv_f_code)   = COND string( WHEN lv_new_code IS NOT INITIAL THEN |YES(len={ strlen( lv_new_code ) })| ELSE 'NO(empty)' ).
-      DATA(lv_f_ui)     = COND string( WHEN mo_ui IS BOUND THEN 'YES' ELSE 'NO' ).
-      MESSAGE |DIFF SKIPPED { is_result-object_type } { is_result-object_name }: | &&
-              |is_delete={ lv_f_delete }, has_code={ lv_f_code }, ui_bound={ lv_f_ui }| TYPE 'I'.
-    ENDIF.
-
     " Diff review is mandatory for every save when UI is available. When the
     " tool did not supply the original source (e.g. create_sap_object on an
     " existing object), read the current version so the user still sees a diff;
@@ -759,8 +751,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         ENDIF.
       ENDIF.
       mv_review_pending = abap_true.
-      MESSAGE |DIFF OPENED -> { is_result-object_type } { is_result-object_name }, | &&
-              |old_len={ strlen( lv_old_code ) }, new_len={ strlen( lv_new_code ) }| TYPE 'I'.
       rv_message = mo_ui->review_and_save(
         i_old_code    = lv_old_code
         i_new_code    = lv_new_code
