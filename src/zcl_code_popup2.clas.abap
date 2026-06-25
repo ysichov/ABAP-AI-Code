@@ -294,15 +294,19 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     lv_first_upper = lv_first_line.
     TRANSLATE lv_first_upper TO UPPER CASE.
 
-    " Source detection relies ONLY on the FIRST non-empty line starting with a
-    " known ABAP keyword. A whole-text substring scan (e.g. CS 'METHOD ' /
-    " CS '--- ') is too loose: a review/analysis answer in prose mentions those
-    " strings and would be wrongly rendered as source code in the editor.
+    " Source detection: first non-empty line starts with a known ABAP keyword
+    " OR with a '--- * ---' section marker produced by zcl_ai_code_reader
+    " (read_class / read_method always prefix their output with such a marker).
     DATA lv_is_abap_source TYPE abap_bool.
     IF lv_is_markdown = abap_false
-    AND ( lv_first_upper CP 'REPORT *' OR lv_first_upper CP 'PROGRAM *'
-          OR lv_first_upper CP 'CLASS * DEFINITION*'
-          OR lv_first_upper CP 'METHOD *' ).
+    AND ( lv_first_upper CP 'REPORT *'
+       OR lv_first_upper CP 'PROGRAM *'
+       OR lv_first_upper CP 'CLASS * DEFINITION*'
+       OR lv_first_upper CP 'CLASS * IMPLEMENTATION*'
+       OR lv_first_upper CP 'INTERFACE *'
+       OR lv_first_upper CP 'METHOD *'
+       OR lv_first_upper CP 'FUNCTION *'
+       OR lv_first_upper CP '--- * ---' ).
       lv_is_abap_source = abap_true.
     ENDIF.
 
