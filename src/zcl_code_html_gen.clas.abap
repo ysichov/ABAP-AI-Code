@@ -44,8 +44,8 @@ public section.
       !E_HTML type STRING
       !E_BASE_HTML type STRING
       !E_DIFF_KEY type STRING
-      !ET_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO
-      !ET_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS .
+      !ET_HUNK_INFO type ZIF_CODE_ACR_TYPES=>TY_T_HUNK_INFO
+      !ET_ACR_STATS type ZIF_CODE_ACR_TYPES=>TY_T_OBJ_STATS .
 protected section.
 private section.
 
@@ -133,7 +133,7 @@ private section.
       value(RV_HTML) type STRING .
   class-methods BUILD_DIFF_SUMMARY_HTML
     importing
-      !IT_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS
+      !IT_ACR_STATS type ZIF_CODE_ACR_TYPES=>TY_T_OBJ_STATS
       !IT_PART_SUMMARY type TT_DIFF_SUMMARY optional
       !I_USAGE_TEXT type STRING optional
     returning
@@ -239,19 +239,19 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lt_old TYPE abaptxt255_tab.
     DATA lt_new TYPE abaptxt255_tab.
     DATA lt_hunk_html TYPE string_table.
-    DATA lt_blame TYPE zif_ave_popup_types=>ty_blame_map.
+    DATA lt_blame TYPE zif_code_popup_types=>ty_blame_map.
     DATA lt_part_summary TYPE tt_diff_summary.
     DATA lv_hunk_count TYPE i.
     DATA lv_hunk_ins TYPE i.
     DATA lv_hunk_mod TYPE i.
     DATA lv_hunk_del TYPE i.
     DATA lv_author TYPE versuser.
-    DATA ls_part TYPE zif_ave_popup_types=>ty_part_row.
-    DATA lt_approved TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_declined TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_decline_notes TYPE zif_ave_acr_types=>ty_t_decline_notes.
-    DATA lt_hunk_actions TYPE zif_ave_acr_types=>ty_t_hunk_actions.
-    DATA lt_hunk_threads TYPE zif_ave_acr_types=>ty_t_hunk_threads.
+    DATA ls_part TYPE zif_code_popup_types=>ty_part_row.
+    DATA lt_approved TYPE zif_code_acr_types=>ty_approved.
+    DATA lt_declined TYPE zif_code_acr_types=>ty_approved.
+    DATA lt_decline_notes TYPE zif_code_acr_types=>ty_t_decline_notes.
+    DATA lt_hunk_actions TYPE zif_code_acr_types=>ty_t_hunk_actions.
+    DATA lt_hunk_threads TYPE zif_code_acr_types=>ty_t_hunk_threads.
 
     CLEAR: e_html,
            e_base_html,
@@ -348,12 +348,12 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           lv_part_status = 'Deleted'.
         ENDIF.
 
-        DATA(lt_part_diff) = zcl_ave_popup_diff=>compute_diff(
+        DATA(lt_part_diff) = zcl_code_popup_diff=>compute_diff(
           it_old  = lt_old
           it_new  = lt_new
           i_ignore_case = abap_true
           i_title = |Computing AI code diff: { ls_class_part-title }| ).
-        lt_part_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_diff ).
+        lt_part_diff = zcl_code_acr_hunk_html=>filter_moved_lines( it_diff = lt_part_diff ).
 
         lv_part_index = lv_part_index + 1.
         lv_author = 'AI_AGENT'.
@@ -365,9 +365,9 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ls_part-name = ls_part-object_name.
         ls_part-display_name = ls_class_part-title.
 
-        DATA lt_part_hunk_info TYPE zif_ave_acr_types=>ty_t_hunk_info.
+        DATA lt_part_hunk_info TYPE zif_code_acr_types=>ty_t_hunk_info.
         DATA lt_part_full_hunk_html TYPE string_table.
-        DATA(lv_part_full_html) = zcl_ave_popup_html=>diff_to_html(
+        DATA(lv_part_full_html) = zcl_code_popup_html=>diff_to_html(
           it_diff       = lt_part_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
@@ -375,7 +375,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           i_compact     = abap_true
           i_plain       = abap_false
           i_code_review = abap_true ).
-        lt_part_full_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+        lt_part_full_hunk_html = zcl_code_acr_hunk_html=>collect_rows(
           it_diff        = lt_part_diff
           iv_full_html   = lv_part_full_html
           iv_title       = ls_class_part-title
@@ -386,7 +386,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           iv_is_created  = lv_is_created
           iv_context     = 3 ).
 
-        zcl_ave_acr_hunk_info=>collect(
+        zcl_code_acr_hunk_info=>collect(
           EXPORTING
             is_part            = ls_part
             it_diff            = lt_part_diff
@@ -420,7 +420,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        DATA(lv_part_display_full_html) = zcl_ave_popup_html=>diff_to_html(
+        DATA(lv_part_display_full_html) = zcl_code_popup_html=>diff_to_html(
           it_diff       = lt_part_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
@@ -429,7 +429,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           i_plain       = abap_false
           i_code_review = abap_true ).
 
-        lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+        lt_hunk_html = zcl_code_acr_hunk_html=>collect_rows(
           it_diff        = lt_part_diff
           iv_full_html   = lv_part_display_full_html
           iv_title       = ls_class_part-title
@@ -440,7 +440,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           iv_is_created  = lv_is_created
           iv_context     = 3 ).
 
-        DATA(lv_part_html) = zcl_ave_popup_html=>diff_to_html(
+        DATA(lv_part_html) = zcl_code_popup_html=>diff_to_html(
           it_diff       = lt_part_diff
           i_title       = ls_class_part-title
           i_meta        = 'LLM proposal vs current SAP source'
@@ -459,11 +459,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
           INSERT ls_part_hunk_info INTO TABLE et_hunk_info.
         ENDLOOP.
 
-        APPEND VALUE zif_ave_acr_types=>ty_obj_stats(
+        APPEND VALUE zif_code_acr_types=>ty_obj_stats(
           objtype      = ls_part-type
           obj_name     = ls_part-object_name
           author       = lv_author
-          author_name  = zcl_ave_popup_data=>get_user_name( lv_author )
+          author_name  = zcl_code_popup_data=>get_user_name( lv_author )
           hunk_count   = lv_hunk_count
           hunk_ins     = lv_hunk_ins
           hunk_mod     = lv_hunk_mod
@@ -507,7 +507,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         e_base_html = e_html.
         e_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
 
-        zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+        zcl_code_acr_hunk_renderer=>inject_approve_btn(
           EXPORTING
             iv_key           = e_diff_key
             it_hunk_info     = et_hunk_info
@@ -547,15 +547,15 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         et_current        = lt_old
         et_proposed       = lt_new ).
 
-    DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff(
+    DATA(lt_diff) = zcl_code_popup_diff=>compute_diff(
       it_old        = lt_old
       it_new        = lt_new
       i_ignore_case = abap_true
       i_title       = 'Computing AI code diff' ).
 
-    lt_diff = zcl_ave_acr_hunk_html=>filter_moved_lines( it_diff = lt_diff ).
+    lt_diff = zcl_code_acr_hunk_html=>filter_moved_lines( it_diff = lt_diff ).
 
-    e_html = zcl_ave_popup_html=>diff_to_html(
+    e_html = zcl_code_popup_html=>diff_to_html(
       it_diff       = lt_diff
       i_title       = 'AI Code Change'
       i_meta        = 'LLM proposal vs current SAP source'
@@ -564,7 +564,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       i_plain       = abap_false
       i_code_review = abap_true ).
 
-    DATA(lv_hunk_full_html) = zcl_ave_popup_html=>diff_to_html(
+    DATA(lv_hunk_full_html) = zcl_code_popup_html=>diff_to_html(
       it_diff       = lt_diff
       i_title       = 'AI Code Change'
       i_meta        = 'LLM proposal vs current SAP source'
@@ -573,7 +573,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
       i_plain       = abap_false
       i_code_review = abap_true ).
 
-    lt_hunk_html = zcl_ave_acr_hunk_html=>collect_rows(
+    lt_hunk_html = zcl_code_acr_hunk_html=>collect_rows(
       it_diff        = lt_diff
       iv_full_html   = lv_hunk_full_html
       iv_title       = 'AI Code Change'
@@ -590,7 +590,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     ls_part-name = ls_part-object_name.
     ls_part-display_name = |{ ls_part-type } { ls_part-object_name }|.
 
-    zcl_ave_acr_hunk_info=>collect(
+    zcl_code_acr_hunk_info=>collect(
       EXPORTING
         is_part            = ls_part
         it_diff            = lt_diff
@@ -610,11 +610,11 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
         ev_hunk_mod        = lv_hunk_mod
         ev_hunk_del        = lv_hunk_del ).
 
-    APPEND VALUE zif_ave_acr_types=>ty_obj_stats(
+    APPEND VALUE zif_code_acr_types=>ty_obj_stats(
       objtype      = ls_part-type
       obj_name     = ls_part-object_name
       author       = lv_author
-      author_name  = zcl_ave_popup_data=>get_user_name( lv_author )
+      author_name  = zcl_code_popup_data=>get_user_name( lv_author )
       hunk_count   = lv_hunk_count
       hunk_ins     = lv_hunk_ins
       hunk_mod     = lv_hunk_mod
@@ -658,7 +658,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     e_base_html = e_html.
     e_diff_key = |{ ls_part-type }~{ ls_part-object_name }|.
 
-    zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+    zcl_code_acr_hunk_renderer=>inject_approve_btn(
       EXPORTING
         iv_key           = e_diff_key
         it_hunk_info     = et_hunk_info
@@ -897,7 +897,7 @@ CLASS ZCL_CODE_HTML_GEN IMPLEMENTATION.
     DATA lv_prompt_tokens TYPE string.
     DATA lv_completion_tokens TYPE string.
     DATA lv_cached_tokens TYPE string.
-    DATA ls_stats TYPE zif_ave_acr_types=>ty_obj_stats.
+    DATA ls_stats TYPE zif_code_acr_types=>ty_obj_stats.
 
     IF i_usage_text IS NOT INITIAL.
       FIND FIRST OCCURRENCE OF REGEX 'Tokens:\s*([^\r\n]+)' IN i_usage_text

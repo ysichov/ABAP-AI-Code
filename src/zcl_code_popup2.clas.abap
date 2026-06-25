@@ -84,7 +84,7 @@ private section.
   data MO_OBJ_TREE type ref to ZCL_CODE_OBJECT_TREE .
   data MO_ANSWER type ref to CL_GUI_HTML_VIEWER .
   " Right panel split: HTML viewer on top, ABAP editor on bottom.
-  " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
+  " Heights toggled 0/100 to show one at a time (same pattern as ZCL_CODE_POPUP).
   data MO_ANSWER_SPLIT type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_ANSWER_CONT_HTML type ref to CL_GUI_CONTAINER .
   data MO_ANSWER_CONT_CODE type ref to CL_GUI_CONTAINER .
@@ -118,13 +118,13 @@ private section.
   data MT_BPOINTS type TT_BPOINTS .
   data MV_DISPLAYED_PROGRAM type PROGNAME .
   data MV_DISPLAYED_INCLUDE type PROGNAME .
-  data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
-  data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
-  data MT_DIFF_DECLINED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
-  data MT_DIFF_DECLINE_NOTES type ZIF_AVE_ACR_TYPES=>TY_T_DECLINE_NOTES .
-  data MT_DIFF_HUNK_ACTIONS type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_ACTIONS .
-  data MT_DIFF_HUNK_THREADS type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_THREADS .
-  data MT_DIFF_ACR_STATS type ZIF_AVE_ACR_TYPES=>TY_T_OBJ_STATS .
+  data MT_DIFF_HUNK_INFO type ZIF_CODE_ACR_TYPES=>TY_T_HUNK_INFO .
+  data MT_DIFF_APPROVED type ZIF_CODE_ACR_TYPES=>TY_APPROVED .
+  data MT_DIFF_DECLINED type ZIF_CODE_ACR_TYPES=>TY_APPROVED .
+  data MT_DIFF_DECLINE_NOTES type ZIF_CODE_ACR_TYPES=>TY_T_DECLINE_NOTES .
+  data MT_DIFF_HUNK_ACTIONS type ZIF_CODE_ACR_TYPES=>TY_T_HUNK_ACTIONS .
+  data MT_DIFF_HUNK_THREADS type ZIF_CODE_ACR_TYPES=>TY_T_HUNK_THREADS .
+  data MT_DIFF_ACR_STATS type ZIF_CODE_ACR_TYPES=>TY_T_OBJ_STATS .
 
   class-data MO_ANSWER_STATIC type ref to CL_GUI_HTML_VIEWER .
   class-data MO_MESSAGES_STATIC type ref to ZCL_AI_MESSAGES .
@@ -536,7 +536,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       WHEN 'approve'.
         INSERT lv_rest INTO TABLE mt_diff_approved.
         DELETE TABLE mt_diff_declined FROM lv_rest.
-        zcl_ave_acr_state=>set_hunk_action(
+        zcl_code_acr_state=>set_hunk_action(
           EXPORTING
             iv_hunk_key     = lv_rest
             iv_action       = 'A'
@@ -546,7 +546,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       WHEN 'decline'.
         INSERT lv_rest INTO TABLE mt_diff_declined.
         DELETE TABLE mt_diff_approved FROM lv_rest.
-        zcl_ave_acr_state=>set_hunk_action(
+        zcl_code_acr_state=>set_hunk_action(
           EXPORTING
             iv_hunk_key     = lv_rest
             iv_action       = 'D'
@@ -557,7 +557,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         LOOP AT mt_diff_hunk_info INTO DATA(ls_hunk).
           INSERT ls_hunk-hunk_key INTO TABLE mt_diff_approved.
           DELETE TABLE mt_diff_declined FROM ls_hunk-hunk_key.
-          zcl_ave_acr_state=>set_hunk_action(
+          zcl_code_acr_state=>set_hunk_action(
             EXPORTING
               iv_hunk_key     = ls_hunk-hunk_key
               iv_action       = 'A'
@@ -569,7 +569,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         DELETE TABLE mt_diff_approved FROM lv_rest.
         DELETE TABLE mt_diff_declined FROM lv_rest.
         DELETE TABLE mt_diff_decline_notes WITH TABLE KEY hunk_key = lv_rest.
-        zcl_ave_acr_state=>clear_hunk_action(
+        zcl_code_acr_state=>clear_hunk_action(
           EXPORTING
             iv_hunk_key     = lv_rest
           CHANGING
@@ -1057,7 +1057,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    zcl_ave_acr_hunk_renderer=>inject_approve_btn(
+    zcl_code_acr_hunk_renderer=>inject_approve_btn(
       EXPORTING
         iv_key           = mv_diff_key
         it_hunk_info     = mt_diff_hunk_info
@@ -1199,7 +1199,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       io_popup     = me ).
 
     " Right panel: split into HTML viewer (top) + ABAP editor (bottom).
-    " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
+    " Heights toggled 0/100 to show one at a time (same pattern as ZCL_CODE_POPUP).
     CREATE OBJECT mo_answer_split
       EXPORTING parent = lo_right rows = 2 columns = 1
       EXCEPTIONS OTHERS = 1.
