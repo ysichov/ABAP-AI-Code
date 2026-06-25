@@ -180,7 +180,8 @@ private section.
     for event BORDER_CLICK of CL_GUI_ABAPEDIT
     importing !CNTRL_PRESSED_SET !LINE !SHIFT_PRESSED_SET .
   methods REFRESH_BREAKPOINT_MARKERS .
-  " Middle-pane toggles: progress log vs object structure tree.
+  " Middle-pane toggles: progress log vs object structure tree (same 0/100
+  " pattern as the answer pane's HTML <-> ABAP editor switch).
   methods SHOW_LOG_PANE .
   methods SHOW_TREE_PANE .
   " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
@@ -231,8 +232,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     mv_session_counter = mv_session_counter + 1.
 
-    " Show the progress log in the middle pane (a previous answer may have left
-    " the object tree visible there).
+    " Bring the progress log back to the middle pane (a previous answer may have
+    " replaced it with the object tree).
     show_log_pane( ).
 
     " =====================================================================
@@ -760,6 +761,15 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       i_source  = lv_saved_source
       i_program = CONV progname( mv_diff_object_name ) ).
 
+    " Build the structure tree for the just-saved object and switch to it (same
+    " as opening an object for reading).
+    IF mo_obj_tree IS BOUND
+    AND mo_obj_tree->build_for_object(
+          i_type = mv_diff_object_type
+          i_name = mv_diff_object_name ) = abap_true.
+      show_tree_pane( ).
+    ENDIF.
+
     cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
 
@@ -1141,9 +1151,10 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       EXCEPTIONS OTHERS = 1.
     mo_question->set_toolbar_mode( 0 ).  " 0 = toolbar off
 
-    " Middle pane: split into progress log (top) + object tree (bottom).
-    " Toggled 0/100 like the answer pane: log during a run, tree when an object
-    " is shown in the editor.
+    " Middle pane: progress log (top) + object structure tree (bottom).
+    " Toggled 0/100 - same proven pattern as the answer pane (HTML <-> ABAP
+    " editor): the log shows during a run, the tree replaces it when an object
+    " is shown. A new question switches back to the log.
     CREATE OBJECT mo_mid_split
       EXPORTING parent = lo_middle rows = 2 columns = 1
       EXCEPTIONS OTHERS = 1.
@@ -1574,7 +1585,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         i_source  = lv_source
         i_program = lv_mainprog
         i_include = lv_include ).
-      " Build the structure tree for this object and switch the middle pane to it.
+      " Build the structure tree for this object and replace the log with it
+      " (same toggle as the answer pane). Only switch when the tree was built.
       IF mo_obj_tree IS BOUND
       AND mo_obj_tree->build_for_object( i_type = i_type i_name = i_name ) = abap_true.
         show_tree_pane( ).
