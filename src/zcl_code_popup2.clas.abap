@@ -97,6 +97,7 @@ private section.
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
   data MT_BPOINTS type TT_BPOINTS .
   data MV_DISPLAYED_PROGRAM type PROGNAME .
+  data MV_DISPLAYED_INCLUDE type PROGNAME .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
   data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
   data MT_DIFF_DECLINED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
@@ -159,7 +160,8 @@ private section.
   methods DISPLAY_PROGRAM_SOURCE
     importing
       !I_SOURCE  type STRING
-      !I_PROGRAM type PROGNAME optional .
+      !I_PROGRAM type PROGNAME optional
+      !I_INCLUDE type PROGNAME optional .
   methods ON_CODE_BORDER_CLICK
     for event BORDER_CLICK of CL_GUI_ABAPEDIT
     importing !CNTRL_PRESSED_SET !LINE !SHIFT_PRESSED_SET .
@@ -525,31 +527,77 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         IF lines( lt_obj_parts ) >= 2.
           DATA(lv_open_type) = lt_obj_parts[ 1 ].
           DATA(lv_open_name) = lt_obj_parts[ 2 ].
-          DATA(lv_open_source) = VALUE string( ).
-          CASE lv_open_type.
-            WHEN 'PROG' OR 'REPS'.
-              lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-            WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
-              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-            WHEN OTHERS.
-              lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-          ENDCASE.
-          DATA(lv_open_upper) = lv_open_source.
-          TRANSLATE lv_open_upper TO UPPER CASE.
-          IF lv_open_source IS INITIAL OR lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES'.
-            DATA(lv_class_fallback) = lv_open_source.
-            lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-            DATA(lv_prog_upper) = lv_open_source.
-            TRANSLATE lv_prog_upper TO UPPER CASE.
-            IF lv_open_source IS INITIAL OR lv_prog_upper CS 'NOT FOUND' OR lv_prog_upper CS 'CANNOT BE READ'.
-              " Neither class nor program found - show both error messages
-              lv_open_source = lv_class_fallback && cl_abap_char_utilities=>newline && lv_open_source.
+          DATA(lv_open_source)   = VALUE string( ).
+          DATA(lv_open_mainprog) = VALUE progname( ).
+          DATA(lv_open_include)  = VALUE progname( ).
+          " Detect CLASS=>METHOD pattern
+          DATA lv_open_is_meth TYPE abap_bool.
+          DATA lv_open_cls     TYPE string.
+          DATA lv_open_meth    TYPE string.
+          IF ( lv_open_type = 'CLAS' OR lv_open_type = 'CLASS'
+            OR lv_open_type = 'METH' OR lv_open_type = 'METHOD' )
+            AND lv_open_name CS '=>'.
+            SPLIT lv_open_name AT '=>' INTO lv_open_cls lv_open_meth.
+            lv_open_is_meth = abap_true.
+          ENDIF.
+          IF lv_open_is_meth = abap_true.
+            " Read raw include source for exact line-number mapping (breakpoints)
+            DATA ls_open_clskey TYPE seoclskey.
+            DATA lt_open_meths  TYPE seop_methods_w_include.
+            ls_open_clskey-clsname = lv_open_cls.
+            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+              EXPORTING  clskey   = ls_open_clskey
+              IMPORTING  includes = lt_open_meths
+              EXCEPTIONS OTHERS   = 1.
+            IF sy-subrc = 0.
+              READ TABLE lt_open_meths INTO DATA(ls_open_mi)
+                WITH KEY cpdkey-cpdname = lv_open_meth.
+              IF sy-subrc = 0.
+                lv_open_include = ls_open_mi-incname.
+                DATA lt_raw_src TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+                READ REPORT lv_open_include INTO lt_raw_src.
+                IF sy-subrc = 0.
+                  LOOP AT lt_raw_src INTO DATA(lv_raw_line).
+                    IF lv_open_source IS NOT INITIAL.
+                      lv_open_source = lv_open_source && cl_abap_char_utilities=>newline.
+                    ENDIF.
+                    lv_open_source = lv_open_source && lv_raw_line.
+                  ENDLOOP.
+                ENDIF.
+              ENDIF.
             ENDIF.
+            IF lv_open_source IS INITIAL.
+              lv_open_source = zcl_ai_code_reader=>read_method(
+                i_class  = lv_open_cls i_method = lv_open_meth ).
+            ENDIF.
+            lv_open_mainprog = CONV progname( lv_open_cls ).
+          ELSE.
+            CASE lv_open_type.
+              WHEN 'PROG' OR 'REPS'.
+                lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+              WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
+                lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
+              WHEN OTHERS.
+                lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
+            ENDCASE.
+            DATA(lv_open_upper) = lv_open_source.
+            TRANSLATE lv_open_upper TO UPPER CASE.
+            IF lv_open_source IS INITIAL OR lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES'.
+              DATA(lv_class_fallback) = lv_open_source.
+              lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
+              DATA(lv_prog_upper) = lv_open_source.
+              TRANSLATE lv_prog_upper TO UPPER CASE.
+              IF lv_open_source IS INITIAL OR lv_prog_upper CS 'NOT FOUND' OR lv_prog_upper CS 'CANNOT BE READ'.
+                lv_open_source = lv_class_fallback && cl_abap_char_utilities=>newline && lv_open_source.
+              ENDIF.
+            ENDIF.
+            lv_open_mainprog = CONV progname( lv_open_name ).
           ENDIF.
           IF lv_open_source IS NOT INITIAL.
             display_program_source(
               i_source  = lv_open_source
-              i_program = CONV progname( lv_open_name ) ).
+              i_program = lv_open_mainprog
+              i_include = lv_open_include ).
           ENDIF.
         ENDIF.
         RETURN.
@@ -1346,6 +1394,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
     IF i_program IS NOT INITIAL.
       mv_displayed_program = i_program.
+      mv_displayed_include = COND progname( WHEN i_include IS NOT INITIAL THEN i_include ELSE i_program ).
       " Show RUN button for executable programs (subc = '1') if not already shown
       IF mv_run_program IS INITIAL.
         SELECT SINGLE subc FROM reposrc INTO @DATA(lv_dp_subc)
@@ -1450,10 +1499,14 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
   METHOD on_code_border_click.
     DATA: lv_type    TYPE char1,
           lv_program TYPE progname,
+          lv_include TYPE progname,
           lv_line    TYPE i.
     CHECK mv_displayed_program IS NOT INITIAL.
     CHECK mo_code_viewer IS BOUND.
     lv_program = mv_displayed_program.
+    lv_include = COND progname( WHEN mv_displayed_include IS NOT INITIAL
+                                THEN mv_displayed_include
+                                ELSE mv_displayed_program ).
     lv_line    = line.
     IF cntrl_pressed_set IS INITIAL. lv_type = 'S'. ELSE. lv_type = 'E'. ENDIF.
     LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = lv_line.
@@ -1462,7 +1515,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         EXPORTING
           index    = lv_line
           mainprog = lv_program
-          program  = lv_program
+          program  = lv_include
           bp_type  = lv_type
         EXCEPTIONS
           not_executed = 1
@@ -1473,7 +1526,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       CALL FUNCTION 'RS_SET_BREAKPOINT'
         EXPORTING
           index       = lv_line
-          program     = lv_program
+          program     = lv_include
           mainprogram = lv_program
           bp_type     = lv_type
         EXCEPTIONS
@@ -1488,8 +1541,12 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
   METHOD refresh_breakpoint_markers.
     TYPES: lntab TYPE STANDARD TABLE OF i WITH NON-UNIQUE DEFAULT KEY.
     DATA: lines TYPE lntab.
+    DATA  lv_inc TYPE progname.
     CHECK mv_displayed_program IS NOT INITIAL.
     CHECK mo_code_viewer IS BOUND.
+    lv_inc = COND progname( WHEN mv_displayed_include IS NOT INITIAL
+                            THEN mv_displayed_include
+                            ELSE mv_displayed_program ).
     mo_code_viewer->remove_all_marker( 2 ).
     mo_code_viewer->remove_all_marker( 4 ).
     CLEAR mt_bpoints.
@@ -1500,13 +1557,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
     CLEAR lines.
     LOOP AT points INTO DATA(point).
-      CHECK point-include = mv_displayed_program.
+      CHECK point-include = lv_inc.
       APPEND point-line TO lines.
       READ TABLE mt_bpoints TRANSPORTING NO FIELDS
         WITH KEY include = point-include line = point-line.
       IF sy-subrc <> 0.
         APPEND VALUE ts_bpoint(
-          program = mv_displayed_program include = mv_displayed_program
+          program = mv_displayed_program include = lv_inc
           line = point-line type = 'S' ) TO mt_bpoints.
       ENDIF.
     ENDLOOP.
@@ -1518,13 +1575,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                  flag_other_session   = abap_true
       IMPORTING  breakpoints_complete = points
       EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
-    LOOP AT points INTO point WHERE include = mv_displayed_program.
+    LOOP AT points INTO point WHERE include = lv_inc.
       APPEND point-line TO lines.
       READ TABLE mt_bpoints TRANSPORTING NO FIELDS
         WITH KEY include = point-include line = point-line.
       IF sy-subrc <> 0.
         APPEND VALUE ts_bpoint(
-          program = mv_displayed_program include = mv_displayed_program
+          program = mv_displayed_program include = lv_inc
           line = point-line type = 'E' ) TO mt_bpoints.
       ENDIF.
     ENDLOOP.

@@ -105,9 +105,17 @@ CLASS zcl_aitool_read IMPLEMENTATION.
 
     CASE i_type.
       WHEN 'CLAS'.
-        rv_source = zcl_ai_code_reader=>read_class(
-          EXPORTING i_class      = i_name
-          IMPORTING ev_not_found = ev_not_found ).
+        IF i_name CS '=>'.
+          SPLIT i_name AT '=>' INTO DATA(lv_cls_part) DATA(lv_meth_part).
+          rv_source = zcl_ai_code_reader=>read_method(
+            EXPORTING i_class      = lv_cls_part
+                      i_method     = lv_meth_part
+            IMPORTING ev_not_found = ev_not_found ).
+        ELSE.
+          rv_source = zcl_ai_code_reader=>read_class(
+            EXPORTING i_class      = i_name
+            IMPORTING ev_not_found = ev_not_found ).
+        ENDIF.
       WHEN 'METH'.
         SPLIT i_name AT '=>' INTO DATA(lv_class) DATA(lv_method).
         rv_source = zcl_ai_code_reader=>read_method(
