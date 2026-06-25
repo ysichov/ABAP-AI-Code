@@ -109,6 +109,7 @@ private section.
   data MV_STREAM_RESPONSE_FILE type STRING .
   data MV_RUN_PROGRAM type PROGNAME .
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
+  data MV_BACK_BUTTON_ADDED type ABAP_BOOL .
   data MT_BPOINTS type TT_BPOINTS .
   data MV_DISPLAYED_PROGRAM type PROGNAME .
   data MV_DISPLAYED_INCLUDE type PROGNAME .
@@ -187,6 +188,10 @@ private section.
   " Back from the code view to the previous answer (object list / search
   " results), restoring the HTML answer pane and the progress log.
   methods BACK_TO_LIST .
+  " Add/remove the Back toolbar button (truly hidden when not in the code view,
+  " same as the Run program button - the toolbar API has no per-button hide).
+  methods SHOW_BACK_BUTTON .
+  methods HIDE_BACK_BUTTON .
   " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
   " editor with breakpoint support. For a single method, reads the raw method
   " include so editor line numbers map 1:1 to real source lines.
@@ -1106,12 +1111,6 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mo_toolbar->set_registered_events( events = lt_events ).
 
     DATA lt_buttons TYPE ttb_button.
-    APPEND VALUE #( function  = 'BACK'
-                    icon      = CONV #( icon_arrow_left )
-                    butn_type = cntb_btype_button
-                    text      = 'Back'
-                    quickinfo = 'Back from code to the object list' ) TO lt_buttons.
-    APPEND VALUE #( butn_type = cntb_btype_sep ) TO lt_buttons.
     APPEND VALUE #( function  = 'ASK'
                     icon      = CONV #( icon_execute_object )
                     butn_type = cntb_btype_button
@@ -1133,11 +1132,6 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                     text      = 'New Session'
                     quickinfo = 'Start a new conversation (clears history)' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
-
-    " Back is only usable from the code view - greyed out until code is shown.
-    mo_toolbar->set_button_state(
-      EXPORTING fcode = 'BACK' enabled = abap_false
-      EXCEPTIONS OTHERS = 1 ).
 
     SET HANDLER on_toolbar_click FOR mo_toolbar.
 
@@ -1406,12 +1400,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       mo_answer_split->set_row_height( id = 2 height = 100 ).
     ENDIF.
 
-    " We are in the code view now - enable the Back button.
-    IF mo_toolbar IS BOUND.
-      mo_toolbar->set_button_state(
-        EXPORTING fcode = 'BACK' enabled = abap_true
-        EXCEPTIONS OTHERS = 1 ).
-    ENDIF.
+    " We are in the code view now - reveal the Back button.
+    show_back_button( ).
 
     IF i_program IS NOT INITIAL.
       mv_displayed_program = i_program.
@@ -1691,15 +1681,34 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       mo_answer_split->set_row_height( id = 2 height = 0 ).
     ENDIF.
     show_log_pane( ).
-
-    " Left the code view - greying Back out again.
-    IF mo_toolbar IS BOUND.
-      mo_toolbar->set_button_state(
-        EXPORTING fcode = 'BACK' enabled = abap_false
-        EXCEPTIONS OTHERS = 1 ).
-    ENDIF.
-
+    hide_back_button( ).
     cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+
+
+  METHOD show_back_button.
+    IF mo_toolbar IS NOT BOUND OR mv_back_button_added = abap_true.
+      RETURN.
+    ENDIF.
+    DATA lt_buttons TYPE ttb_button.
+    APPEND VALUE #( function  = 'BACK'
+                    icon      = CONV #( icon_arrow_left )
+                    butn_type = cntb_btype_button
+                    text      = 'Back'
+                    quickinfo = 'Back from code to the object list' ) TO lt_buttons.
+    mo_toolbar->add_button_group( lt_buttons ).
+    mv_back_button_added = abap_true.
+  ENDMETHOD.
+
+
+  METHOD hide_back_button.
+    IF mo_toolbar IS NOT BOUND OR mv_back_button_added = abap_false.
+      RETURN.
+    ENDIF.
+    mo_toolbar->delete_button(
+      EXPORTING fcode = 'BACK'
+      EXCEPTIONS OTHERS = 1 ).
+    mv_back_button_added = abap_false.
   ENDMETHOD.
 
 
