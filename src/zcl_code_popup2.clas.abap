@@ -1501,7 +1501,14 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         lv_source = zcl_ai_code_reader=>read_method(
           i_class = lv_cls i_method = lv_meth ).
       ENDIF.
-      lv_mainprog = CONV progname( ls_clskey-clsname ).
+      " Breakpoint main program for a class method is the class POOL include
+      " (ZCL_..====CP), not the bare class name. RS_SET_BREAKPOINT needs the
+      " exact method include as 'program' and the class pool as 'mainprogram'.
+      lv_mainprog = cl_oo_classname_service=>get_classpool_name(
+                      clsname = ls_clskey-clsname ).
+      IF lv_mainprog IS INITIAL.
+        lv_mainprog = CONV progname( ls_clskey-clsname ).
+      ENDIF.
     ELSE.
       CASE lv_type.
         WHEN 'PROG' OR 'REPS'.
