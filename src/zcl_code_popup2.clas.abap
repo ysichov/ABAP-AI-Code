@@ -95,6 +95,7 @@ private section.
   data MV_DIFF_OBJECT_NAME type STRING .
   data MV_DIFF_PACKAGE type STRING .
   data MV_DIFF_NEW_CODE type STRING .
+  data MV_DIFF_OLD_CODE type STRING .
   data MV_DIFF_SAVE_STUB_LOGGED type ABAP_BOOL .
   data MV_SAVE_FIX_ATTEMPTS type I .
   data MV_TEMPERATURE type STRING .
@@ -174,6 +175,12 @@ private section.
   methods REQUEST_SAVE_FIX
     importing
       !I_SAVE_LOG type STRING .
+  " Send a single declined hunk back to the LLM for rework: build a focused
+  " prompt for that hunk (+ reviewer note), get a corrected full source, then
+  " re-diff and re-show the review. Only the offending part is described to the AI.
+  methods REWORK_HUNK
+    importing
+      !I_HUNK_KEY type STRING .
   methods SYNC_MESSAGE_HISTORY .
   " Show ABAP program source in the ABAP editor (right panel, bottom row).
   " Used after saving/creating a program so the user sees syntax-highlighted code.
@@ -441,6 +448,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mv_diff_object_name = i_object_name.
     mv_diff_package = i_package.
     mv_diff_new_code = i_new_code.
+    mv_diff_old_code = i_old_code.
 
     CLEAR: mt_diff_approved,
            mt_diff_declined,
@@ -451,6 +459,85 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
            mv_save_fix_attempts.
 
   endmethod.
+
+
+  METHOD rework_hunk.
+
+    DATA(lv_nl) = cl_abap_char_utilities=>newline.
+
+    " Focused description of just this hunk (old/new lines of the part).
+    DATA(lv_hunk_prompt) = zcl_code_acr_ai=>build_hunk_prompt(
+      iv_hunk_key    = i_hunk_key
+      it_hunk_info   = mt_diff_hunk_info
+      iv_ignore_case = abap_false ).
+    IF lv_hunk_prompt IS INITIAL.
+      MESSAGE 'Hunk not found for rework' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    " Reviewer note (why this part was declined), if any.
+    DATA lv_note TYPE string.
+    READ TABLE mt_diff_decline_notes INTO DATA(ls_note) WITH KEY hunk_key = i_hunk_key.
+    IF sy-subrc = 0.
+      lv_note = ls_note-note.
+    ENDIF.
+
+    DATA(lv_prompt) =
+         |You are a Senior ABAP engineer reworking ONE part of a proposed change.|
+      && lv_nl && |Fix ONLY the issue in the hunk below for { mv_diff_object_type } { mv_diff_object_name }.|
+      && lv_nl && |Keep everything else identical. Return the COMPLETE corrected ABAP source |
+      && |in one ```abap fenced block. Do not explain.|
+      && lv_nl && lv_nl && |--- HUNK TO REWORK ---|
+      && lv_nl && lv_hunk_prompt
+      && COND string( WHEN lv_note IS NOT INITIAL
+                      THEN lv_nl && lv_nl && |--- REVIEWER NOTE ---| && lv_nl && lv_note
+                      ELSE `` )
+      && lv_nl && lv_nl && |--- CURRENT FULL PROPOSED SOURCE ---|
+      && lv_nl && |```abap|
+      && lv_nl && mv_diff_new_code
+      && lv_nl && |```|.
+
+    display_status( |Asking AI to rework the declined part...| ).
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING percentage = 50 text = 'Reworking declined part...'.
+
+    DATA(lv_answer) = mo_llm->ask( lv_prompt ).
+    DATA(lv_fixed)  = zcl_code_answer_tools=>extract_code_from_answer( lv_answer ).
+
+    IF mo_messages IS BOUND.
+      mo_messages->add_message(
+        i_role = 'user' i_agent = 'HUNK_REWORK'
+        i_prompt_type = 'AGENT_PROMPT' i_content = lv_prompt ).
+      mo_messages->add_message(
+        i_role = 'assistant' i_agent = 'HUNK_REWORK'
+        i_prompt_type      = 'LLM_RESPONSE'
+        i_duration_seconds = mo_llm->get_last_seconds( )
+        i_tok_in           = mo_llm->mv_last_tok_in
+        i_tok_out          = mo_llm->mv_last_tok_out
+        i_content          = lv_answer ).
+      sync_message_history( ).
+    ENDIF.
+
+    IF lv_fixed IS INITIAL OR lv_fixed = mv_diff_new_code.
+      MESSAGE 'AI returned no changed source - keeping the current diff.' TYPE 'S'.
+      refresh_diff_html( ).
+      RETURN.
+    ENDIF.
+
+    " Re-diff the original against the AI-corrected proposal and re-show the
+    " review (diff_to_html resets the per-hunk approvals - the source changed).
+    DATA(lv_html) = diff_to_html(
+      i_old_code    = mv_diff_old_code
+      i_new_code    = lv_fixed
+      i_object_type = mv_diff_object_type
+      i_object_name = mv_diff_object_name
+      i_package     = mv_diff_package
+      i_usage_text  = |AI rework of the declined part.| ).
+    display_answer( lv_html ).
+
+    MESSAGE 'AI reworked the declined part. Review the updated diff.' TYPE 'S'.
+
+  ENDMETHOD.
 
 
   method DISPLAY_ANSWER.
@@ -579,7 +666,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         MESSAGE 'ADD COMMENT stub for AI code diff' TYPE 'S'.
 
       WHEN 'askai'.
-        MESSAGE 'ASK AI stub for AI code diff' TYPE 'S'.
+        rework_hunk( lv_rest ).
+        RETURN.
 
       WHEN 'openobj'.
         DATA lt_obj_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
