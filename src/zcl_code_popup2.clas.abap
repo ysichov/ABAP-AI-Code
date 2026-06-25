@@ -16,6 +16,14 @@ public section.
       !I_MAX_TOKENS type I optional
       !I_THINKING_BUDGET type I optional .
   methods SHOW .
+  " Navigate the ABAP editor to an include and position on the first line that
+  " contains i_search (plain text search - no parsing). Called by the object tree
+  " on double-click. i_program = breakpoint main program (class pool / report).
+  methods NAVIGATE_TO
+    importing
+      !I_PROGRAM type PROGNAME
+      !I_INCLUDE type PROGNAME
+      !I_SEARCH  type STRING optional .
   " Show diff, ask user to approve/decline changes via diff toolbar. Returns status message.
   methods REVIEW_AND_SAVE
     importing
@@ -68,6 +76,12 @@ private section.
   data MO_SPLIT type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_QUESTION type ref to CL_GUI_TEXTEDIT .
   data MO_PROGRESS type ref to CL_GUI_HTML_VIEWER .
+  " Middle pane split: progress log (top) + object structure tree (bottom).
+  " Heights toggled 0/100 to show one at a time (same pattern as the answer pane).
+  data MO_MID_SPLIT type ref to CL_GUI_SPLITTER_CONTAINER .
+  data MO_MID_CONT_LOG type ref to CL_GUI_CONTAINER .
+  data MO_MID_CONT_TREE type ref to CL_GUI_CONTAINER .
+  data MO_OBJ_TREE type ref to ZCL_CODE_OBJECT_TREE .
   data MO_ANSWER type ref to CL_GUI_HTML_VIEWER .
   " Right panel split: HTML viewer on top, ABAP editor on bottom.
   " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
@@ -166,6 +180,9 @@ private section.
     for event BORDER_CLICK of CL_GUI_ABAPEDIT
     importing !CNTRL_PRESSED_SET !LINE !SHIFT_PRESSED_SET .
   methods REFRESH_BREAKPOINT_MARKERS .
+  " Middle-pane toggles: progress log vs object structure tree.
+  methods SHOW_LOG_PANE .
+  methods SHOW_TREE_PANE .
   " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
   " editor with breakpoint support. For a single method, reads the raw method
   " include so editor line numbers map 1:1 to real source lines.
@@ -213,6 +230,10 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     ENDIF.
 
     mv_session_counter = mv_session_counter + 1.
+
+    " Show the progress log in the middle pane (a previous answer may have left
+    " the object tree visible there).
+    show_log_pane( ).
 
     " =====================================================================
     " NEW TOOL-BASED FLOW (OpenAI function calling).
@@ -1120,10 +1141,26 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       EXCEPTIONS OTHERS = 1.
     mo_question->set_toolbar_mode( 0 ).  " 0 = toolbar off
 
-    " Progress log viewer (middle)
-    CREATE OBJECT mo_progress
-      EXPORTING parent = lo_middle
+    " Middle pane: split into progress log (top) + object tree (bottom).
+    " Toggled 0/100 like the answer pane: log during a run, tree when an object
+    " is shown in the editor.
+    CREATE OBJECT mo_mid_split
+      EXPORTING parent = lo_middle rows = 2 columns = 1
       EXCEPTIONS OTHERS = 1.
+    mo_mid_cont_log  = mo_mid_split->get_container( row = 1 column = 1 ).
+    mo_mid_cont_tree = mo_mid_split->get_container( row = 2 column = 1 ).
+    mo_mid_split->set_row_height( id = 1 height = 100 ).
+    mo_mid_split->set_row_height( id = 2 height = 0 ).
+
+    " Progress log viewer (top row - default visible)
+    CREATE OBJECT mo_progress
+      EXPORTING parent = mo_mid_cont_log
+      EXCEPTIONS OTHERS = 1.
+
+    " Object structure tree (bottom row - shown when an object is in the editor)
+    mo_obj_tree = NEW zcl_code_object_tree(
+      io_container = mo_mid_cont_tree
+      io_popup     = me ).
 
     " Right panel: split into HTML viewer (top) + ABAP editor (bottom).
     " Heights toggled 0/100 to show one at a time (same pattern as ZCL_AVE_POPUP).
@@ -1537,8 +1574,76 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         i_source  = lv_source
         i_program = lv_mainprog
         i_include = lv_include ).
+      " Build the structure tree for this object and switch the middle pane to it.
+      IF mo_obj_tree IS BOUND
+      AND mo_obj_tree->build_for_object( i_type = i_type i_name = i_name ) = abap_true.
+        show_tree_pane( ).
+      ENDIF.
     ENDIF.
 
+  ENDMETHOD.
+
+
+  METHOD navigate_to.
+
+    DATA lt_src TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+    READ REPORT i_include INTO lt_src.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    DATA lv_text TYPE string.
+    LOOP AT lt_src INTO DATA(lv_line).
+      IF lv_text IS NOT INITIAL.
+        lv_text = lv_text && cl_abap_char_utilities=>newline.
+      ENDIF.
+      lv_text = lv_text && lv_line.
+    ENDLOOP.
+
+    " Load the include (1:1 line mapping, breakpoints stay valid).
+    display_program_source(
+      i_source  = lv_text
+      i_program = i_program
+      i_include = i_include ).
+
+    CHECK i_search IS NOT INITIAL.
+
+    " Plain text search for the first matching line, then select + mark it.
+    DATA(lv_needle) = i_search.
+    TRANSLATE lv_needle TO UPPER CASE.
+    DATA lv_hit TYPE i.
+    LOOP AT lt_src INTO lv_line.
+      DATA(lv_hay) = lv_line.
+      TRANSLATE lv_hay TO UPPER CASE.
+      IF lv_hay CS lv_needle.
+        lv_hit = sy-tabix.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    CHECK lv_hit > 0.
+    DATA lt_mark TYPE STANDARD TABLE OF i WITH NON-UNIQUE DEFAULT KEY.
+    APPEND lv_hit TO lt_mark.
+    mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lt_mark ).
+    mo_code_viewer->select_lines( EXPORTING from_line = lv_hit to_line = lv_hit ).
+    mo_code_viewer->draw( ).
+
+  ENDMETHOD.
+
+
+  METHOD show_log_pane.
+    IF mo_mid_split IS BOUND.
+      mo_mid_split->set_row_height( id = 1 height = 100 ).
+      mo_mid_split->set_row_height( id = 2 height = 0 ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD show_tree_pane.
+    IF mo_mid_split IS BOUND.
+      mo_mid_split->set_row_height( id = 1 height = 0 ).
+      mo_mid_split->set_row_height( id = 2 height = 100 ).
+    ENDIF.
   ENDMETHOD.
 
 
