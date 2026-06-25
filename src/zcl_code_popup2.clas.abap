@@ -184,6 +184,9 @@ private section.
   " pattern as the answer pane's HTML <-> ABAP editor switch).
   methods SHOW_LOG_PANE .
   methods SHOW_TREE_PANE .
+  " Back from the code view to the previous answer (object list / search
+  " results), restoring the HTML answer pane and the progress log.
+  methods BACK_TO_LIST .
   " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
   " editor with breakpoint support. For a single method, reads the raw method
   " include so editor line numbers map 1:1 to real source lines.
@@ -983,6 +986,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
   method ON_TOOLBAR_CLICK.
 
     CASE fcode.
+      WHEN 'BACK'.
+        back_to_list( ).
       WHEN 'ASK'.
         ask_ai( ).
       WHEN 'HISTORY'.
@@ -1101,6 +1106,12 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mo_toolbar->set_registered_events( events = lt_events ).
 
     DATA lt_buttons TYPE ttb_button.
+    APPEND VALUE #( function  = 'BACK'
+                    icon      = CONV #( icon_arrow_left )
+                    butn_type = cntb_btype_button
+                    text      = 'Back'
+                    quickinfo = 'Back from code to the object list' ) TO lt_buttons.
+    APPEND VALUE #( butn_type = cntb_btype_sep ) TO lt_buttons.
     APPEND VALUE #( function  = 'ASK'
                     icon      = CONV #( icon_execute_object )
                     butn_type = cntb_btype_button
@@ -1656,6 +1667,19 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       mo_mid_split->set_row_height( id = 1 height = 0 ).
       mo_mid_split->set_row_height( id = 2 height = 100 ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD back_to_list.
+    " The previous answer (object list / search results) is still loaded in the
+    " HTML viewer - just bring it back to the front on the right, and restore the
+    " progress log in the middle (replacing the object tree).
+    IF mo_answer_split IS BOUND.
+      mo_answer_split->set_row_height( id = 1 height = 100 ).
+      mo_answer_split->set_row_height( id = 2 height = 0 ).
+    ENDIF.
+    show_log_pane( ).
+    cl_gui_cfw=>flush( ).
   ENDMETHOD.
 
 
