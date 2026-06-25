@@ -1134,6 +1134,11 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                     quickinfo = 'Start a new conversation (clears history)' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
 
+    " Back is only usable from the code view - greyed out until code is shown.
+    mo_toolbar->set_button_state(
+      EXPORTING fcode = 'BACK' enabled = abap_false
+      EXCEPTIONS OTHERS = 1 ).
+
     SET HANDLER on_toolbar_click FOR mo_toolbar.
 
     " Horizontal splitter: question | progress | answer
@@ -1399,6 +1404,13 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     IF mo_answer_split IS BOUND.
       mo_answer_split->set_row_height( id = 1 height = 0 ).
       mo_answer_split->set_row_height( id = 2 height = 100 ).
+    ENDIF.
+
+    " We are in the code view now - enable the Back button.
+    IF mo_toolbar IS BOUND.
+      mo_toolbar->set_button_state(
+        EXPORTING fcode = 'BACK' enabled = abap_true
+        EXCEPTIONS OTHERS = 1 ).
     ENDIF.
 
     IF i_program IS NOT INITIAL.
@@ -1679,6 +1691,14 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       mo_answer_split->set_row_height( id = 2 height = 0 ).
     ENDIF.
     show_log_pane( ).
+
+    " Left the code view - greying Back out again.
+    IF mo_toolbar IS BOUND.
+      mo_toolbar->set_button_state(
+        EXPORTING fcode = 'BACK' enabled = abap_false
+        EXCEPTIONS OTHERS = 1 ).
+    ENDIF.
+
     cl_gui_cfw=>flush( ).
   ENDMETHOD.
 
