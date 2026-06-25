@@ -44,6 +44,16 @@ private section.
     tt_textedit_lines     TYPE TABLE OF ty_textedit_line .
   types:
     tt_html               TYPE STANDARD TABLE OF w3html WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF ts_bpoint,
+      program TYPE string,
+      include TYPE string,
+      line    TYPE i,
+      type    TYPE char1,
+      del     TYPE char1,
+    END OF ts_bpoint .
+  types:
+    tt_bpoints TYPE STANDARD TABLE OF ts_bpoint WITH EMPTY KEY .
   data MV_SESSION_COUNTER type I .
   data MO_MESSAGES type ref to ZCL_AI_MESSAGES .
   data MO_LLM type ref to ZCL_ABAPAI_LLM_CLIENT .
@@ -85,6 +95,8 @@ private section.
   data MV_STREAM_RESPONSE_FILE type STRING .
   data MV_RUN_PROGRAM type PROGNAME .
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
+  data MT_BPOINTS type TT_BPOINTS .
+  data MV_DISPLAYED_PROGRAM type PROGNAME .
   data MT_DIFF_HUNK_INFO type ZIF_AVE_ACR_TYPES=>TY_T_HUNK_INFO .
   data MT_DIFF_APPROVED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
   data MT_DIFF_DECLINED type ZIF_AVE_ACR_TYPES=>TY_APPROVED .
@@ -146,7 +158,12 @@ private section.
   " Used after saving/creating a program so the user sees syntax-highlighted code.
   methods DISPLAY_PROGRAM_SOURCE
     importing
-      !I_SOURCE type STRING .
+      !I_SOURCE  type STRING
+      !I_PROGRAM type PROGNAME optional .
+  methods ON_CODE_BORDER_CLICK
+    for event BORDER_CLICK of CL_GUI_ABAPEDIT
+    importing !CNTRL_PRESSED_SET !LINE !SHIFT_PRESSED_SET .
+  methods REFRESH_BREAKPOINT_MARKERS .
   methods BUILD_PLAIN_HTML
     importing
       !I_TEXT type STRING
@@ -530,7 +547,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
             ENDIF.
           ENDIF.
           IF lv_open_source IS NOT INITIAL.
-            display_program_source( lv_open_source ).
+            display_program_source(
+              i_source  = lv_open_source
+              i_program = CONV progname( lv_open_name ) ).
           ENDIF.
         ENDIF.
         RETURN.
@@ -718,7 +737,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     DATA(lv_show_type) = mv_diff_object_type.
     TRANSLATE lv_show_type TO UPPER CASE.
     " Show all code types in the ABAP editor (programs, classes, methods, interfaces)
-    display_program_source( lv_saved_source ).
+    display_program_source(
+      i_source  = lv_saved_source
+      i_program = CONV progname( mv_diff_object_name ) ).
 
     cl_gui_cfw=>flush( ).
     MESSAGE lv_save_message TYPE 'S'.
@@ -1135,6 +1156,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       statusbar_mode = cl_gui_abapedit=>true ).
     mo_code_viewer->create_document( ).
     mo_code_viewer->set_readonly_mode( 1 ).
+    mo_code_viewer->register_event_border_click( ).
+    SET HANDLER on_code_border_click FOR mo_code_viewer.
 
     CALL METHOD cl_gui_cfw=>flush.
 
@@ -1321,6 +1344,20 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       mo_answer_split->set_row_height( id = 2 height = 100 ).
     ENDIF.
 
+    IF i_program IS NOT INITIAL.
+      mv_displayed_program = i_program.
+      " Show RUN button for executable programs (subc = '1') if not already shown
+      IF mv_run_program IS INITIAL.
+        SELECT SINGLE subc FROM reposrc INTO @DATA(lv_dp_subc)
+          WHERE progname = @i_program AND subc = '1'.
+        IF sy-subrc = 0.
+          mv_run_program = i_program.
+          show_run_program_button( ).
+        ENDIF.
+      ENDIF.
+    ENDIF.
+    refresh_breakpoint_markers( ).
+
     cl_gui_cfw=>flush( ).
 
   ENDMETHOD.
@@ -1407,6 +1444,93 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
   METHOD build_plain_html.
     rv_html = zcl_code_html_gen=>markdown_to_html( i_text ).
+  ENDMETHOD.
+
+
+  METHOD on_code_border_click.
+    DATA: lv_type    TYPE char1,
+          lv_program TYPE progname,
+          lv_line    TYPE i.
+    CHECK mv_displayed_program IS NOT INITIAL.
+    CHECK mo_code_viewer IS BOUND.
+    lv_program = mv_displayed_program.
+    lv_line    = line.
+    IF cntrl_pressed_set IS INITIAL. lv_type = 'S'. ELSE. lv_type = 'E'. ENDIF.
+    LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = lv_line.
+      lv_type = <point>-type.
+      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
+        EXPORTING
+          index    = lv_line
+          mainprog = lv_program
+          program  = lv_program
+          bp_type  = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+      IF sy-subrc = 0. <point>-del = abap_true. ENDIF.
+    ENDLOOP.
+    IF sy-subrc <> 0.
+      CALL FUNCTION 'RS_SET_BREAKPOINT'
+        EXPORTING
+          index       = lv_line
+          program     = lv_program
+          mainprogram = lv_program
+          bp_type     = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+    ENDIF.
+    DELETE mt_bpoints WHERE del IS NOT INITIAL.
+    refresh_breakpoint_markers( ).
+  ENDMETHOD.
+
+
+  METHOD refresh_breakpoint_markers.
+    TYPES: lntab TYPE STANDARD TABLE OF i WITH NON-UNIQUE DEFAULT KEY.
+    DATA: lines TYPE lntab.
+    CHECK mv_displayed_program IS NOT INITIAL.
+    CHECK mo_code_viewer IS BOUND.
+    mo_code_viewer->remove_all_marker( 2 ).
+    mo_code_viewer->remove_all_marker( 4 ).
+    CLEAR mt_bpoints.
+    " Session breakpoints (marker 2 — red circle)
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING  main_program         = mv_displayed_program
+      IMPORTING  breakpoints_complete = DATA(points)
+      EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
+    CLEAR lines.
+    LOOP AT points INTO DATA(point).
+      CHECK point-include = mv_displayed_program.
+      APPEND point-line TO lines.
+      READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+        WITH KEY include = point-include line = point-line.
+      IF sy-subrc <> 0.
+        APPEND VALUE ts_bpoint(
+          program = mv_displayed_program include = mv_displayed_program
+          line = point-line type = 'S' ) TO mt_bpoints.
+      ENDIF.
+    ENDLOOP.
+    mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
+    " External breakpoints — other sessions (marker 4 — yellow circle)
+    CLEAR lines.
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING  main_program         = mv_displayed_program
+                 flag_other_session   = abap_true
+      IMPORTING  breakpoints_complete = points
+      EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
+    LOOP AT points INTO point WHERE include = mv_displayed_program.
+      APPEND point-line TO lines.
+      READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+        WITH KEY include = point-include line = point-line.
+      IF sy-subrc <> 0.
+        APPEND VALUE ts_bpoint(
+          program = mv_displayed_program include = mv_displayed_program
+          line = point-line type = 'E' ) TO mt_bpoints.
+      ENDIF.
+    ENDLOOP.
+    mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
+    mo_code_viewer->clear_line_markers( 'S' ).
+    mo_code_viewer->draw( ).
   ENDMETHOD.
 
 
