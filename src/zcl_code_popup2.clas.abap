@@ -166,6 +166,13 @@ private section.
     for event BORDER_CLICK of CL_GUI_ABAPEDIT
     importing !CNTRL_PRESSED_SET !LINE !SHIFT_PRESSED_SET .
   methods REFRESH_BREAKPOINT_MARKERS .
+  " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
+  " editor with breakpoint support. For a single method, reads the raw method
+  " include so editor line numbers map 1:1 to real source lines.
+  methods SHOW_OBJECT_IN_EDITOR
+    importing
+      !I_TYPE type STRING
+      !I_NAME type STRING .
   methods BUILD_PLAIN_HTML
     importing
       !I_TEXT type STRING
@@ -241,6 +248,16 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     " in the answer panel and the save is driven by its toolbar. Do NOT render the
     " tool answer over it (that would replace the diff with plain text).
     IF mo_tool_runner->is_review_pending( ) = abap_true.
+      RETURN.
+    ENDIF.
+
+    " Pure object read (the runner answered straight from read_sap_object, with no
+    " LLM synthesis). This is plain source, not an LLM answer - show it in the ABAP
+    " editor where breakpoints can be set, not as HTML in the answer panel.
+    IF mo_tool_runner->mv_read_object_name IS NOT INITIAL.
+      show_object_in_editor(
+        i_type = mo_tool_runner->mv_read_object_type
+        i_name = mo_tool_runner->mv_read_object_name ).
       RETURN.
     ENDIF.
 
@@ -529,80 +546,9 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         DATA lt_obj_parts TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
         SPLIT lv_rest AT '~' INTO TABLE lt_obj_parts.
         IF lines( lt_obj_parts ) >= 2.
-          DATA(lv_open_type) = lt_obj_parts[ 1 ].
-          DATA(lv_open_name) = lt_obj_parts[ 2 ].
-          DATA(lv_open_source)   = VALUE string( ).
-          DATA(lv_open_mainprog) = VALUE progname( ).
-          DATA(lv_open_include)  = VALUE progname( ).
-          " Detect CLASS=>METHOD pattern
-          DATA lv_open_is_meth TYPE abap_bool.
-          DATA lv_open_cls     TYPE string.
-          DATA lv_open_meth    TYPE string.
-          IF ( lv_open_type = 'CLAS' OR lv_open_type = 'CLASS'
-            OR lv_open_type = 'METH' OR lv_open_type = 'METHOD' )
-            AND lv_open_name CS '=>'.
-            SPLIT lv_open_name AT '=>' INTO lv_open_cls lv_open_meth.
-            lv_open_is_meth = abap_true.
-          ENDIF.
-          IF lv_open_is_meth = abap_true.
-            " Read raw include source for exact line-number mapping (breakpoints)
-            DATA ls_open_clskey TYPE seoclskey.
-            DATA lt_open_meths  TYPE seop_methods_w_include.
-            ls_open_clskey-clsname = lv_open_cls.
-            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-              EXPORTING  clskey   = ls_open_clskey
-              IMPORTING  includes = lt_open_meths
-              EXCEPTIONS OTHERS   = 1.
-            IF sy-subrc = 0.
-              READ TABLE lt_open_meths INTO DATA(ls_open_mi)
-                WITH KEY cpdkey-cpdname = lv_open_meth.
-              IF sy-subrc = 0.
-                lv_open_include = ls_open_mi-incname.
-                DATA lt_raw_src TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-                READ REPORT lv_open_include INTO lt_raw_src.
-                IF sy-subrc = 0.
-                  LOOP AT lt_raw_src INTO DATA(lv_raw_line).
-                    IF lv_open_source IS NOT INITIAL.
-                      lv_open_source = lv_open_source && cl_abap_char_utilities=>newline.
-                    ENDIF.
-                    lv_open_source = lv_open_source && lv_raw_line.
-                  ENDLOOP.
-                ENDIF.
-              ENDIF.
-            ENDIF.
-            IF lv_open_source IS INITIAL.
-              lv_open_source = zcl_ai_code_reader=>read_method(
-                i_class  = lv_open_cls i_method = lv_open_meth ).
-            ENDIF.
-            lv_open_mainprog = CONV progname( lv_open_cls ).
-          ELSE.
-            CASE lv_open_type.
-              WHEN 'PROG' OR 'REPS'.
-                lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-              WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
-                lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-              WHEN OTHERS.
-                lv_open_source = zcl_ai_code_reader=>read_class( lv_open_name ).
-            ENDCASE.
-            DATA(lv_open_upper) = lv_open_source.
-            TRANSLATE lv_open_upper TO UPPER CASE.
-            IF lv_open_source IS INITIAL OR lv_open_upper CS 'NOT FOUND' OR lv_open_upper CS 'SIMILAR CLASSES'.
-              DATA(lv_class_fallback) = lv_open_source.
-              lv_open_source = zcl_ai_code_reader=>read_program( lv_open_name ).
-              DATA(lv_prog_upper) = lv_open_source.
-              TRANSLATE lv_prog_upper TO UPPER CASE.
-              IF lv_open_source IS INITIAL OR lv_prog_upper CS 'NOT FOUND' OR lv_prog_upper CS 'CANNOT BE READ'.
-                lv_open_source = lv_class_fallback && cl_abap_char_utilities=>newline && lv_open_source.
-              ENDIF.
-            ENDIF.
-            lv_open_mainprog = CONV progname( lv_open_name ).
-          ENDIF.
-          IF lv_open_source IS NOT INITIAL.
-            display_program_source(
-              i_source  = lv_open_source
-              i_program = lv_open_mainprog
-              i_include = lv_open_include ).
-          ENDIF.
+          show_object_in_editor(
+            i_type = lt_obj_parts[ 1 ]
+            i_name = lt_obj_parts[ 2 ] ).
         ENDIF.
         RETURN.
 
@@ -1497,6 +1443,95 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
 
   METHOD build_plain_html.
     rv_html = zcl_code_html_gen=>markdown_to_html( i_text ).
+  ENDMETHOD.
+
+
+  METHOD show_object_in_editor.
+
+    DATA(lv_type)     = i_type.
+    DATA(lv_name)     = i_name.
+    DATA(lv_source)   = VALUE string( ).
+    DATA(lv_mainprog) = VALUE progname( ).
+    DATA(lv_include)  = VALUE progname( ).
+    TRANSLATE lv_type TO UPPER CASE.
+
+    " Detect CLASS=>METHOD pattern (carried either as CLAS or METH type)
+    DATA lv_is_meth TYPE abap_bool.
+    DATA lv_cls     TYPE string.
+    DATA lv_meth    TYPE string.
+    IF ( lv_type = 'CLAS' OR lv_type = 'CLASS'
+      OR lv_type = 'METH' OR lv_type = 'METHOD' )
+      AND lv_name CS '=>'.
+      SPLIT lv_name AT '=>' INTO lv_cls lv_meth.
+      lv_is_meth = abap_true.
+    ENDIF.
+
+    IF lv_is_meth = abap_true.
+      " Read raw include source for exact line-number mapping (breakpoints)
+      DATA ls_clskey TYPE seoclskey.
+      DATA lt_meths  TYPE seop_methods_w_include.
+      ls_clskey-clsname = lv_cls.
+      TRANSLATE ls_clskey-clsname TO UPPER CASE.
+      CONDENSE ls_clskey-clsname.
+      DATA(lv_meth_up) = lv_meth.
+      TRANSLATE lv_meth_up TO UPPER CASE.
+      CONDENSE lv_meth_up.
+      CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+        EXPORTING  clskey   = ls_clskey
+        IMPORTING  includes = lt_meths
+        EXCEPTIONS OTHERS   = 1.
+      IF sy-subrc = 0.
+        READ TABLE lt_meths INTO DATA(ls_mi)
+          WITH KEY cpdkey-cpdname = lv_meth_up.
+        IF sy-subrc = 0.
+          lv_include = ls_mi-incname.
+          DATA lt_raw_src TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
+          READ REPORT lv_include INTO lt_raw_src.
+          IF sy-subrc = 0.
+            LOOP AT lt_raw_src INTO DATA(lv_raw_line).
+              IF lv_source IS NOT INITIAL.
+                lv_source = lv_source && cl_abap_char_utilities=>newline.
+              ENDIF.
+              lv_source = lv_source && lv_raw_line.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      IF lv_source IS INITIAL.
+        lv_source = zcl_ai_code_reader=>read_method(
+          i_class = lv_cls i_method = lv_meth ).
+      ENDIF.
+      lv_mainprog = CONV progname( ls_clskey-clsname ).
+    ELSE.
+      CASE lv_type.
+        WHEN 'PROG' OR 'REPS'.
+          lv_source = zcl_ai_code_reader=>read_program( lv_name ).
+        WHEN 'CLAS' OR 'CLASS' OR 'INTF'.
+          lv_source = zcl_ai_code_reader=>read_class( lv_name ).
+        WHEN OTHERS.
+          lv_source = zcl_ai_code_reader=>read_class( lv_name ).
+      ENDCASE.
+      DATA(lv_upper) = lv_source.
+      TRANSLATE lv_upper TO UPPER CASE.
+      IF lv_source IS INITIAL OR lv_upper CS 'NOT FOUND' OR lv_upper CS 'SIMILAR CLASSES'.
+        DATA(lv_class_fallback) = lv_source.
+        lv_source = zcl_ai_code_reader=>read_program( lv_name ).
+        DATA(lv_prog_upper) = lv_source.
+        TRANSLATE lv_prog_upper TO UPPER CASE.
+        IF lv_source IS INITIAL OR lv_prog_upper CS 'NOT FOUND' OR lv_prog_upper CS 'CANNOT BE READ'.
+          lv_source = lv_class_fallback && cl_abap_char_utilities=>newline && lv_source.
+        ENDIF.
+      ENDIF.
+      lv_mainprog = CONV progname( lv_name ).
+    ENDIF.
+
+    IF lv_source IS NOT INITIAL.
+      display_program_source(
+        i_source  = lv_source
+        i_program = lv_mainprog
+        i_include = lv_include ).
+    ENDIF.
+
   ENDMETHOD.
 
 

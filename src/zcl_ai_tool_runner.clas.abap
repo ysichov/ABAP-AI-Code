@@ -54,6 +54,12 @@ CLASS zcl_ai_tool_runner DEFINITION
 
     DATA mv_session_num TYPE i.
 
+    " When run( ) answered with a pure object read (no LLM synthesis of the
+    " source), these carry the resolved object so the UI can show it in the ABAP
+    " editor with breakpoints instead of the HTML answer panel. Empty otherwise.
+    DATA mv_read_object_type TYPE string READ-ONLY.
+    DATA mv_read_object_name TYPE string READ-ONLY.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     TYPES:
@@ -235,6 +241,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
   METHOD run.
 
+    " A pure read fills these so the UI shows the source in the ABAP editor with
+    " breakpoints. Cleared up front; a synthesised LLM answer leaves them empty.
+    CLEAR mv_read_object_type.
+    CLEAR mv_read_object_name.
+
     " Shortcut: single object name or search mask (word / word*) - skip LLM entirely
     DATA(lv_trimmed_prompt) = i_prompt.
     CONDENSE lv_trimmed_prompt.
@@ -264,6 +275,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDIF.
 
       DATA lv_direct_source TYPE string.
+      DATA lv_direct_type   TYPE string.
       " Exact lookup only when no explicit wildcard was given
       IF lv_has_wildcard = abap_false.
         lv_direct_source = zcl_ai_code_reader=>read_class( lv_word ).
@@ -272,7 +284,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
           lv_direct_source = zcl_ai_code_reader=>read_program( lv_word ).
           IF lv_direct_source IS INITIAL OR lv_direct_source CS 'not found'.
             CLEAR lv_direct_source.
+          ELSE.
+            lv_direct_type = 'PROG'.
           ENDIF.
+        ELSE.
+          lv_direct_type = 'CLAS'.
         ENDIF.
       ENDIF.
 
@@ -286,6 +302,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
       IF lv_direct_source IS NOT INITIAL.
         rv_answer = lv_direct_source.
+        " A concrete (non-wildcard) hit can be shown in the ABAP editor with
+        " breakpoints; a wildcard list (lv_direct_type empty) stays as HTML text.
+        IF lv_direct_type IS NOT INITIAL.
+          mv_read_object_type = lv_direct_type.
+          mv_read_object_name = lv_word.
+        ENDIF.
         mo_messages = NEW zcl_ai_messages(
           i_user_prompt = i_prompt
           io_prompts    = mo_prompts
@@ -518,6 +540,33 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " is driven by the diff toolbar (approve/decline) from here on.
       IF mv_review_pending = abap_true.
         rv_answer = lv_results.
+        write_session_tokens( ).
+        RETURN.
+      ENDIF.
+
+      " Single pure read on the first turn: the user just wants to SEE the code.
+      " Return the raw source straight away instead of paying a second LLM round
+      " that only re-wraps it (e.g. in a <code_example> envelope). The UI then
+      " shows it in the ABAP editor with breakpoints via mv_read_object_*.
+      IF lv_step = 1
+      AND lines( lt_calls ) = 1
+      AND ls_call-name = 'read_sap_object'
+      AND NOT lv_result CP 'Error:*'.
+        DATA lv_ro_type TYPE string.
+        DATA lv_ro_name TYPE string.
+        CLEAR: lv_ro_type, lv_ro_name.
+        FIND FIRST OCCURRENCE OF REGEX '"object_type"\s*:\s*"([^"]*)"'
+          IN ls_call-arguments SUBMATCHES lv_ro_type.
+        FIND FIRST OCCURRENCE OF REGEX '"object_name"\s*:\s*"([^"]*)"'
+          IN ls_call-arguments SUBMATCHES lv_ro_name.
+        " Only a single concrete object maps to the editor; a comma-separated
+        " multi-read falls back to the marker-based source view in the UI.
+        IF lv_ro_name NS ','.
+          mv_read_object_type = lv_ro_type.
+          mv_read_object_name = lv_ro_name.
+        ENDIF.
+        rv_answer = lv_result.
+        write_log_file( i_suffix = 'A' i_content = rv_answer i_ext = 'md' i_step = lv_step ).
         write_session_tokens( ).
         RETURN.
       ENDIF.
