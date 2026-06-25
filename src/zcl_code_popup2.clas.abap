@@ -110,6 +110,11 @@ private section.
   data MV_RUN_PROGRAM type PROGNAME .
   data MV_RUN_BUTTON_ADDED type ABAP_BOOL .
   data MV_BACK_BUTTON_ADDED type ABAP_BOOL .
+  " Identity of the object currently shown in the editor (for the Metrics button).
+  data MV_OBJ_TYPE type STRING .
+  data MV_OBJ_NAME type STRING .
+  data MO_METRICS_BOX type ref to CL_GUI_DIALOGBOX_CONTAINER .
+  data MO_METRICS_HTML type ref to CL_GUI_HTML_VIEWER .
   data MT_BPOINTS type TT_BPOINTS .
   data MV_DISPLAYED_PROGRAM type PROGNAME .
   data MV_DISPLAYED_INCLUDE type PROGNAME .
@@ -188,10 +193,14 @@ private section.
   " Back from the code view to the previous answer (object list / search
   " results), restoring the HTML answer pane and the progress log.
   methods BACK_TO_LIST .
-  " Add/remove the Back toolbar button (truly hidden when not in the code view,
-  " same as the Run program button - the toolbar API has no per-button hide).
+  " Add/remove the Back + Metrics toolbar buttons (truly hidden when not in the
+  " code view, same as the Run program button - no per-button hide in the API).
   methods SHOW_BACK_BUTTON .
   methods HIDE_BACK_BUTTON .
+  " Compute McCabe/Halstead metrics for the shown object and show them in a popup.
+  methods RUN_METRICS .
+  methods ON_METRICS_CLOSE
+    for event CLOSE of CL_GUI_DIALOGBOX_CONTAINER .
   " Read an SAP object (PROG/CLAS/method CLASS=>METHOD) and show it in the ABAP
   " editor with breakpoint support. For a single method, reads the raw method
   " include so editor line numbers map 1:1 to real source lines.
@@ -769,6 +778,10 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       i_source  = lv_saved_source
       i_program = CONV progname( mv_diff_object_name ) ).
 
+    " Remember the object identity for the Metrics button.
+    mv_obj_type = mv_diff_object_type.
+    mv_obj_name = mv_diff_object_name.
+
     " Build the structure tree for the just-saved object and switch to it (same
     " as opening an object for reading).
     IF mo_obj_tree IS BOUND
@@ -993,6 +1006,8 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     CASE fcode.
       WHEN 'BACK'.
         back_to_list( ).
+      WHEN 'METRICS'.
+        run_metrics( ).
       WHEN 'ASK'.
         ask_ai( ).
       WHEN 'HISTORY'.
@@ -1598,6 +1613,10 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
         i_source  = lv_source
         i_program = lv_mainprog
         i_include = lv_include ).
+      " Remember the object identity for the Metrics button.
+      mv_obj_type = i_type.
+      mv_obj_name = i_name.
+
       " Build the structure tree for this object and replace the log with it
       " (same toggle as the answer pane). Only switch when the tree was built.
       IF mo_obj_tree IS BOUND
@@ -1696,6 +1715,11 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
                     butn_type = cntb_btype_button
                     text      = 'Back'
                     quickinfo = 'Back from code to the object list' ) TO lt_buttons.
+    APPEND VALUE #( function  = 'METRICS'
+                    icon      = CONV #( icon_report )
+                    butn_type = cntb_btype_button
+                    text      = 'Metrics'
+                    quickinfo = 'Code metrics (McCabe CC + Halstead)' ) TO lt_buttons.
     mo_toolbar->add_button_group( lt_buttons ).
     mv_back_button_added = abap_true.
   ENDMETHOD.
@@ -1705,10 +1729,71 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     IF mo_toolbar IS NOT BOUND OR mv_back_button_added = abap_false.
       RETURN.
     ENDIF.
-    mo_toolbar->delete_button(
-      EXPORTING fcode = 'BACK'
-      EXCEPTIONS OTHERS = 1 ).
+    mo_toolbar->delete_button( EXPORTING fcode = 'BACK'    EXCEPTIONS OTHERS = 1 ).
+    mo_toolbar->delete_button( EXPORTING fcode = 'METRICS' EXCEPTIONS OTHERS = 1 ).
     mv_back_button_added = abap_false.
+  ENDMETHOD.
+
+
+  METHOD run_metrics.
+
+    IF mv_obj_name IS INITIAL.
+      MESSAGE 'No object is shown' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    zcl_code_metrics_input=>build(
+      EXPORTING i_type        = mv_obj_type
+                i_name        = mv_obj_name
+      IMPORTING es_parse_data = DATA(ls_pd)
+                ev_program    = DATA(lv_prog) ).
+
+    IF ls_pd-tt_progs IS INITIAL.
+      MESSAGE 'No metrics available for this object' TYPE 'I'.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_html) = zcl_code_metrics_window=>build_html(
+      is_parse_data = ls_pd
+      i_program     = lv_prog ).
+
+    " Show in its own dialog so it does not overwrite the answer/list panel.
+    IF mo_metrics_box IS BOUND.
+      mo_metrics_box->free( ).
+      CLEAR mo_metrics_box.
+    ENDIF.
+    CREATE OBJECT mo_metrics_box
+      EXPORTING
+        caption = |Metrics: { mv_obj_name }|
+        width   = 1100
+        height  = 650
+        top     = 40
+        left    = 60
+      EXCEPTIONS OTHERS = 1.
+    SET HANDLER on_metrics_close FOR mo_metrics_box.
+
+    CREATE OBJECT mo_metrics_html
+      EXPORTING parent = mo_metrics_box
+      EXCEPTIONS OTHERS = 1.
+
+    DATA lv_url TYPE c LENGTH 255.
+    mo_metrics_html->load_data(
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS = 1 ).
+    mo_metrics_html->show_url( EXPORTING url = lv_url EXCEPTIONS OTHERS = 1 ).
+
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
+
+  METHOD on_metrics_close.
+    IF mo_metrics_box IS BOUND.
+      mo_metrics_box->free( ).
+      CLEAR: mo_metrics_box, mo_metrics_html.
+    ENDIF.
+    cl_gui_cfw=>flush( ).
   ENDMETHOD.
 
 
