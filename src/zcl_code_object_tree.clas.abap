@@ -303,13 +303,15 @@ CLASS zcl_code_object_tree IMPLEMENTATION.
 
   METHOD build_program.
 
+    " READ REPORT needs a fixed-length char field, not STRING - convert first.
+    DATA(lv_prog) = CONV progname( i_program ).
+
     DATA lt_src TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    READ REPORT i_program INTO lt_src.
+    READ REPORT lv_prog INTO lt_src.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
 
-    DATA(lv_prog) = CONV progname( i_program ).
     mv_root = add_node(
       i_text    = |Program { i_program }|
       i_icon    = CONV #( icon_folder )
