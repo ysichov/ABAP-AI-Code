@@ -22,6 +22,9 @@ TYPES ty_name TYPE c LENGTH 30.
 " Remembers the provider+key the model list was built for, so the live
 " /v1/models call fires only when provider or key changes - not on every Enter.
 DATA gv_loaded_key TYPE string.
+" Random per-session salt. Folded into the cached model-list state so that state
+" never holds the password in clear text (see AT SELECTION-SCREEN OUTPUT).
+DATA gv_sess_salt TYPE string.
 " Cached model listbox values - re-applied on every PBO so the list persists
 " across screen round-trips (e.g. toggling the thinking checkbox).
 DATA gt_model_vrm TYPE vrm_values.
@@ -55,6 +58,9 @@ SELECTION-SCREEN END OF BLOCK b_api.
 INITIALIZATION.
   p_tools = 'C:/soft/GITHUB/ABAP-AI-CODE/TOOLS'.
   p_log   = 'C:/temp/ABAP_AI_CODE/LOGS'.
+  " Random salt for this run so the cached model-list state never stores the
+  " password, not even hashed in a stable (offline-reusable) form.
+  gv_sess_salt = cl_system_uuid=>create_uuid_c32_static( ).
 
   DATA lt_excl TYPE TABLE OF sy-ucomm.
   APPEND 'ONLI' TO lt_excl.
@@ -111,8 +117,16 @@ AT SELECTION-SCREEN OUTPUT.
   ENDIF.
 
   " Re-fetch the model list live only when provider, key name or password
-  " changed; otherwise reuse the cached list (skipped on plain Enter).
-  DATA(lv_state) = |{ p_prov }\|{ p_name }\|{ p_pwd }|.
+  " changed; otherwise reuse the cached list (skipped on plain Enter). The
+  " password is never kept in clear text here: it is folded into a per-session
+  " salted SHA-256 token, so the cached state (GV_LOADED_KEY) cannot leak the
+  " password to a debugger or a dump - even before P_WIPE clears P_PWD.
+  DATA lv_pwd_tok TYPE string.
+  cl_abap_message_digest=>calculate_hash_for_char(
+    EXPORTING if_algorithm  = 'SHA-256'
+              if_data       = |{ gv_sess_salt }{ p_pwd }|
+    IMPORTING ef_hashstring = lv_pwd_tok ).
+  DATA(lv_state) = |{ p_prov }\|{ p_name }\|{ lv_pwd_tok }|.
   IF p_name IS NOT INITIAL AND p_pwd IS NOT INITIAL AND gv_loaded_key <> lv_state.
 
     " Decrypt the chosen key with the entered password before listing models.
