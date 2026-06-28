@@ -51,6 +51,34 @@ CLASS zcl_aitool_read IMPLEMENTATION.
     DATA lt_names TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
     SPLIT lv_name AT ',' INTO TABLE lt_names.
 
+    " Drop blanks so the count reflects real objects requested.
+    DELETE lt_names WHERE table_line IS INITIAL.
+
+    " Guard against an over-broad explicit list: more than 10 objects in one
+    " call asks the user first (the wildcard case is guarded in read_program).
+    DATA(lv_requested) = lines( lt_names ).
+    IF lv_requested > 10.
+      DATA lv_answer TYPE c LENGTH 1.
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'read_sap_object - many objects'
+          text_question         = |This call requests { lv_requested } objects. | &&
+                                  |Continue and read all of them?|
+          text_button_1         = 'Yes'
+          text_button_2         = 'No'
+          default_button        = '2'
+          display_cancel_button = ' '
+        IMPORTING
+          answer                = lv_answer
+        EXCEPTIONS
+          OTHERS                = 0.
+      IF lv_answer <> '1'.
+        rs_result-error_text = |read_sap_object: { lv_requested } objects requested | &&
+          |(more than 10). User declined. Read only the specific objects you need.|.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     DATA lv_source TYPE string.
     LOOP AT lt_names INTO DATA(lv_single_name).
       CONDENSE lv_single_name.
@@ -66,7 +94,13 @@ CLASS zcl_aitool_read IMPLEMENTATION.
       " back to the LLM (it would hallucinate / retry): set error_text so the
       " tool runner stops the loop and reports straight away.
       IF lv_not_found = abap_true.
-        rs_result-error_text = |read_sap_object: { lv_type } { lv_single_name } not found|.
+        " read_single fills the source with a reason (not found, or the
+        " "broad pattern declined" message from read_program). Pass it through
+        " so the LLM gets the real cause instead of a generic "not found".
+        rs_result-error_text = COND #(
+          WHEN lv_single_source IS NOT INITIAL
+          THEN lv_single_source
+          ELSE |read_sap_object: { lv_type } { lv_single_name } not found| ).
         RETURN.
       ENDIF.
 

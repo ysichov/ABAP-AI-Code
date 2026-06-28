@@ -126,14 +126,22 @@ CLASS zcl_ai_tool_runner DEFINITION
       IMPORTING
         !i_text TYPE string.
 
-    " Emits a {"type":"assistant",...} line carrying usage, model and the
-    " thinking / text / tool_use content blocks for one LLM step.
+    " Emits the {"type":"assistant",...} header line for one LLM step: usage,
+    " model and the thinking / text content blocks. Tool calls are logged
+    " separately (jsonl_log_tool_use) so each tool_use is immediately followed
+    " by its tool_result - the same order ABAP executes them in.
     METHODS jsonl_log_assistant
       IMPORTING
         !i_step     TYPE i
         !i_text     TYPE string
-        !i_thinking TYPE string
-        !it_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
+        !i_thinking TYPE string.
+
+    " Emits an {"type":"assistant",...,"tool_use"...} line for one tool call,
+    " written right before its result so the reader pairs them in sequence.
+    METHODS jsonl_log_tool_use
+      IMPORTING
+        !i_id   TYPE string
+        !i_call TYPE zcl_code_ai_api=>ty_tool_call.
 
     " Emits a {"type":"user",...,"tool_result"...} line for one executed tool.
     METHODS jsonl_log_tool_result
@@ -287,14 +295,16 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         CHANGING   rc        = lv_rc
         EXCEPTIONS OTHERS    = 1 ).
 
-      " A Claude-Code-compatible duplicate of the log: a single JSONL file
-      " under <log_dir>/claude_compatible so one reader handles both logs.
-      DATA(lv_cc_dir) = |{ mv_log_dir }/claude_compatible|.
+      " A Claude-Code-compatible duplicate of the log: one JSONL file per run,
+      " all gathered in a single <log_root>/claude_compatible folder so the
+      " reader (claude_report.html) treats each run as its own session. The
+      " file name carries provider + date + time to stay unique.
+      DATA(lv_cc_dir) = |{ lv_base }claude_compatible|.
       cl_gui_frontend_services=>directory_create(
         EXPORTING  directory = lv_cc_dir
         CHANGING   rc        = lv_rc
         EXCEPTIONS OTHERS    = 1 ).
-      mv_jsonl_path = |{ lv_cc_dir }/session.jsonl|.
+      mv_jsonl_path = |{ lv_cc_dir }/{ lv_provider }_{ sy-datum }_{ sy-uzeit }.jsonl|.
     ENDIF.
 
   ENDMETHOD.
@@ -488,12 +498,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDLOOP.
       " Write LLM.md after lv_llm_log is built (includes tool calls when answer is empty)
       write_log_file( i_suffix = 'LLM' i_content = lv_llm_log i_ext = 'md' i_step = lv_step ).
-      " Mirror the same step as a Claude-style assistant line (usage + blocks).
+      " Mirror the step as a Claude-style assistant header (usage + thinking +
+      " text). Each tool_use/result pair is logged inside the tool loop below.
       jsonl_log_assistant(
         i_step     = lv_step
         i_text     = lv_answer
-        i_thinking = mo_llm->mv_last_thinking
-        it_calls   = lt_calls ).
+        i_thinking = mo_llm->mv_last_thinking ).
       mo_messages->add_message(
         i_role             = 'assistant'
         i_agent            = 'TOOL_RUNNER'
@@ -529,6 +539,11 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         " Loop ordinal, captured before any READ TABLE overwrites sy-tabix.
         " It pairs the tool_result with its tool_use block in the JSONL log.
         DATA(lv_call_idx) = sy-tabix.
+        " Log the tool_use now, right before execution, so the JSONL keeps the
+        " strict tool -> result order ABAP runs the calls in.
+        DATA(lv_tool_id) = jsonl_tool_id(
+          i_call = ls_call i_step = lv_step i_index = lv_call_idx ).
+        jsonl_log_tool_use( i_id = lv_tool_id i_call = ls_call ).
         mo_messages->add_message(
           i_role        = 'user'
           i_agent       = ls_call-name
@@ -590,7 +605,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
                         i_step    = lv_step ).
         " Same result as a Claude-style tool_result line, paired by tool id.
         jsonl_log_tool_result(
-          i_id     = jsonl_tool_id( i_call = ls_call i_step = lv_step i_index = lv_call_idx )
+          i_id     = lv_tool_id
           i_result = lv_result ).
         mo_messages->add_message(
           i_role        = 'tool'
@@ -1394,7 +1409,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
 
 
   METHOD jsonl_log_assistant.
-    " Build the content[] array: thinking, then text, then tool_use blocks.
+    " Header line: thinking + text content blocks, plus the step's usage/model.
     DATA lv_blocks TYPE string.
 
     IF i_thinking IS NOT INITIAL.
@@ -1409,27 +1424,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         |\{"type":"text","text":"{ jsonl_escape( i_text ) }"\}|.
     ENDIF.
 
-    LOOP AT it_calls INTO DATA(ls_call).
-      DATA(lv_id) = jsonl_tool_id(
-        i_call = ls_call i_step = i_step i_index = sy-tabix ).
-      " arguments is a raw JSON object string - embed it verbatim as "input".
-      " If it is not an object/array, fall back to a JSON string so the line
-      " stays valid JSON.
-      DATA(lv_input) = ls_call-arguments.
-      CONDENSE lv_input.
-      IF lv_input IS INITIAL.
-        lv_input = '{}'.
-      ELSEIF lv_input(1) <> '{' AND lv_input(1) <> '['.
-        lv_input = |"{ jsonl_escape( ls_call-arguments ) }"|.
-      ENDIF.
-      IF lv_blocks IS NOT INITIAL.
-        lv_blocks = lv_blocks && ','.
-      ENDIF.
-      lv_blocks = lv_blocks &&
-        |\{"type":"tool_use","id":"{ jsonl_escape( lv_id ) }",| &&
-        |"name":"{ jsonl_escape( ls_call-name ) }","input":{ lv_input }\}|.
-    ENDLOOP.
-
     " A unique, stable message id (the reader dedups token usage by it).
     DATA(lv_msgid) = |msg_{ sy-datum }_{ sy-uzeit }_{ i_step }|.
 
@@ -1441,6 +1435,25 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |"cache_creation_input_tokens":0,| &&
       |"cache_read_input_tokens":{ mo_llm->mv_last_tok_cached }\},| &&
       |"content":[{ lv_blocks }]\}\}| ).
+  ENDMETHOD.
+
+
+  METHOD jsonl_log_tool_use.
+    " arguments is a raw JSON object string - embed it verbatim as "input".
+    " If it is not an object/array, fall back to a JSON string so the line
+    " stays valid JSON. The id is shared with the matching tool_result line.
+    DATA(lv_input) = i_call-arguments.
+    CONDENSE lv_input.
+    IF lv_input IS INITIAL.
+      lv_input = '{}'.
+    ELSEIF lv_input(1) <> '{' AND lv_input(1) <> '['.
+      lv_input = |"{ jsonl_escape( i_call-arguments ) }"|.
+    ENDIF.
+    write_jsonl_line(
+      |\{"type":"assistant","timestamp":"{ jsonl_now( ) }","message":\{| &&
+      |"id":"{ jsonl_escape( i_id ) }","content":[| &&
+      |\{"type":"tool_use","id":"{ jsonl_escape( i_id ) }",| &&
+      |"name":"{ jsonl_escape( i_call-name ) }","input":{ lv_input }\}]\}\}| ).
   ENDMETHOD.
 
 

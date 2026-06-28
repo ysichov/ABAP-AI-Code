@@ -258,6 +258,36 @@ CLASS zcl_ai_code_reader IMPLEMENTATION.
         RETURN.
       ENDIF.
 
+      " Guard against a runaway broad match (e.g. ZCL_* hitting the whole
+      " abapGit library): if the pattern resolves to more than 10 objects, ask
+      " the user before handing that big list back to the LLM - otherwise the
+      " orchestrator may fan out a review/read on every single one.
+      DATA(lv_count) = lines( lt_tadir ).
+      IF lv_count > 10.
+        DATA lv_answer TYPE c LENGTH 1.
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+            titlebar              = 'read_sap_object - broad pattern'
+            text_question         = |Pattern { lv_program } matched { lv_count } objects. | &&
+                                    |Continue and read all of them?|
+            text_button_1         = 'Yes'
+            text_button_2         = 'No'
+            default_button        = '2'
+            display_cancel_button = ' '
+          IMPORTING
+            answer                = lv_answer
+          EXCEPTIONS
+            OTHERS                = 0.
+        IF lv_answer <> '1'.
+          " Treated as "not found" by the tool, which stops the agentic loop.
+          ev_not_found = abap_true.
+          rv_text = |Pattern { lv_program } matched { lv_count } objects (more than 10). | &&
+                    |User declined to read them all. Narrow object_name to the | &&
+                    |specific objects you need.|.
+          RETURN.
+        ENDIF.
+      ENDIF.
+
       rv_text = |Objects matching { lv_program }:|.
       LOOP AT lt_tadir INTO DATA(ls_tadir).
         rv_text = rv_text
