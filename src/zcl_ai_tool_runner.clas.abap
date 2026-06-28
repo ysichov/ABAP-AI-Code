@@ -109,6 +109,58 @@ CLASS zcl_ai_tool_runner DEFINITION
     " Appends one token-budget row per question to <log_dir>/_tokens.md.
     METHODS write_session_tokens.
 
+    " ---- claude_compatible log -------------------------------------------
+    " Mirror of the per-step log as a single Claude-Code-style JSONL file
+    " (<log_dir>/claude_compatible/session.jsonl). One JSON object per line,
+    " so the same reader (claude_report.html) ingests it like a Claude session.
+    DATA mv_jsonl_path TYPE string.
+
+    " Appends one raw JSON line to mv_jsonl_path (UTF-8). No-op when the log
+    " folder is not configured or i_json is empty.
+    METHODS write_jsonl_line
+      IMPORTING
+        !i_json TYPE string.
+
+    " Emits a {"type":"user",...,"content":"<text>"} line (a human prompt).
+    METHODS jsonl_log_user_prompt
+      IMPORTING
+        !i_text TYPE string.
+
+    " Emits a {"type":"assistant",...} line carrying usage, model and the
+    " thinking / text / tool_use content blocks for one LLM step.
+    METHODS jsonl_log_assistant
+      IMPORTING
+        !i_step     TYPE i
+        !i_text     TYPE string
+        !i_thinking TYPE string
+        !it_calls   TYPE zcl_code_ai_api=>tt_tool_calls.
+
+    " Emits a {"type":"user",...,"tool_result"...} line for one executed tool.
+    METHODS jsonl_log_tool_result
+      IMPORTING
+        !i_id     TYPE string
+        !i_result TYPE string.
+
+    " Escapes a string for embedding inside a JSON double-quoted value.
+    METHODS jsonl_escape
+      IMPORTING
+        !i_in         TYPE string
+      RETURNING VALUE(rv_out) TYPE string.
+
+    " Current UTC time as ISO-8601 (e.g. 2026-06-28T12:00:00Z) for timestamps.
+    METHODS jsonl_now
+      RETURNING VALUE(rv_iso) TYPE string.
+
+    " Deterministic tool_use id, reused by the assistant block and its result
+    " so the reader can pair them. Falls back to <step>/<index> when the tool
+    " call carries no provider id (Anthropic tool calls have none).
+    METHODS jsonl_tool_id
+      IMPORTING
+        !i_call       TYPE zcl_code_ai_api=>ty_tool_call
+        !i_step       TYPE i
+        !i_index      TYPE i
+      RETURNING VALUE(rv_id) TYPE string.
+
     " Returns a corrective message when delete_sap_object is mis-used for a
     " partial deletion (a form, method, comment, line - it should be a modify),
     " otherwise empty. Acts as a deterministic guard on top of the LLM routing.
@@ -234,6 +286,15 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
         EXPORTING  directory = mv_log_dir
         CHANGING   rc        = lv_rc
         EXCEPTIONS OTHERS    = 1 ).
+
+      " A Claude-Code-compatible duplicate of the log: a single JSONL file
+      " under <log_dir>/claude_compatible so one reader handles both logs.
+      DATA(lv_cc_dir) = |{ mv_log_dir }/claude_compatible|.
+      cl_gui_frontend_services=>directory_create(
+        EXPORTING  directory = lv_cc_dir
+        CHANGING   rc        = lv_rc
+        EXCEPTIONS OTHERS    = 1 ).
+      mv_jsonl_path = |{ lv_cc_dir }/session.jsonl|.
     ENDIF.
 
   ENDMETHOD.
@@ -345,6 +406,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
     CLEAR mv_review_pending.
     mv_user_prompt = i_prompt.
 
+    " Open the claude_compatible turn with the human prompt line.
+    jsonl_log_user_prompt( i_prompt ).
+
     " Fresh progress panel for every question
     CLEAR mt_progress_steps.
     CLEAR mv_total_seconds.
@@ -424,6 +488,12 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       ENDLOOP.
       " Write LLM.md after lv_llm_log is built (includes tool calls when answer is empty)
       write_log_file( i_suffix = 'LLM' i_content = lv_llm_log i_ext = 'md' i_step = lv_step ).
+      " Mirror the same step as a Claude-style assistant line (usage + blocks).
+      jsonl_log_assistant(
+        i_step     = lv_step
+        i_text     = lv_answer
+        i_thinking = mo_llm->mv_last_thinking
+        it_calls   = lt_calls ).
       mo_messages->add_message(
         i_role             = 'assistant'
         i_agent            = 'TOOL_RUNNER'
@@ -456,6 +526,9 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       DATA lv_results TYPE string.
       CLEAR lv_results.
       LOOP AT lt_calls INTO ls_call.
+        " Loop ordinal, captured before any READ TABLE overwrites sy-tabix.
+        " It pairs the tool_result with its tool_use block in the JSONL log.
+        DATA(lv_call_idx) = sy-tabix.
         mo_messages->add_message(
           i_role        = 'user'
           i_agent       = ls_call-name
@@ -515,6 +588,10 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
                                     cl_abap_char_utilities=>newline &&
                                     lv_result
                         i_step    = lv_step ).
+        " Same result as a Claude-style tool_result line, paired by tool id.
+        jsonl_log_tool_result(
+          i_id     = jsonl_tool_id( i_call = ls_call i_step = lv_step i_index = lv_call_idx )
+          i_result = lv_result ).
         mo_messages->add_message(
           i_role        = 'tool'
           i_agent       = ls_call-name
@@ -1246,5 +1323,132 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       EXCEPTIONS
         OTHERS               = 1 ).
 
+  ENDMETHOD.
+
+
+  METHOD jsonl_now.
+    " UTC, so the timestamps line up with real Claude logs (which are UTC).
+    DATA lv_tsl TYPE timestampl.
+    GET TIME STAMP FIELD lv_tsl.
+    DATA(lv_s) = |{ lv_tsl }|.            " YYYYMMDDhhmmss[.fffffff]
+    rv_iso = |{ lv_s(4) }-{ lv_s+4(2) }-{ lv_s+6(2) }T| &&
+             |{ lv_s+8(2) }:{ lv_s+10(2) }:{ lv_s+12(2) }Z|.
+  ENDMETHOD.
+
+
+  METHOD jsonl_escape.
+    DATA(lv_cr) = cl_abap_char_utilities=>cr_lf(1).   " lone carriage return
+    rv_out = i_in.
+    " Backslash first, then quote, then the whitespace/control chars.
+    REPLACE ALL OCCURRENCES OF '\' IN rv_out WITH '\\'.
+    REPLACE ALL OCCURRENCES OF '"' IN rv_out WITH '\"'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf
+      IN rv_out WITH '\n'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline
+      IN rv_out WITH '\n'.
+    REPLACE ALL OCCURRENCES OF lv_cr
+      IN rv_out WITH '\n'.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab
+      IN rv_out WITH '\t'.
+  ENDMETHOD.
+
+
+  METHOD jsonl_tool_id.
+    " Reuse the provider id when present; otherwise a deterministic id that
+    " both the tool_use block and the tool_result line can reproduce.
+    rv_id = COND string( WHEN i_call-id IS NOT INITIAL
+                         THEN i_call-id
+                         ELSE |toolu_{ i_step }_{ i_index }| ).
+  ENDMETHOD.
+
+
+  METHOD write_jsonl_line.
+    IF mv_jsonl_path IS INITIAL OR i_json IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA lt_data TYPE TABLE OF string.
+    APPEND i_json TO lt_data.
+    cl_gui_frontend_services=>gui_download(
+      EXPORTING
+        filename              = mv_jsonl_path
+        filetype              = 'ASC'
+        codepage              = '4110'
+        append                = 'X'
+        confirm_overwrite     = ' '
+        trunc_trailing_blanks = ' '
+      CHANGING
+        data_tab              = lt_data
+      EXCEPTIONS
+        OTHERS                = 1 ).
+  ENDMETHOD.
+
+
+  METHOD jsonl_log_user_prompt.
+    IF i_text IS INITIAL.
+      RETURN.
+    ENDIF.
+    write_jsonl_line(
+      |\{"type":"user","timestamp":"{ jsonl_now( ) }",| &&
+      |"message":\{"role":"user","content":"{ jsonl_escape( i_text ) }"\}\}| ).
+  ENDMETHOD.
+
+
+  METHOD jsonl_log_assistant.
+    " Build the content[] array: thinking, then text, then tool_use blocks.
+    DATA lv_blocks TYPE string.
+
+    IF i_thinking IS NOT INITIAL.
+      lv_blocks = |\{"type":"thinking","thinking":"{ jsonl_escape( i_thinking ) }"\}|.
+    ENDIF.
+
+    IF i_text IS NOT INITIAL.
+      IF lv_blocks IS NOT INITIAL.
+        lv_blocks = lv_blocks && ','.
+      ENDIF.
+      lv_blocks = lv_blocks &&
+        |\{"type":"text","text":"{ jsonl_escape( i_text ) }"\}|.
+    ENDIF.
+
+    LOOP AT it_calls INTO DATA(ls_call).
+      DATA(lv_id) = jsonl_tool_id(
+        i_call = ls_call i_step = i_step i_index = sy-tabix ).
+      " arguments is a raw JSON object string - embed it verbatim as "input".
+      " If it is not an object/array, fall back to a JSON string so the line
+      " stays valid JSON.
+      DATA(lv_input) = ls_call-arguments.
+      CONDENSE lv_input.
+      IF lv_input IS INITIAL.
+        lv_input = '{}'.
+      ELSEIF lv_input(1) <> '{' AND lv_input(1) <> '['.
+        lv_input = |"{ jsonl_escape( ls_call-arguments ) }"|.
+      ENDIF.
+      IF lv_blocks IS NOT INITIAL.
+        lv_blocks = lv_blocks && ','.
+      ENDIF.
+      lv_blocks = lv_blocks &&
+        |\{"type":"tool_use","id":"{ jsonl_escape( lv_id ) }",| &&
+        |"name":"{ jsonl_escape( ls_call-name ) }","input":{ lv_input }\}|.
+    ENDLOOP.
+
+    " A unique, stable message id (the reader dedups token usage by it).
+    DATA(lv_msgid) = |msg_{ sy-datum }_{ sy-uzeit }_{ i_step }|.
+
+    write_jsonl_line(
+      |\{"type":"assistant","timestamp":"{ jsonl_now( ) }","message":\{| &&
+      |"id":"{ lv_msgid }","model":"{ jsonl_escape( mo_llm->get_model( ) ) }",| &&
+      |"usage":\{"input_tokens":{ mo_llm->mv_last_tok_in },| &&
+      |"output_tokens":{ mo_llm->mv_last_tok_out },| &&
+      |"cache_creation_input_tokens":0,| &&
+      |"cache_read_input_tokens":{ mo_llm->mv_last_tok_cached }\},| &&
+      |"content":[{ lv_blocks }]\}\}| ).
+  ENDMETHOD.
+
+
+  METHOD jsonl_log_tool_result.
+    write_jsonl_line(
+      |\{"type":"user","timestamp":"{ jsonl_now( ) }","message":\{| &&
+      |"role":"user","content":[\{"type":"tool_result",| &&
+      |"tool_use_id":"{ jsonl_escape( i_id ) }",| &&
+      |"content":"{ jsonl_escape( i_result ) }"\}]\}\}| ).
   ENDMETHOD.
 ENDCLASS.

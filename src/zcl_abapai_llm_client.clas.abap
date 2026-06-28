@@ -32,6 +32,11 @@ public section.
   methods GET_LAST_SECONDS
     returning
       value(RV_SECONDS) type STRING .
+  " Configured model id (e.g. 'claude-opus-4-8'), used by the
+  " claude_compatible JSONL log to fill message.model.
+  methods GET_MODEL
+    returning
+      value(RV_MODEL) type STRING .
   methods SET_TEMPERATURE
     importing
       !I_TEMPERATURE type STRING .
@@ -169,6 +174,13 @@ CLASS ZCL_ABAPAI_LLM_CLIENT IMPLEMENTATION.
   method GET_LAST_SECONDS.
 
     rv_seconds = mv_last_seconds.
+
+  endmethod.
+
+
+  method GET_MODEL.
+
+    rv_model = mv_model.
 
   endmethod.
 
