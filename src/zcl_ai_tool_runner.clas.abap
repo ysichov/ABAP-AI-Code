@@ -640,7 +640,23 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       " Return the raw source straight away instead of paying a second LLM round
       " that only re-wraps it (e.g. in a <code_example> envelope). The UI then
       " shows it in the ABAP editor with breakpoints via mv_read_object_*.
-      IF lv_step = 1
+      "
+      " BUT only for a plain "show me the code" request. When the read is the
+      " FIRST step of a larger task (review / analyse / explain / modify), the
+      " source must go back to the LLM, or the agent would dump raw source
+      " instead of doing the work. The MODEL declares this via the read's
+      " "purpose" argument - it sees the full user context, so it judges far
+      " better than any keyword guess here. Absent/unknown = analyse (continue),
+      " so an analysis task is never cut short by accident.
+      DATA lv_purpose TYPE string.
+      FIND FIRST OCCURRENCE OF REGEX '"purpose"\s*:\s*"([^"]*)"'
+        IN ls_call-arguments SUBMATCHES lv_purpose.
+      TRANSLATE lv_purpose TO UPPER CASE.
+      DATA(lv_view_only) = xsdbool(
+        lv_purpose = 'VIEW' OR lv_purpose = 'SHOW' OR lv_purpose = 'DISPLAY' ).
+
+      IF lv_view_only = abap_true
+      AND lv_step = 1
       AND lines( lt_calls ) = 1
       AND ls_call-name = 'read_sap_object'
       AND NOT lv_result CP 'Error:*'.
