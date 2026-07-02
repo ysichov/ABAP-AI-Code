@@ -1448,7 +1448,7 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       |"id":"{ lv_msgid }","model":"{ jsonl_escape( mo_llm->get_model( ) ) }",| &&
       |"usage":\{"input_tokens":{ mo_llm->mv_last_tok_in },| &&
       |"output_tokens":{ mo_llm->mv_last_tok_out },| &&
-      |"cache_creation_input_tokens":0,| &&
+      |"cache_creation_input_tokens":{ mo_llm->mv_last_tok_cache_created },| &&
       |"cache_read_input_tokens":{ mo_llm->mv_last_tok_cached }\},| &&
       |"content":[{ lv_blocks }]\}\}| ).
   ENDMETHOD.

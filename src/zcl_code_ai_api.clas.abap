@@ -66,6 +66,7 @@ public section.
       !EV_TOK_OUT      type I
       !EV_TOK_TOTAL    type I
       !EV_TOK_CACHED   type I
+      !EV_TOK_CACHE_CREATED type I
       !ET_TOOL_CALLS   type TT_TOOL_CALLS
       !EV_RAW_REQUEST  type STRING
       !EV_RAW_RESPONSE type STRING
@@ -125,6 +126,7 @@ private section.
       !EV_TOK_OUT    type I
       !EV_TOK_TOTAL  type I
       !EV_TOK_CACHED type I
+      !EV_TOK_CACHE_CREATED type I
       !ET_TOOL_CALLS type TT_TOOL_CALLS
       !EV_THINKING   type STRING
     returning
@@ -363,12 +365,13 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
         i_json     = lv_response
         i_provider = lv_wire
       IMPORTING
-        ev_tok_in     = ev_tok_in
-        ev_tok_out    = ev_tok_out
-        ev_tok_total  = ev_tok_total
-        ev_tok_cached = ev_tok_cached
-        et_tool_calls = et_tool_calls
-        ev_thinking   = ev_thinking ).
+        ev_tok_in            = ev_tok_in
+        ev_tok_out           = ev_tok_out
+        ev_tok_total         = ev_tok_total
+        ev_tok_cached        = ev_tok_cached
+        ev_tok_cache_created = ev_tok_cache_created
+        et_tool_calls        = et_tool_calls
+        ev_thinking          = ev_thinking ).
 
   endmethod.
 
@@ -800,7 +803,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
           response        TYPE t_anthropic_res,
           openai_response TYPE t_openai_res.
 
-    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached, et_tool_calls, ev_thinking.
+    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached, ev_tok_cache_created, et_tool_calls, ev_thinking.
 
     lv_provider = i_provider.
     TRANSLATE lv_provider TO UPPER CASE.
@@ -845,9 +848,14 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       ev_tok_total = response-usage-total_tokens.
     ENDIF.
     " Prompt-cache accounting: cache_read = tokens served from cache (cheap),
-    " cache_creation = tokens written to cache on this call.
+    " cache_creation = tokens written to cache on this call (billed at a
+    " premium rate - large for the first turn of a long system prompt/tools
+    " payload, so this can dwarf the base input_tokens count).
     IF response-usage-cache_read_input_tokens IS NOT INITIAL.
       ev_tok_cached = response-usage-cache_read_input_tokens.
+    ENDIF.
+    IF response-usage-cache_creation_input_tokens IS NOT INITIAL.
+      ev_tok_cache_created = response-usage-cache_creation_input_tokens.
     ENDIF.
 
     " Concatenate all text content blocks (a tool_use turn may have a leading
