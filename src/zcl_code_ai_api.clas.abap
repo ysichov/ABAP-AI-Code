@@ -478,8 +478,12 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
 
     " Optional temperature field (e.g. "0.2" or "1.0") - omitted when not provided
     " or when extended thinking is on (Anthropic requires the default).
+    " Claude 5 family (fable/mythos) deprecated temperature entirely - the API
+    " returns invalid_request_error if it is sent, so skip it for those models.
     DATA lv_temp_field TYPE string.
-    IF i_temperature IS NOT INITIAL AND lv_thinking_on = abap_false.
+    DATA(lv_model_lc) = to_lower( |{ i_model }| ).
+    IF i_temperature IS NOT INITIAL AND lv_thinking_on = abap_false
+       AND NOT ( lv_model_lc CS 'fable' OR lv_model_lc CS 'mythos' ).
       lv_temp_field = |, "temperature": { i_temperature }|.
     ENDIF.
 
