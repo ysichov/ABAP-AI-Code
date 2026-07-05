@@ -115,12 +115,32 @@ START-OF-SELECTION.
       MESSAGE |Encryption failed: { lx_enc->get_text( ) }| TYPE 'E'.
   ENDTRY.
 
+  " Preserve created_by/created_at across updates; changed_by/changed_at
+  " are always stamped with the current user and timestamp.
+  DATA: lv_created_by TYPE zaicode_apikey-created_by,
+        lv_created_at TYPE zaicode_apikey-created_at.
+  SELECT SINGLE created_by created_at FROM zaicode_apikey
+    INTO (lv_created_by, lv_created_at)
+    WHERE username = sy-uname
+      AND provider = p_prov
+      AND keyname  = p_name.
+  DATA(lv_key_exists) = xsdbool( sy-subrc = 0 ).
+
   DATA ls_row TYPE zaicode_apikey.
   ls_row-mandt    = sy-mandt.
   ls_row-username = sy-uname.
   ls_row-provider = p_prov.
   ls_row-keyname  = p_name.
   ls_row-secret   = lv_secret.
+  ls_row-changed_by = sy-uname.
+  GET TIME STAMP FIELD ls_row-changed_at.
+  IF lv_key_exists = abap_true.
+    ls_row-created_by = lv_created_by.
+    ls_row-created_at = lv_created_at.
+  ELSE.
+    ls_row-created_by = sy-uname.
+    ls_row-created_at = ls_row-changed_at.
+  ENDIF.
   MODIFY zaicode_apikey FROM ls_row.
   IF sy-subrc = 0.
     COMMIT WORK.
