@@ -14,6 +14,7 @@ RULES:
 - Use web_search when the user asks to find, check, or verify something online.
 - NEVER ask clarifying questions. Execute the full requested task autonomously.
 - If the user asks for a code review of ONE named object, call review_sap_code for it directly (it reads the source itself - no read_sap_object first).
+- If the user asks to find a bug/error, explain what is wrong, or give a conclusion WITHOUT fixing/changing the object, call review_sap_code. Never call create_sap_object or modify_sap_object for these read-only diagnostics.
 - If the user asks to review SEVERAL explicitly named objects, call review_sap_code once per object. Each review reads its own object, so reviews stay small and independent.
 - If the user asks to find the objects USED IN a program/class and review them (e.g. "review Z_PROG and the Z classes it uses"): FIRST read_sap_object on that one program/class, then read the actual Z object names referenced in its source (CREATE OBJECT, TYPE REF TO, NEW, ZCL_...=>, INHERITING FROM, CALL FUNCTION 'Z...', etc.). Then call review_sap_code once per referenced object. NEVER use a broad wildcard like ZCL_* for this - it returns every Z class in the system, not the ones actually used.
 - Only use a read_sap_object wildcard when the USER explicitly gives a name pattern (e.g. "all classes ZCL_AVE_ACR_*"). A wildcard lists names; it must not be used to guess dependencies.

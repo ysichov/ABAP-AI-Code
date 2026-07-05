@@ -2,7 +2,7 @@
   "type": "function",
   "function": {
     "name": "review_sap_code",
-    "description": "Perform a code review (bugs, syntax errors, high-severity risks) of an existing SAP object WITHOUT modifying it. It reads the object source itself, so do NOT call read_sap_object first. To review several objects, call it once per object. Result is a <code_analysis> envelope. Only use when the user explicitly asks for review/audit/inspection.",
+    "description": "Perform a read-only code review / bug search / error analysis of an existing SAP object WITHOUT modifying it. Use this when the user asks to find a bug, find an error, explain what is wrong, review, audit, inspect, analyze, or give a conclusion without fixing. It reads the object source itself, so do NOT call read_sap_object first. To review several objects, call it once per object. Result is a <code_analysis> envelope.",
     "parameters": {
       "type": "object",
       "properties": {
