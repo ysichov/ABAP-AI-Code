@@ -2,7 +2,7 @@
   "type": "function",
   "function": {
     "name": "create_sap_object",
-    "description": "Create a NEW SAP object (class or program) that the user explicitly asked to create and save in the system. The result is wrapped in a <code_created> envelope. Do NOT use when the user only wants a code example - use show_code_example instead.",
+    "description": "Create a NEW SAP object (class or program) that the user explicitly asked to create and save in the system. Use only for new-object creation requests, not for existing-object diagnostics. Do NOT use for requests to find a bug, find an error, review, inspect, analyze, explain what is wrong, or give a conclusion about an existing object - use review_sap_code or read_sap_object instead. Do NOT use when the user only wants a code example - use show_code_example instead. The result is wrapped in a <code_created> envelope.",
     "parameters": {
       "type": "object",
       "properties": {

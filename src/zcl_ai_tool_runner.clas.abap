@@ -177,14 +177,6 @@ CLASS zcl_ai_tool_runner DEFINITION
         !is_call          TYPE zcl_code_ai_api=>ty_tool_call
       RETURNING VALUE(rv_redirect) TYPE string.
 
-    " Returns a corrective message when a write tool is selected for a
-    " read-only analysis request, or create_sap_object is selected without an
-    " explicit create/new-object intent.
-    METHODS writer_misuse_redirect
-      IMPORTING
-        !is_call          TYPE zcl_code_ai_api=>ty_tool_call
-      RETURNING VALUE(rv_redirect) TYPE string.
-
     DATA mo_html_viewer    TYPE REF TO cl_gui_html_viewer.
     DATA mt_progress_steps TYPE tt_steps.
     DATA mv_total_seconds  TYPE i.
@@ -720,14 +712,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Deterministic guard: prompts like "find the bug, do not fix" are
-    " read-only even if the LLM accidentally picked a writer tool.
-    lv_redirect = writer_misuse_redirect( is_call ).
-    IF lv_redirect IS NOT INITIAL.
-      rv_result = lv_redirect.
-      RETURN.
-    ENDIF.
-
     DATA(ls_result) = lo_tool->execute( i_arguments = is_call-arguments ).
 
     IF ls_result-error_text IS NOT INITIAL.
@@ -744,137 +728,6 @@ CLASS zcl_ai_tool_runner IMPLEMENTATION.
       rv_result = rv_result
         && cl_abap_char_utilities=>newline
         && |APPLY RESULT: { lv_apply_msg }|.
-    ENDIF.
-
-  ENDMETHOD.
-
-
-  METHOD writer_misuse_redirect.
-
-    DATA(lv_tool) = is_call-name.
-    IF lv_tool <> 'create_sap_object'
-    AND lv_tool <> 'modify_sap_object'.
-      RETURN.
-    ENDIF.
-
-    DATA(lv_p) = mv_user_prompt.
-    TRANSLATE lv_p TO UPPER CASE.
-
-    DATA(lv_has_create_intent) = abap_false.
-    DATA lt_create_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    APPEND 'CREATE' TO lt_create_kw.
-    APPEND 'NEW ' TO lt_create_kw.
-    APPEND 'GENERATE' TO lt_create_kw.
-    APPEND 'BUILD' TO lt_create_kw.
-    APPEND 'SAVE AS' TO lt_create_kw.
-    APPEND 'СОЗД' TO lt_create_kw.
-    APPEND 'СТВОР' TO lt_create_kw.
-    APPEND 'НОВ' TO lt_create_kw.
-
-    LOOP AT lt_create_kw INTO DATA(lv_create_kw).
-      IF lv_p CS lv_create_kw.
-        lv_has_create_intent = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    IF lv_tool = 'create_sap_object'
-    AND lv_has_create_intent = abap_false.
-      rv_redirect = |Error: create_sap_object is allowed only when the user explicitly asks to create a new SAP object. | &&
-                    |For existing-object analysis, use review_sap_code or read_sap_object and answer in text.|.
-      RETURN.
-    ENDIF.
-
-    DATA(lv_read_only) = abap_false.
-    DATA lt_ro_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    APPEND 'DO NOT FIX' TO lt_ro_kw.
-    APPEND 'DONT FIX' TO lt_ro_kw.
-    APPEND 'DON''T FIX' TO lt_ro_kw.
-    APPEND 'WITHOUT FIX' TO lt_ro_kw.
-    APPEND 'WITHOUT MODIFY' TO lt_ro_kw.
-    APPEND 'WITHOUT CHANG' TO lt_ro_kw.
-    APPEND 'NO CHANGE' TO lt_ro_kw.
-    APPEND 'READ-ONLY' TO lt_ro_kw.
-    APPEND 'ONLY FIND' TO lt_ro_kw.
-    APPEND 'НЕ НАДО ИСПРАВ' TO lt_ro_kw.
-    APPEND 'НЕ ИСПРАВ' TO lt_ro_kw.
-    APPEND 'БЕЗ ИСПРАВ' TO lt_ro_kw.
-    APPEND 'ТОЛЬКО НАЙ' TO lt_ro_kw.
-    APPEND 'НЕ ВИПРАВ' TO lt_ro_kw.
-    APPEND 'БЕЗ ВИПРАВ' TO lt_ro_kw.
-    APPEND 'ЛИШЕ ЗНАЙ' TO lt_ro_kw.
-
-    LOOP AT lt_ro_kw INTO DATA(lv_ro_kw).
-      IF lv_p CS lv_ro_kw.
-        lv_read_only = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    DATA(lv_has_find_intent) = abap_false.
-    DATA lt_find_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    APPEND 'FIND' TO lt_find_kw.
-    APPEND 'REVIEW' TO lt_find_kw.
-    APPEND 'ANALY' TO lt_find_kw.
-    APPEND 'CHECK' TO lt_find_kw.
-    APPEND 'НАЙД' TO lt_find_kw.
-    APPEND 'ЗНАЙД' TO lt_find_kw.
-    APPEND 'АНАЛИЗ' TO lt_find_kw.
-    APPEND 'ПРОВЕР' TO lt_find_kw.
-    APPEND 'ПЕРЕВІР' TO lt_find_kw.
-
-    LOOP AT lt_find_kw INTO DATA(lv_find_kw).
-      IF lv_p CS lv_find_kw.
-        lv_has_find_intent = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    DATA(lv_has_problem_word) = abap_false.
-    DATA lt_problem_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    APPEND 'BUG' TO lt_problem_kw.
-    APPEND 'ERROR' TO lt_problem_kw.
-    APPEND 'ISSUE' TO lt_problem_kw.
-    APPEND 'ОШИБ' TO lt_problem_kw.
-    APPEND 'ПРОБЛ' TO lt_problem_kw.
-    APPEND 'ПОМИЛ' TO lt_problem_kw.
-
-    LOOP AT lt_problem_kw INTO DATA(lv_problem_kw).
-      IF lv_p CS lv_problem_kw.
-        lv_has_problem_word = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    DATA(lv_has_fix_intent) = abap_false.
-    DATA lt_fix_kw TYPE STANDARD TABLE OF string WITH NON-UNIQUE DEFAULT KEY.
-    APPEND 'FIX' TO lt_fix_kw.
-    APPEND 'REPAIR' TO lt_fix_kw.
-    APPEND 'CORRECT' TO lt_fix_kw.
-    APPEND 'MODIFY' TO lt_fix_kw.
-    APPEND 'CHANGE' TO lt_fix_kw.
-    APPEND 'ИСПРАВ' TO lt_fix_kw.
-    APPEND 'ПОЧИН' TO lt_fix_kw.
-    APPEND 'ВИПРАВ' TO lt_fix_kw.
-    APPEND 'ЗМІН' TO lt_fix_kw.
-
-    LOOP AT lt_fix_kw INTO DATA(lv_fix_kw).
-      IF lv_p CS lv_fix_kw.
-        lv_has_fix_intent = abap_true.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-
-    IF lv_read_only = abap_false
-    AND lv_has_find_intent = abap_true
-    AND lv_has_problem_word = abap_true
-    AND lv_has_fix_intent = abap_false.
-      lv_read_only = abap_true.
-    ENDIF.
-
-    IF lv_read_only = abap_true.
-      rv_redirect = |Error: { lv_tool } is not allowed for this request. The user asked for read-only analysis. | &&
-                    |Use review_sap_code or read_sap_object and answer in text without changing SAP objects.|.
     ENDIF.
 
   ENDMETHOD.
