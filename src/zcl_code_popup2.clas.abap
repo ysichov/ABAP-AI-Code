@@ -1157,6 +1157,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
           ENDIF.
         ENDIF.
       WHEN 'RUN_PROGRAM'.
+        BREAK-POINT. " Temporary: verify RUN_PROGRAM toolbar event
         run_program( ).
       WHEN 'NEW_SESSION'.
         mo_tool_runner->clear_session( ).
