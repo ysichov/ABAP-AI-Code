@@ -42,7 +42,8 @@
           "diagnosis": { "type": "string" },
           "evidence_variable": { "type": "string" },
           "evidence_step": { "type": "string" },
-          "evidence_value": { "type": "string" }
+          "evidence_value": { "type": "string" },
+          "fix_suggestion": { "type": "string", "description": "Corrected ABAP code or exact replacement fragment" }
         },
         "required": ["status", "diagnosis"]
       }
