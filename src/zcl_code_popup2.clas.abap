@@ -103,6 +103,7 @@ private section.
   data MV_AGENTS_PATH type STRING .
   data MV_LOG_PATH   type STRING .
   data MV_MAX_TOKENS type I .
+  data MV_THINKING_BUDGET type I .
   data MV_APIKEY type STRING .
   data MV_MODEL type TEXT255 .
   data MV_PROVIDER type STRING .
@@ -408,6 +409,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
     mv_provider    = i_provider.
     mv_log_path    = i_log_path.
     mv_max_tokens  = i_max_tokens.
+    mv_thinking_budget = i_thinking_budget.
     mo_llm->set_max_tokens( i_max_tokens ).
     mo_llm->set_thinking_budget( i_thinking_budget ).
 
@@ -1099,11 +1101,15 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
               model    TYPE text255,
               apikey   TYPE string,
               tools_path TYPE string,
+              max_tokens TYPE i,
+              thinking_budget TYPE i,
             END OF ls_ai_config.
       ls_ai_config-provider = mv_provider.
       ls_ai_config-model    = mv_model.
       ls_ai_config-apikey   = mv_apikey.
       ls_ai_config-tools_path = mv_agents_path.
+      ls_ai_config-max_tokens = mv_max_tokens.
+      ls_ai_config-thinking_budget = mv_thinking_budget.
       DATA lv_ai_config_id TYPE indx-srtfd.
       lv_ai_config_id = |ZSMDBG{ sy-uname }|.
       EXPORT ai_config = ls_ai_config TO DATABASE indx(st) ID lv_ai_config_id.

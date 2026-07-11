@@ -43,9 +43,13 @@
           "evidence_variable": { "type": "string" },
           "evidence_step": { "type": "string" },
           "evidence_value": { "type": "string" },
-          "fix_suggestion": { "type": "string", "description": "Corrected ABAP code or exact replacement fragment" }
+          "fix_suggestion": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Mandatory concrete fix: corrected ABAP code or an exact replacement fragment. A diagnosis-only explanation is invalid. For confirmed findings, include executable ABAP in this field."
+          }
         },
-        "required": ["status", "diagnosis"]
+        "required": ["status", "diagnosis", "fix_suggestion"]
       }
     }
   }
