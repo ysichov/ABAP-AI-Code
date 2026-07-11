@@ -73,6 +73,13 @@ AT SELECTION-SCREEN OUTPUT.
   " lost after a round-trip and the selection does not stick. The text shows
   " the base URL the provider resolves to.
   DATA(lt_provs) = zcl_code_ai_api=>get_providers( ).
+  " Only show providers for which the current user has a stored API key.
+  " The key-maintenance program deliberately keeps its separate provider list
+  " unfiltered so a user can add the first key for a provider.
+  SELECT DISTINCT provider FROM zaicode_apikey
+    INTO TABLE @DATA(lt_user_provs)
+    WHERE username = @sy-uname.
+  DELETE lt_provs WHERE NOT line_exists( lt_user_provs[ provider = key ] ).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = lt_provs.
@@ -81,9 +88,6 @@ AT SELECTION-SCREEN OUTPUT.
   " provider. If not, and they have keys for exactly one provider, switch to it
   " (overrides the default). This snaps a single-key user straight to their
   " provider; once they have a key for the selected provider, nothing changes.
-  SELECT DISTINCT provider FROM zaicode_apikey
-    INTO TABLE @DATA(lt_user_provs)
-    WHERE username = @sy-uname.
   IF NOT line_exists( lt_user_provs[ provider = p_prov ] )
      AND lines( lt_user_provs ) = 1
      AND line_exists( lt_provs[ key = lt_user_provs[ 1 ]-provider ] ).

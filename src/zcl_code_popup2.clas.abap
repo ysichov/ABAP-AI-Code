@@ -1084,6 +1084,30 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Prepare the Smart Debugger source in the clipboard before starting the
+    " generated program. The second line contains the source marker that must
+    " not be pasted into the debugger editor.
+    DATA: lt_source TYPE STANDARD TABLE OF text255,
+          lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER'.
+    READ REPORT lv_prog INTO lt_source.
+    IF sy-subrc = 0.
+      DELETE lt_source INDEX 2.
+
+      " Pass the current AI configuration to the debugger in ABAP memory.
+      DATA ls_ai_config TYPE zcl_abapai_llm_client=>ty_ai_config.
+      ls_ai_config-provider = mv_provider.
+      ls_ai_config-model    = mv_model.
+      ls_ai_config-apikey   = mv_apikey.
+      EXPORT ls_ai_config TO MEMORY ID 'Z_SMART_DEBUGGER_AI'.
+
+      CALL FUNCTION 'CLPB_EXPORT'
+        TABLES
+          data_tab   = lt_source
+        EXCEPTIONS
+          clpb_error = 1
+          OTHERS     = 2.
+    ENDIF.
+
     SUBMIT (mv_run_program) VIA SELECTION-SCREEN AND RETURN.
 
   ENDMETHOD.
