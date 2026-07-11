@@ -1094,10 +1094,15 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       DELETE lt_source INDEX 2.
 
       " Pass the current AI configuration to the debugger in ABAP memory.
-      DATA ls_ai_config TYPE zcl_abapai_llm_client=>ty_ai_config.
+      DATA: BEGIN OF ls_ai_config,
+              provider TYPE string,
+              model    TYPE text255,
+              apikey   TYPE string,
+            END OF ls_ai_config.
       ls_ai_config-provider = mv_provider.
       ls_ai_config-model    = mv_model.
       ls_ai_config-apikey   = mv_apikey.
+      BREAK-POINT. " Temporary: inspect AI configuration before EXPORT
       EXPORT ai_config = ls_ai_config TO MEMORY ID 'Z_SMART_DEBUGGER_AI'.
 
       CALL FUNCTION 'CLPB_EXPORT'

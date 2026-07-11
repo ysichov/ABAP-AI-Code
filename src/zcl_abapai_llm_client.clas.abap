@@ -4,13 +4,6 @@ class ZCL_ABAPAI_LLM_CLIENT definition
 
 public section.
 
-  TYPES:
-    BEGIN OF TY_AI_CONFIG,
-      PROVIDER type STRING,
-      MODEL    type TEXT255,
-      APIKEY   type STRING,
-    END OF TY_AI_CONFIG .
-
   methods CONSTRUCTOR
     importing
       !I_MODEL type TEXT255
