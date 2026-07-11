@@ -1102,8 +1102,10 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       ls_ai_config-provider = mv_provider.
       ls_ai_config-model    = mv_model.
       ls_ai_config-apikey   = mv_apikey.
-      BREAK-POINT. " Temporary: inspect AI configuration before EXPORT
-      EXPORT ai_config = ls_ai_config TO MEMORY ID 'Z_SMART_DEBUGGER_AI'.
+      DATA lv_ai_config_id TYPE indx-srtfd.
+      lv_ai_config_id = |ZSMDBG{ sy-uname }|.
+      EXPORT ai_config = ls_ai_config TO DATABASE indx(st) ID lv_ai_config_id.
+      COMMIT WORK AND WAIT.
 
       CALL FUNCTION 'CLPB_EXPORT'
         TABLES
@@ -1157,7 +1159,6 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
           ENDIF.
         ENDIF.
       WHEN 'RUN_PROGRAM'.
-        BREAK-POINT. " Temporary: verify RUN_PROGRAM toolbar event
         run_program( ).
       WHEN 'NEW_SESSION'.
         mo_tool_runner->clear_session( ).
