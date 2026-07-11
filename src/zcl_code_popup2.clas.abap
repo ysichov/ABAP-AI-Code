@@ -1098,10 +1098,12 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
               provider TYPE string,
               model    TYPE text255,
               apikey   TYPE string,
+              tools_path TYPE string,
             END OF ls_ai_config.
       ls_ai_config-provider = mv_provider.
       ls_ai_config-model    = mv_model.
       ls_ai_config-apikey   = mv_apikey.
+      ls_ai_config-tools_path = mv_agents_path.
       DATA lv_ai_config_id TYPE indx-srtfd.
       lv_ai_config_id = |ZSMDBG{ sy-uname }|.
       EXPORT ai_config = ls_ai_config TO DATABASE indx(st) ID lv_ai_config_id.

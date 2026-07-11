@@ -1,0 +1,51 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "set_breakpoint",
+      "description": "Set or delete a debugger breakpoint when variable history is insufficient.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": { "type": "string", "description": "Include and 1-based source line, for example Z_CALC:51" },
+          "mode": { "type": "string", "enum": ["set", "delete"] },
+          "reason": { "type": "string" }
+        },
+        "required": ["target", "reason"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "step_debugger",
+      "description": "Continue or step the debugger to the next relevant execution point.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string", "enum": ["F5", "F6", "F7", "F8"] },
+          "reason": { "type": "string" }
+        },
+        "required": ["command", "reason"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "report_findings",
+      "description": "Report the final diagnosis based on runtime evidence.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["hypothesis", "confirmed"] },
+          "diagnosis": { "type": "string" },
+          "evidence_variable": { "type": "string" },
+          "evidence_step": { "type": "string" },
+          "evidence_value": { "type": "string" }
+        },
+        "required": ["status", "diagnosis"]
+      }
+    }
+  }
+]
