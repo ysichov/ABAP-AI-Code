@@ -1098,7 +1098,7 @@ CLASS ZCL_CODE_POPUP2 IMPLEMENTATION.
       ls_ai_config-provider = mv_provider.
       ls_ai_config-model    = mv_model.
       ls_ai_config-apikey   = mv_apikey.
-      EXPORT ls_ai_config TO MEMORY ID 'Z_SMART_DEBUGGER_AI'.
+      EXPORT ai_config = ls_ai_config TO MEMORY ID 'Z_SMART_DEBUGGER_AI'.
 
       CALL FUNCTION 'CLPB_EXPORT'
         TABLES
