@@ -79,7 +79,13 @@ AT SELECTION-SCREEN OUTPUT.
   SELECT DISTINCT provider FROM zaicode_apikey
     INTO TABLE @DATA(lt_user_provs)
     WHERE username = @sy-uname.
-  DELETE lt_provs WHERE NOT line_exists( lt_user_provs[ provider = key ] ).
+  LOOP AT lt_provs ASSIGNING FIELD-SYMBOL(<ls_prov>).
+    READ TABLE lt_user_provs TRANSPORTING NO FIELDS
+      WITH KEY provider = <ls_prov>-key.
+    IF sy-subrc <> 0.
+      DELETE lt_provs.
+    ENDIF.
+  ENDLOOP.
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING id     = 'P_PROV'
               values = lt_provs.
@@ -88,13 +94,22 @@ AT SELECTION-SCREEN OUTPUT.
   " provider. If not, and they have keys for exactly one provider, switch to it
   " (overrides the default). This snaps a single-key user straight to their
   " provider; once they have a key for the selected provider, nothing changes.
-  IF NOT line_exists( lt_user_provs[ provider = p_prov ] )
-     AND lines( lt_user_provs ) = 1
-     AND line_exists( lt_provs[ key = lt_user_provs[ 1 ]-provider ] ).
-    p_prov = lt_user_provs[ 1 ]-provider.
-  ELSEIF ( p_prov IS INITIAL OR NOT line_exists( lt_provs[ key = p_prov ] ) )
-         AND lines( lt_provs ) = 1.
-    p_prov = lt_provs[ 1 ]-key.
+  READ TABLE lt_user_provs TRANSPORTING NO FIELDS
+    WITH KEY provider = p_prov.
+  DATA(lv_has_user_prov) = xsdbool( sy-subrc = 0 ).
+  IF lv_has_user_prov = abap_false AND lines( lt_user_provs ) = 1.
+    READ TABLE lt_user_provs INDEX 1 INTO DATA(ls_user_prov).
+    READ TABLE lt_provs TRANSPORTING NO FIELDS
+      WITH KEY key = ls_user_prov-provider.
+    IF sy-subrc = 0.
+      p_prov = ls_user_prov-provider.
+    ENDIF.
+  ELSE.
+    READ TABLE lt_provs TRANSPORTING NO FIELDS WITH KEY key = p_prov.
+    IF ( p_prov IS INITIAL OR sy-subrc <> 0 ) AND lines( lt_provs ) = 1.
+      READ TABLE lt_provs INDEX 1 INTO DATA(ls_only_prov).
+      p_prov = ls_only_prov-key.
+    ENDIF.
   ENDIF.
 
   " Key-name listbox: the encrypted keys this user stored for the provider
@@ -113,10 +128,12 @@ AT SELECTION-SCREEN OUTPUT.
   " Auto-select the key name only when exactly one key is stored for this
   " user+provider. With several keys the user must choose, so an invalid/empty
   " selection is left blank rather than defaulting to an arbitrary first entry.
-  IF p_name IS INITIAL OR NOT line_exists( lt_names[ keyname = p_name ] ).
+  READ TABLE lt_names TRANSPORTING NO FIELDS WITH KEY keyname = p_name.
+  IF p_name IS INITIAL OR sy-subrc <> 0.
     CLEAR p_name.
     IF lines( lt_names ) = 1.
-      p_name = lt_names[ 1 ]-keyname.
+      READ TABLE lt_names INDEX 1 INTO DATA(ls_only_name).
+      p_name = ls_only_name-keyname.
     ENDIF.
   ENDIF.
 
@@ -159,14 +176,16 @@ AT SELECTION-SCREEN OUTPUT.
 
     IF lt_ids IS NOT INITIAL.
       " Default to a haiku model when the current one is not in the new list.
-      IF p_model IS INITIAL OR NOT line_exists( lt_ids[ table_line = p_model ] ).
+      READ TABLE lt_ids TRANSPORTING NO FIELDS WITH KEY table_line = p_model.
+      IF p_model IS INITIAL OR sy-subrc <> 0.
         CLEAR p_model.
         LOOP AT lt_ids INTO lv_id WHERE table_line CS 'haiku'.
           p_model = lv_id.
           EXIT.
         ENDLOOP.
         IF p_model IS INITIAL.
-          p_model = lt_ids[ 1 ].
+          READ TABLE lt_ids INDEX 1 INTO lv_id.
+          p_model = lv_id.
         ENDIF.
       ENDIF.
       " Remember the loaded state only on success, so a failed call is retried.
