@@ -1,5 +1,7 @@
 # ABAP AI Code
 
+> **ABAP AI Code has moved to [VERTEX](https://github.com/ysichov/VERTEX)** — its AI assistant now lives in the VERTEX chat for VS Code and Eclipse ADT. This repository is kept as it is and is no longer developed.
+
 <img width="607" height="605" alt="ABAP AI Code main window" src="https://github.com/user-attachments/assets/69eef42b-99f9-43c2-b0df-2f58e92afbcd" />
 
 **An agentic AI coding assistant that runs *inside* the SAP system.**
