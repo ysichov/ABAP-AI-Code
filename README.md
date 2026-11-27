@@ -61,7 +61,7 @@ You start a report in SAP GUI, type a question in your own language, and an agen
 | Reviewing a change | `git diff` in a terminal | Built-in HTML diff with **per-hunk approve / decline**, decline notes and an AI discussion thread per hunk |
 | Prerequisites | Node.js, Git, code exported to disk | An SAP system. Nothing else — no ADT, no Eclipse, no Git working copy |
 | Auth / secrets | Vendor account or API key on the laptop | API key **AES-256 encrypted per SAP user** in `ZAICODE_APIKEY`, unlocked by a password that is never stored |
-| Model choice | Vendor's own models | 8 preconfigured providers (Anthropic, OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA); model list pulled **live** from `/v1/models` |
+| Model choice | Vendor's own models | 9 preconfigured providers, including MF0.AI. MF0 uses a local text-model list. Other providers load models from `/v1/models` |
 | Extending it | MCP servers, hooks — all outside SAP | ABAP plugin classes implementing `ZIF_AI_TOOL`, discovered automatically; they run *in* the system with full ABAP API access |
 | Write access | Always on | **Opt-in**: the base package is read-only; write tools ship as a [separate package](https://github.com/ysichov/ABAP-AI-CODE-TOOLS) you install only where changes are intended |
 | ABAP awareness | Generic code model | ABAP-native: class/method-level reads, structure tree, McCabe + Halstead metrics, breakpoints, "run this program" |
@@ -207,6 +207,13 @@ first run of `Z_ABAP_AI_KEYS` it is seeded with:
 | `CEREBRAS` | `https://api.cerebras.ai/v1` | OpenAI-compatible |
 | `OPENROUTER` | `https://openrouter.ai/api/v1` | OpenAI-compatible |
 | `NVIDIA` | `https://integrate.api.nvidia.com/v1` | OpenAI-compatible |
+| `MF0` | `https://www.mf0.ai/api/v1` | Native MF0.AI generations API |
+
+Opening `Z_ABAP_AI_KEYS` also registers MF0 in existing installations. Select `MF0`
+and save its API key. The model selector uses a local text-model catalog. The
+client submits each generation once and waits one second between status requests
+for up to 20 minutes. MF0 requests support text and structured prompts. Native
+tool calls are unavailable through this endpoint.
 
 Three fields drive behaviour: `URL` (base endpoint), `ANTHROPIC` (speak the Anthropic wire
 format instead of OpenAI), `CACHEKEY` (provider accepts OpenAI's `prompt_cache_key`).

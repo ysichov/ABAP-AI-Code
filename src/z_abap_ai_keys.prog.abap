@@ -20,7 +20,7 @@ SELECTION-SCREEN BEGIN OF BLOCK b_api WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_prov TYPE ty_prov AS LISTBOX VISIBLE LENGTH 30
                    USER-COMMAND prov DEFAULT 'ANTHROPIC',
             p_name TYPE c LENGTH 30 DEFAULT 'DEFAULT',
-            p_key  TYPE text255,
+            p_key  TYPE text255 LOWER CASE,
             p_pwd  TYPE text255,
             p_pwd2 TYPE text255.
 SELECTION-SCREEN END OF BLOCK b_api.
@@ -42,6 +42,13 @@ INITIALIZATION.
     IF sy-subrc = 0.
       COMMIT WORK.
     ENDIF.
+  ENDIF.
+
+  " Add MF0 to existing installations as well as new ones.
+  INSERT zaicode_provider FROM @( VALUE #( provider = 'MF0'
+                                          url      = 'https://www.mf0.ai/api/v1' ) ).
+  IF sy-subrc = 0.
+    COMMIT WORK.
   ENDIF.
 
 AT SELECTION-SCREEN OUTPUT.

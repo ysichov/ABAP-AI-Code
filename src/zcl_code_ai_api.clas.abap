@@ -26,15 +26,14 @@ public section.
   class-methods GET_PROVIDERS
     returning
       value(RT_VALUES) type VRM_VALUES .
-  " Canonical wire format for a provider: ANTHROPIC stays ANTHROPIC, everything
-  " else (OPENAI, MISTRAL, ...) is OpenAI-compatible -> OPENAI. Driven solely by
-  " the ANTHROPIC flag in ZAICODE_PROVIDER.
+  " MF0 uses its native generation API. For other providers the ANTHROPIC
+  " flag selects between Anthropic and OpenAI-compatible formats.
   class-methods PROVIDER_OF
     importing
       !I_PROVIDER type STRING
     returning
       value(RV_PROVIDER) type STRING .
-  " Lists available models via GET <i_url> (direct create_by_url, no SM59).
+  " MF0 returns its local text catalog. Other providers use GET <i_url>.
   " I_PROVIDER selects the auth header: ANTHROPIC -> x-api-key + version,
   " anything else -> Authorization: Bearer. Response "data[].id" -> ET_IDS.
   class-methods LIST_MODELS
@@ -75,6 +74,45 @@ public section.
       value(RV_ANSWER) type STRING .
 protected section.
 private section.
+
+  class-methods ASK_MF0
+    importing
+      i_prompt type STRING
+      i_system_prompt type STRING
+      it_history type ZCL_AI_MESSAGES=>TT_MESSAGES
+      i_model type TEXT255
+      i_apikey type STRING
+      i_ssl_id type SSFAPPLSSL
+      i_json_schema type STRING
+      i_max_tokens type I
+    exporting
+      ev_tok_in type I
+      ev_tok_out type I
+      ev_tok_total type I
+      ev_tok_cached type I
+      ev_raw_request type STRING
+      ev_raw_response type STRING
+    returning
+      value(rv_answer) type STRING .
+  class-methods MF0_REQUEST
+    importing
+      i_url type STRING
+      i_apikey type STRING
+      i_ssl_id type SSFAPPLSSL
+      i_timeout type I
+      i_payload type STRING optional
+      i_idempotency_key type STRING optional
+    exporting
+      ev_status type I
+      ev_body type STRING
+      ev_error type STRING .
+  class-methods MF0_JSON_TEXT
+    importing
+      ir_json type ref to DATA
+      i_path type STRING
+      i_numeric type ABAP_BOOL default ABAP_FALSE
+    returning
+      value(rv_text) type STRING .
 
   class-methods BUILD_PAYLOAD
     importing
@@ -157,6 +195,11 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     DATA(lv_prov) = i_provider.
     TRANSLATE lv_prov TO UPPER CASE.
 
+    IF lv_prov = 'MF0'.
+      rv_provider = 'MF0'.
+      RETURN.
+    ENDIF.
+
     " The ANTHROPIC flag in ZAICODE_PROVIDER decides the wire format: set = the
     " provider speaks the Anthropic API, unset (or missing) = OpenAI-compatible.
     SELECT SINGLE anthropic FROM zaicode_provider
@@ -192,6 +235,38 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     lv_provider = i_provider.
     TRANSLATE lv_provider TO UPPER CASE.
 
+    IF lv_provider = 'MF0'.
+      " Fixed text-model catalog from VERTEX b69eb6c.
+      et_ids = VALUE #(
+        ( `gpt-6.2-astra` )
+        ( `gpt-6.2-sol` )
+        ( `claude-fable-5-2` )
+        ( `claude-opus-5` )
+        ( `claude-opus-4-8` )
+        ( `claude-opus-4-6` )
+        ( `claude-haiku-4-5` )
+        ( `claude-haiku-5-5` )
+        ( `claude-sonnet-5-5` )
+        ( `claude-sonnet-5` )
+        ( `claude-sonnet-4-6` )
+        ( `deepseek-v4-1-flash-economy-261017` )
+        ( `deepseek-v4-1-flash-261017` )
+        ( `deepseek-v4-pro-ga-260813` )
+        ( `deepseek-v4-flash-ga-260731` )
+        ( `deepseek-v4-flash-260425` )
+        ( `glm-5.3` )
+        ( `glm-5.3-flash` )
+        ( `glm-5-3-flash-260828` )
+        ( `glm-5-2-260617` )
+        ( `dola-seed-2-1-turbo-260628` )
+        ( `seed-2-0-mini-260428` )
+        ( `seed-2-0-lite-260428` )
+        ( `seed-2-0-code-preview-260328` )
+      ).
+      SORT et_ids.
+      RETURN.
+    ENDIF.
+
     cl_http_client=>create_by_url(
       EXPORTING url    = i_url
                 ssl_id = i_ssl_id
@@ -202,7 +277,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    lo_client->request->set_method( 'GET' ).
+    lo_client->request->set_method( `GET` ).
     IF lv_provider = 'ANTHROPIC'.
       lo_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
       lo_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
@@ -270,11 +345,28 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       lv_provider = 'ANTHROPIC'.
     ENDIF.
 
-    " Raw provider (lv_provider) selects the host (api.anthropic / openai /
-    " mistral). The canonical wire format (lv_wire) is ANTHROPIC or OPENAI and
-    " drives the payload shape, auth header and response parsing - Mistral and
-    " any other OpenAI-compatible provider map to OPENAI here.
     DATA(lv_wire) = provider_of( lv_provider ).
+    IF lv_wire = 'MF0'.
+      CLEAR: ev_tok_cache_created, et_tool_calls, ev_thinking.
+      rv_answer = ask_mf0(
+        EXPORTING
+          i_prompt        = i_prompt
+          i_system_prompt = i_system_prompt
+          it_history      = it_history
+          i_model         = i_model
+          i_apikey        = i_apikey
+          i_ssl_id        = i_ssl_id
+          i_json_schema   = i_json_schema
+          i_max_tokens    = i_max_tokens
+        IMPORTING
+          ev_tok_in       = ev_tok_in
+          ev_tok_out      = ev_tok_out
+          ev_tok_total    = ev_tok_total
+          ev_tok_cached   = ev_tok_cached
+          ev_raw_request  = ev_raw_request
+          ev_raw_response = ev_raw_response ).
+      RETURN.
+    ENDIF.
 
     " Whether this provider accepts the OpenAI prompt_cache_key field.
     SELECT SINGLE cachekey FROM zaicode_provider
@@ -327,7 +419,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
       o_client->request->set_header_field( name = 'anthropic-version' value = '2023-06-01' ).
       o_client->request->set_header_field( name = 'x-api-key'         value = i_apikey ).
     ENDIF.
-    o_client->request->set_method( 'POST' ).
+    o_client->request->set_method( `POST` ).
     o_client->request->set_cdata( payload ).
 
     " Suppress the SAP logon popup so a 401/403 returns the JSON error body
@@ -372,6 +464,272 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
         ev_tok_cache_created = ev_tok_cache_created
         et_tool_calls        = et_tool_calls
         ev_thinking          = ev_thinking ).
+
+  endmethod.
+
+
+  method ASK_MF0.
+
+    CLEAR: ev_tok_in, ev_tok_out, ev_tok_total, ev_tok_cached,
+           ev_raw_request, ev_raw_response.
+    IF i_apikey IS INITIAL OR i_model IS INITIAL.
+      rv_answer = 'Error: MF0.AI requires an API key and a model ID'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_separator) = cl_abap_char_utilities=>newline && cl_abap_char_utilities=>newline.
+    DATA lt_prompt TYPE stringtab.
+    IF i_system_prompt IS NOT INITIAL.
+      APPEND i_system_prompt TO lt_prompt.
+    ENDIF.
+    APPEND 'Answer from the supplied context. You cannot call tools.' TO lt_prompt.
+    LOOP AT it_history INTO DATA(ls_message).
+      IF ls_message-role = 'user' OR ls_message-role = 'assistant'.
+        APPEND |{ ls_message-role }: { ls_message-content }| TO lt_prompt.
+      ENDIF.
+    ENDLOOP.
+    APPEND i_prompt TO lt_prompt.
+    IF i_json_schema IS NOT INITIAL.
+      APPEND |Return JSON matching this schema: { i_json_schema }| TO lt_prompt.
+    ENDIF.
+
+    DATA: BEGIN OF ls_payload,
+            model      TYPE string,
+            prompt     TYPE string,
+            max_tokens TYPE i,
+          END OF ls_payload.
+    ls_payload-model = i_model.
+    ls_payload-prompt = concat_lines_of( table = lt_prompt sep = lv_separator ).
+    ls_payload-max_tokens = COND #( WHEN i_max_tokens > 0 THEN i_max_tokens ELSE 4096 ).
+    ev_raw_request = /ui2/cl_json=>serialize(
+      data = ls_payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+
+    TRY.
+        DATA(lv_uuid) = cl_system_uuid=>create_uuid_c32_static( ).
+      CATCH cx_uuid_error.
+        rv_answer = 'Error: could not create MF0.AI idempotency key'.
+        RETURN.
+    ENDTRY.
+
+    DATA(lv_url) = base_url( `MF0` ) && '/generations'.
+    mf0_request(
+      EXPORTING i_url             = lv_url
+                i_apikey          = i_apikey
+                i_ssl_id          = i_ssl_id
+                i_timeout         = 60
+                i_payload         = ev_raw_request
+                i_idempotency_key = CONV string( lv_uuid )
+      IMPORTING ev_status         = DATA(lv_http_status)
+                ev_body           = ev_raw_response
+                ev_error          = DATA(lv_http_error) ).
+
+    DATA(lv_poll_started) = utclong_current( ).
+    DATA lv_id TYPE string.
+    DATA lv_status TYPE string.
+    DATA(lt_answer_paths) = VALUE stringtab(
+      ( `GENERATION/RESULT/TEXT` ) ( `GENERATION/TEXT` )
+      ( `TEXT` ) ( `RESULT/TEXT` ) ( `OUTPUT/TEXT` ) ( `DATA/TEXT` )
+      ( `DATA/RESULT/TEXT` ) ( `OUTPUT` ) ( `RESULT` ) ( `CHOICES/1/MESSAGE/CONTENT` ) ).
+
+    DO.
+      IF lv_http_error IS NOT INITIAL.
+        rv_answer = |Error: MF0.AI HTTP request failed { lv_http_error }|.
+        IF lv_id IS NOT INITIAL.
+          rv_answer = |{ rv_answer } (generation { lv_id })|.
+        ENDIF.
+        RETURN.
+      ENDIF.
+
+      DATA(lr_json) = /ui2/cl_json=>generate( json = ev_raw_response ).
+      IF lv_http_status < 200 OR lv_http_status >= 300
+        OR mf0_json_text( ir_json = lr_json i_path = 'OK' ) = 'false'.
+        DATA(lv_error) = mf0_json_text( ir_json = lr_json i_path = 'ERROR' ).
+        IF lv_error IS INITIAL.
+          lv_error = mf0_json_text( ir_json = lr_json i_path = 'ERROR/CODE' ).
+        ENDIF.
+        rv_answer = |Error: MF0.AI HTTP { lv_http_status } { lv_error }|.
+        IF lv_id IS NOT INITIAL.
+          rv_answer = |{ rv_answer } (generation { lv_id })|.
+        ENDIF.
+        RETURN.
+      ENDIF.
+
+      DATA(lv_first_response) = xsdbool( lv_id IS INITIAL ).
+      DATA(lv_prefix) = COND string(
+        WHEN mf0_json_text( ir_json = lr_json i_path = 'GENERATION/ID' ) IS NOT INITIAL
+          OR mf0_json_text( ir_json = lr_json i_path = 'GENERATION/STATUS' ) IS NOT INITIAL
+        THEN 'GENERATION/' ).
+      IF lv_first_response = abap_true.
+        lv_id = mf0_json_text( ir_json = lr_json i_path = lv_prefix && 'ID' ).
+      ENDIF.
+      lv_status = to_lower( mf0_json_text( ir_json = lr_json i_path = lv_prefix && 'STATUS' ) ).
+      DATA(lv_completed) = abap_false.
+      CASE lv_status.
+        WHEN 'failed' OR 'cancelled' OR 'canceled' OR 'expired' OR 'rejected'.
+          rv_answer = |Error: MF0.AI generation { lv_id } ended with status { lv_status }|.
+          RETURN.
+        WHEN 'succeeded' OR 'success' OR 'completed' OR 'complete' OR 'done'.
+          lv_completed = abap_true.
+      ENDCASE.
+
+      " Older responses may contain the text directly in the creation response.
+      IF lv_first_response = abap_true OR lv_completed = abap_true.
+        LOOP AT lt_answer_paths INTO DATA(lv_path).
+          rv_answer = mf0_json_text( ir_json = lr_json i_path = lv_path ).
+          IF rv_answer IS NOT INITIAL.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        IF rv_answer IS NOT INITIAL.
+          EXIT.
+        ENDIF.
+      ENDIF.
+
+      IF lv_completed = abap_true.
+        rv_answer = |Error: MF0.AI returned no text for generation { lv_id }|.
+        RETURN.
+      ENDIF.
+      IF lv_id IS INITIAL.
+        rv_answer = 'Error: MF0.AI returned neither text nor a generation ID'.
+        RETURN.
+      ENDIF.
+
+      DATA(lv_remaining) = CONV i( 1200 - utclong_diff(
+        high = utclong_current( ) low = lv_poll_started ) ).
+      IF lv_remaining <= 1.
+        rv_answer = |Error: MF0.AI generation { lv_id } timed out (status { lv_status })|.
+        RETURN.
+      ENDIF.
+
+      WAIT UP TO 1 SECONDS.
+      mf0_request(
+        EXPORTING i_url     = |{ lv_url }/{ cl_http_utility=>escape_url( lv_id ) }|
+                  i_apikey  = i_apikey
+                  i_ssl_id  = i_ssl_id
+                  i_timeout = nmin( val1 = 15 val2 = lv_remaining - 1 )
+        IMPORTING ev_status = lv_http_status
+                  ev_body   = ev_raw_response
+                  ev_error  = lv_http_error ).
+    ENDDO.
+
+    DATA(lt_usage_paths) = VALUE stringtab(
+      ( `GENERATION/USAGE/` ) ( `GENERATION/RESULT/USAGE/` )
+      ( `RESULT/USAGE/` ) ( `USAGE/` ) ( `DATA/USAGE/` ) ).
+    LOOP AT lt_usage_paths INTO lv_path.
+      DATA(lv_input) = mf0_json_text( ir_json = lr_json i_path = lv_path && 'INPUT_TOKENS' i_numeric = abap_true ).
+      DATA(lv_output) = mf0_json_text( ir_json = lr_json i_path = lv_path && 'OUTPUT_TOKENS' i_numeric = abap_true ).
+      IF lv_input IS INITIAL AND lv_output IS INITIAL.
+        lv_input = mf0_json_text( ir_json = lr_json i_path = lv_path && 'PROMPT_TOKENS' i_numeric = abap_true ).
+        lv_output = mf0_json_text( ir_json = lr_json i_path = lv_path && 'COMPLETION_TOKENS' i_numeric = abap_true ).
+      ENDIF.
+      IF lv_input IS NOT INITIAL OR lv_output IS NOT INITIAL.
+        ev_tok_in = lv_input.
+        ev_tok_out = lv_output.
+        ev_tok_total = ev_tok_in + ev_tok_out.
+        ev_tok_cached = mf0_json_text(
+          ir_json = lr_json i_path = lv_path && 'CACHED_INPUT_TOKENS' i_numeric = abap_true ).
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+  endmethod.
+
+
+  method MF0_REQUEST.
+
+    CLEAR: ev_status, ev_body, ev_error.
+    cl_http_client=>create_by_url(
+      EXPORTING url = i_url ssl_id = i_ssl_id
+      IMPORTING client = DATA(lo_client)
+      EXCEPTIONS OTHERS = 1 ).
+    IF sy-subrc <> 0.
+      ev_error = 'creating HTTP client (check URL / SSL in STRUST)'.
+      RETURN.
+    ENDIF.
+
+    lo_client->propertytype_logon_popup = if_http_client=>co_disabled.
+    lo_client->propertytype_redirect = if_http_client=>co_disabled.
+    lo_client->request->set_header_field( name = 'X-API-Key' value = i_apikey ).
+    IF i_payload IS SUPPLIED.
+      lo_client->request->set_method( `POST` ).
+      lo_client->request->set_header_field( name = 'Idempotency-Key' value = i_idempotency_key ).
+      lo_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
+      lo_client->request->set_cdata( i_payload ).
+    ELSE.
+      lo_client->request->set_method( `GET` ).
+    ENDIF.
+
+    lo_client->send( EXPORTING timeout = i_timeout EXCEPTIONS OTHERS = 1 ).
+    IF sy-subrc = 0.
+      lo_client->receive( EXCEPTIONS OTHERS = 1 ).
+    ENDIF.
+    IF sy-subrc = 0.
+      lo_client->response->get_status( IMPORTING code = ev_status ).
+      ev_body = lo_client->response->get_cdata( ).
+    ELSE.
+      lo_client->get_last_error( IMPORTING message = ev_error ).
+      IF ev_error IS INITIAL.
+        ev_error = 'during send or receive'.
+      ENDIF.
+    ENDIF.
+    lo_client->close( EXCEPTIONS OTHERS = 1 ).
+
+  endmethod.
+
+
+  method MF0_JSON_TEXT.
+
+    SPLIT i_path AT '/' INTO TABLE DATA(lt_segments).
+    FIELD-SYMBOLS <value> TYPE any.
+    FIELD-SYMBOLS <member> TYPE any.
+    FIELD-SYMBOLS <array> TYPE STANDARD TABLE.
+    ASSIGN ir_json->* TO <value>.
+    LOOP AT lt_segments INTO DATA(lv_segment).
+      IF <value> IS NOT ASSIGNED.
+        RETURN.
+      ENDIF.
+      DATA(lo_type) = cl_abap_typedescr=>describe_by_data( <value> ).
+      UNASSIGN <member>.
+      CASE lo_type->kind.
+        WHEN cl_abap_typedescr=>kind_struct.
+          ASSIGN COMPONENT lv_segment OF STRUCTURE <value> TO <member>.
+        WHEN cl_abap_typedescr=>kind_table.
+          IF lv_segment = '1'.
+            ASSIGN <value> TO <array>.
+            READ TABLE <array> INDEX 1 ASSIGNING <member>.
+          ENDIF.
+      ENDCASE.
+      IF <member> IS NOT ASSIGNED.
+        RETURN.
+      ENDIF.
+      lo_type = cl_abap_typedescr=>describe_by_data( <member> ).
+      UNASSIGN <value>.
+      IF lo_type->type_kind = cl_abap_typedescr=>typekind_dref.
+        DATA lr_member TYPE REF TO data.
+        lr_member = <member>.
+        ASSIGN lr_member->* TO <value>.
+      ELSE.
+        ASSIGN <member> TO <value>.
+      ENDIF.
+    ENDLOOP.
+
+    IF <value> IS NOT ASSIGNED.
+      RETURN.
+    ENDIF.
+    lo_type = cl_abap_typedescr=>describe_by_data( <value> ).
+    IF i_numeric = abap_true AND lo_type->kind = cl_abap_typedescr=>kind_elem.
+      TRY.
+          rv_text = CONV i( <value> ).
+        CATCH cx_sy_conversion_error.
+          CLEAR rv_text.
+      ENDTRY.
+    ELSEIF i_path = 'OK' AND lo_type->type_kind = cl_abap_typedescr=>typekind_char.
+      rv_text = COND #( WHEN <value> = abap_true THEN 'true' ELSE 'false' ).
+    ELSEIF lo_type->type_kind = cl_abap_typedescr=>typekind_string.
+      IF condense( CONV string( <value> ) ) IS NOT INITIAL.
+        rv_text = <value>.
+      ENDIF.
+    ENDIF.
 
   endmethod.
 
