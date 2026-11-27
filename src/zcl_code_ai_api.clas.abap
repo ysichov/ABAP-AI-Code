@@ -726,7 +726,7 @@ CLASS ZCL_CODE_AI_API IMPLEMENTATION.
     ELSEIF i_path = 'OK' AND lo_type->type_kind = cl_abap_typedescr=>typekind_char.
       rv_text = COND #( WHEN <value> = abap_true THEN 'true' ELSE 'false' ).
     ELSEIF lo_type->type_kind = cl_abap_typedescr=>typekind_string.
-      IF condense( CONV string( <value> ) ) IS NOT INITIAL.
+      IF strlen( condense( CONV string( <value> ) ) ) > 0.
         rv_text = <value>.
       ENDIF.
     ENDIF.
